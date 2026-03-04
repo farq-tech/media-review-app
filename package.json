@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "POI Media Review with database persistence",
   "scripts": {
+    "build": "echo 'No build needed'",
     "seed": "node scripts/seed-db.js"
   },
   "dependencies": {
