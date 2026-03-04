@@ -1,0 +1,11 @@
+{
+  "name": "media-review-app",
+  "version": "1.0.0",
+  "description": "POI Media Review with database persistence",
+  "scripts": {
+    "seed": "node scripts/seed-db.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}
