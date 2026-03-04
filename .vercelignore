@@ -1,0 +1,11 @@
+# Exclude from Vercel deployment
+.venv/
+__pycache__/
+*.pyc
+.git/
+.claude/
+*.xlsx
+*.pdf
+POI_Surveyed_Final.xlsx
+POI_Final_Clean.csv
+POI_Duplicates_Removed.csv

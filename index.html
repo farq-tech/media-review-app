@@ -1,10 +1,741 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" dir="ltr">
 <head>
-  <meta http-equiv="refresh" content="0;url=media_review_app.html">
-  <title>POI Media Review</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POI Media Review & Classification Tool</title>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f1117; color: #e0e0e0; }
+
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: #1a1d27; border-bottom: 1px solid #2a2d3a;
+  padding: 8px 20px; display: flex; align-items: center; gap: 16px; height: 56px;
+}
+.topbar h1 { font-size: 16px; color: #8b9cf7; white-space: nowrap; }
+.stats { font-size: 13px; color: #888; display: flex; gap: 12px; flex-wrap: wrap; }
+.stats span { background: #252836; padding: 4px 10px; border-radius: 4px; }
+.stats .done { color: #4caf50; }
+.stats .pending { color: #ff9800; }
+
+.filter-bar {
+  position: fixed; top: 56px; left: 0; right: 0; z-index: 99;
+  background: #1a1d27; border-bottom: 1px solid #2a2d3a;
+  padding: 8px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
+.filter-bar input[type="text"] {
+  background: #252836; border: 1px solid #3a3d4a; color: #fff;
+  padding: 6px 12px; border-radius: 4px; width: 240px; font-size: 13px;
+}
+.filter-bar select {
+  background: #252836; border: 1px solid #3a3d4a; color: #fff;
+  padding: 6px 8px; border-radius: 4px; font-size: 13px;
+}
+.filter-bar button {
+  padding: 6px 14px; border-radius: 4px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+}
+.btn-export { background: #4caf50; color: #fff; }
+.btn-export:hover { background: #45a049; }
+.btn-nav { background: #3a3d4a; color: #fff; }
+.btn-nav:hover { background: #4a4d5a; }
+
+.main { margin-top: 112px; padding: 20px; }
+
+.poi-card {
+  background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px;
+  margin-bottom: 16px; overflow: hidden;
+}
+.poi-card.reviewed { border-color: #4caf50; }
+.poi-card.has-unclassified { border-color: #ff9800; }
+
+.poi-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; background: #252836; cursor: pointer; flex-wrap: wrap; gap: 8px;
+}
+.poi-header:hover { background: #2a2d3a; }
+.poi-info { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.poi-id { font-size: 11px; color: #666; background: #1a1d27; padding: 2px 8px; border-radius: 10px; }
+.poi-name { font-weight: 600; font-size: 14px; }
+.poi-name-ar { font-size: 13px; color: #aaa; direction: rtl; }
+.poi-category { font-size: 12px; color: #8b9cf7; }
+.poi-media-count { font-size: 12px; color: #888; }
+.poi-status { font-size: 12px; padding: 3px 10px; border-radius: 12px; font-weight: 500; }
+.poi-status.reviewed { background: #1b3a1b; color: #4caf50; }
+.poi-status.pending { background: #3a2e1b; color: #ff9800; }
+
+.media-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px; padding: 16px;
+}
+.media-item {
+  background: #252836; border-radius: 6px; overflow: hidden;
+  border: 2px solid transparent; transition: border-color 0.2s;
+}
+.media-preview {
+  position: relative; width: 100%; height: 220px; background: #0f1117;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.media-preview img {
+  max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer;
+}
+.media-preview video { max-width: 100%; max-height: 100%; }
+.media-preview .loading { color: #666; font-size: 13px; }
+.media-preview .error { color: #e57373; font-size: 12px; text-align: center; padding: 10px; }
+.media-preview .converting { color: #8b9cf7; font-size: 12px; }
+
+.media-meta {
+  padding: 6px 10px; font-size: 11px; color: #888;
+  display: flex; justify-content: space-between; gap: 4px;
+}
+.media-meta .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+
+.media-classify { padding: 8px 10px; display: flex; gap: 5px; flex-wrap: wrap; }
+.type-btn {
+  padding: 4px 10px; border-radius: 14px; border: 1px solid #3a3d4a;
+  background: transparent; color: #aaa; font-size: 11px; cursor: pointer;
+  transition: all 0.15s;
+}
+.type-btn:hover { border-color: #8b9cf7; color: #8b9cf7; }
+.type-btn.active-exterior { background: #1b3a2e; border-color: #4caf50; color: #4caf50; }
+.type-btn.active-interior { background: #1b2a3a; border-color: #2196f3; color: #2196f3; }
+.type-btn.active-menu { background: #3a2e1b; border-color: #ff9800; color: #ff9800; }
+.type-btn.active-video { background: #2e1b3a; border-color: #9c27b0; color: #9c27b0; }
+.type-btn.active-license { background: #3a3a1b; border-color: #cddc39; color: #cddc39; }
+.type-btn.active-additional { background: #252836; border-color: #607d8b; color: #607d8b; }
+.type-btn.active-skip { background: #3a1b1b; border-color: #e57373; color: #e57373; }
+
+.auto-tag {
+  font-size: 10px; color: #555; padding: 1px 5px;
+  background: #1a1d27; border-radius: 3px;
+}
+
+.lightbox {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.95); z-index: 200;
+  display: none; align-items: center; justify-content: center; cursor: pointer;
+}
+.lightbox.active { display: flex; }
+.lightbox img { max-width: 95vw; max-height: 95vh; object-fit: contain; }
+.lightbox-close {
+  position: absolute; top: 20px; right: 20px; color: #fff;
+  font-size: 32px; cursor: pointer; background: none; border: none;
+}
+
+.progress-bar { width: 180px; height: 6px; background: #252836; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: #4caf50; transition: width 0.3s; border-radius: 3px; }
+
+.page-info { color: #888; font-size: 13px; }
+
+.poi-edit-panel {
+  background: #252836; border-top: 1px solid #2a2d3a;
+  padding: 16px; display: none;
+}
+.poi-edit-panel.open { display: block; }
+.poi-edit-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.poi-edit-form label { font-size: 11px; color: #888; display: block; margin-bottom: 4px; }
+.poi-edit-form input, .poi-edit-form select, .poi-edit-form textarea {
+  background: #1a1d27; border: 1px solid #3a3d4a; color: #fff; padding: 8px 10px;
+  border-radius: 4px; font-size: 13px; width: 100%;
+}
+.poi-edit-form input:focus, .poi-edit-form textarea:focus { border-color: #8b9cf7; outline: none; }
+.btn-edit { background: #3a3d4a; color: #8b9cf7; padding: 4px 12px; border-radius: 4px; border: 1px solid #4a4d5a; cursor: pointer; font-size: 12px; }
+.btn-edit:hover { background: #4a4d5a; }
+.tab-bar { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid #2a2d3a; }
+.tab-bar button { padding: 12px 24px; background: transparent; border: none; color: #888; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+.tab-bar button:hover { color: #fff; }
+.tab-bar button.active { color: #8b9cf7; border-bottom-color: #8b9cf7; font-weight: 600; }
+.qa-panel { display: none; padding: 20px; }
+.qa-panel.active { display: block; }
+.qa-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.qa-card { background: #252836; border-radius: 8px; padding: 16px; border: 1px solid #2a2d3a; }
+.qa-card h3 { font-size: 12px; color: #888; margin-bottom: 8px; }
+.qa-card .val { font-size: 24px; font-weight: 700; color: #8b9cf7; }
+.qa-card.err .val { color: #e57373; }
+.qa-card.ok .val { color: #4caf50; }
+.qa-section { margin-top: 24px; }
+.qa-section h4 { font-size: 14px; color: #8b9cf7; margin-bottom: 8px; }
+.qa-section table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qa-section th, .qa-section td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #2a2d3a; }
+.qa-section th { color: #888; font-weight: 500; }
+.btn-run-qa { background: #8b9cf7; color: #fff; padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn-run-qa:hover { background: #7a8ae6; }
+.btn-run-qa:disabled { background: #555; cursor: not-allowed; }
+.btn-save-poi { background: #4caf50; color: #fff; padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 12px; }
+.btn-save-poi:hover { background: #45a049; }
+.btn-save-poi:disabled { background: #555; cursor: not-allowed; }
+.poi-edit-msg { font-size: 12px; margin-top: 8px; }
+.poi-edit-msg.saved { color: #4caf50; }
+.poi-edit-msg.error { color: #e57373; }
+</style>
+<script>
+window.MEDIA_DATA_FALLBACK = null;
+fetch('/media_data.json').then(r=>r.ok?r.json():[]).then(d=>{window.MEDIA_DATA_FALLBACK=Array.isArray(d)?d:[];}).catch(()=>{});
+</script>
 </head>
 <body>
-  <p>Redirecting to <a href="media_review_app.html">POI Media Review</a>...</p>
+
+<div class="topbar">
+  <h1>POI Media Review</h1>
+  <div class="stats">
+    <span>Total: <b id="totalPois">0</b></span>
+    <span>Media: <b id="totalMedia">0</b></span>
+    <span class="done">Done: <b id="reviewedCount">0</b></span>
+    <span class="pending">Left: <b id="pendingCount">0</b></span>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="tab-bar" style="margin:0;padding:0;border:none;">
+    <button class="active" onclick="switchTab('review')">Review Media</button>
+    <button onclick="switchTab('qa')">QA Pipeline</button>
+  </div>
+  <div id="reviewPanel" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+  <input type="text" id="searchInput" placeholder="Search name, ID..." oninput="applyFilters()">
+  <select id="filterStatus" onchange="applyFilters()">
+    <option value="all">All</option>
+    <option value="pending">Pending</option>
+    <option value="reviewed">Reviewed</option>
+  </select>
+  <select id="filterCategory" onchange="applyFilters()">
+    <option value="all">All Categories</option>
+  </select>
+  <select id="perPage" onchange="applyFilters()">
+    <option value="10">10/page</option>
+    <option value="25" selected>25/page</option>
+    <option value="50">50/page</option>
+  </select>
+  <button class="btn-nav" onclick="prevPage()">← Prev</button>
+  <span class="page-info" id="pageInfo">1</span>
+  <button class="btn-nav" onclick="nextPage()">Next →</button>
+  <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+  <button class="btn-nav" onclick="saveProgress()">💾 Save</button>
+  </div>
+</div>
+
+<div id="reviewMain" class="main" style="display:block;">
+  <div id="poiList"></div>
+</div>
+
+<div id="qaPanel" class="qa-panel" style="margin-top:112px;display:none;">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+    <button class="btn-run-qa" id="btnRunQa" onclick="runQA(false)">Run QA (from database)</button>
+    <button class="btn-nav" id="btnRunQaLocal" onclick="runQA(true)">Run QA (current data)</button>
+    <span id="qaStatus" style="color:#888;font-size:13px;"></span>
+  </div>
+  <div id="qaResults" style="display:none;">
+    <div class="qa-summary">
+      <div class="qa-card"><h3>Total POIs</h3><div class="val" id="qaTotal">0</div></div>
+      <div class="qa-card ok"><h3>Pass</h3><div class="val" id="qaPass">0</div></div>
+      <div class="qa-card err"><h3>Fail</h3><div class="val" id="qaFail">0</div></div>
+      <div class="qa-card"><h3>Accuracy</h3><div class="val" id="qaAccuracy">0%</div></div>
+      <div class="qa-card"><h3>Duplicate Pairs</h3><div class="val" id="qaDupes">0</div></div>
+    </div>
+    <div class="qa-section">
+      <h4>License Errors</h4>
+      <div id="qaLicenseTable"></div>
+    </div>
+    <div class="qa-section">
+      <h4>Phone Errors</h4>
+      <div id="qaPhoneTable"></div>
+    </div>
+    <div class="qa-section">
+      <h4>Media Conflicts</h4>
+      <div id="qaMediaTable"></div>
+    </div>
+    <div class="qa-section">
+      <h4>Working Hours Errors</h4>
+      <div id="qaHoursTable"></div>
+    </div>
+    <div class="qa-section">
+      <h4>Duplicate POI Pairs</h4>
+      <div id="qaDupesTable"></div>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+  <img id="lightboxImg" src="">
+</div>
+
+<script>
+let allPois = [];
+let classifications = {};
+let currentPage = 0;
+let filteredPois = [];
+const heicCache = {}; // url -> blob URL (converted)
+
+const TYPES = ['exterior','interior','menu','video','license','additional','skip'];
+
+async function init() {
+  const saved = localStorage.getItem('poi_media_cls');
+  if (saved) try { classifications = JSON.parse(saved); } catch(e) {}
+
+  document.getElementById('poiList').innerHTML = '<div style="padding:40px;text-align:center;color:#888">Loading POIs from database...</div>';
+  try {
+    const r = await fetch('/api/poi');
+    if (r.ok) allPois = await r.json();
+    const cr = await fetch('/api/classifications');
+    if (cr.ok) classifications = await cr.json();
+  } catch (e) {
+    console.warn('API failed, using fallback:', e);
+  }
+  if (!allPois || !allPois.length) {
+    allPois = window.MEDIA_DATA_FALLBACK || [];
+  }
+  if (!allPois.length) {
+    document.getElementById('poiList').innerHTML = '<div style="padding:40px;text-align:center;color:#e57373">No data. Run seed script and ensure DATABASE_URL is set on Vercel.</div>';
+    return;
+  }
+  boot();
+}
+
+function boot() {
+  allPois.forEach(poi => {
+    if (!classifications[poi.objectid]) classifications[poi.objectid] = {};
+    poi.media.forEach(m => {
+      if (!classifications[poi.objectid][m.id] && m.autoType && m.autoType !== 'additional') {
+        classifications[poi.objectid][m.id] = m.autoType;
+      }
+    });
+  });
+
+  const cats = [...new Set(allPois.map(p => p.category).filter(Boolean))].sort();
+  const sel = document.getElementById('filterCategory');
+  cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+
+  applyFilters();
+}
+
+function isHeic(media) {
+  return media.name.toLowerCase().endsWith('.heic') ||
+         (media.contentType && media.contentType.toLowerCase().includes('heic'));
+}
+
+async function loadHeicImage(url, imgEl) {
+  if (heicCache[url]) { imgEl.src = heicCache[url]; return; }
+
+  imgEl.parentElement.innerHTML = '<div class="converting">Converting HEIC...</div>';
+
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const jpegBlob = await heic2any({ blob: blob, toType: 'image/jpeg', quality: 0.7 });
+    const resultBlob = Array.isArray(jpegBlob) ? jpegBlob[0] : jpegBlob;
+    const blobUrl = URL.createObjectURL(resultBlob);
+    heicCache[url] = blobUrl;
+
+    const parent = imgEl.parentElement || document.querySelector(`[data-url="${url}"]`);
+    if (parent) {
+      parent.innerHTML = `<img src="${blobUrl}" style="max-width:100%;max-height:100%;object-fit:contain;cursor:pointer;" onclick="openLightbox('${blobUrl}')">`;
+    }
+  } catch(e) {
+    const parent = imgEl.parentElement || document.querySelector(`[data-url="${url}"]`);
+    if (parent) {
+      parent.innerHTML = `<div class="error">HEIC convert failed<br><a href="${url}" target="_blank" style="color:#8b9cf7;font-size:11px;">Download original</a></div>`;
+    }
+  }
+}
+
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('filterStatus').value;
+  const category = document.getElementById('filterCategory').value;
+
+  filteredPois = allPois.filter(poi => {
+    if (search && !poi.name_en.toLowerCase().includes(search) &&
+        !poi.name_ar.includes(search) && !String(poi.objectid).includes(search)) return false;
+    if (category !== 'all' && poi.category !== category) return false;
+
+    const c = classifications[poi.objectid] || {};
+    const allDone = poi.media.every(m => c[m.id]);
+    if (status === 'reviewed' && !allDone) return false;
+    if (status === 'pending' && allDone) return false;
+    return true;
+  });
+
+  currentPage = 0;
+  renderPage();
+}
+
+function renderPage() {
+  const perPage = parseInt(document.getElementById('perPage').value);
+  const start = currentPage * perPage;
+  const pageItems = filteredPois.slice(start, start + perPage);
+  const totalPages = Math.ceil(filteredPois.length / perPage);
+
+  document.getElementById('pageInfo').textContent = `${currentPage+1}/${totalPages} (${filteredPois.length})`;
+  updateStats();
+
+  const container = document.getElementById('poiList');
+  container.innerHTML = '';
+
+  pageItems.forEach(poi => {
+    const c = classifications[poi.objectid] || {};
+    const allDone = poi.media.every(m => c[m.id]);
+    const clsCount = poi.media.filter(m => c[m.id]).length;
+
+    const card = document.createElement('div');
+    card.className = `poi-card ${allDone ? 'reviewed' : 'has-unclassified'}`;
+    card.id = `poi-${poi.objectid}`;
+
+    card.innerHTML = `
+      <div class="poi-header" onclick="togglePoi(${poi.objectid})">
+        <div class="poi-info">
+          <span class="poi-id">${poi.objectid}</span>
+          <span class="poi-name">${esc(poi.name_en)}</span>
+          <span class="poi-name-ar">${esc(poi.name_ar)}</span>
+          <span class="poi-category">${esc(poi.category)}</span>
+          <span class="poi-media-count">${poi.media.length} media (${clsCount} done)</span>
+          <button class="btn-edit" onclick="event.stopPropagation(); toggleEditPoi(${poi.objectid})" title="Edit POI">✎ Edit</button>
+        </div>
+        <span class="poi-status ${allDone?'reviewed':'pending'}">${allDone?'✓ Done':'Pending'}</span>
+      </div>
+      <div class="poi-edit-panel" id="edit-${poi.objectid}">
+        <div class="poi-edit-form">
+          <div><label>Name (EN)</label><input type="text" id="edit-name_en-${poi.objectid}" value="${esc(poi.name_en || '')}" placeholder="Name in English"></div>
+          <div><label>Name (AR)</label><input type="text" id="edit-name_ar-${poi.objectid}" value="${esc(poi.name_ar || '')}" placeholder="الاسم بالعربية" dir="rtl"></div>
+          <div><label>Category</label><input type="text" id="edit-category-${poi.objectid}" value="${esc(poi.category || '')}" placeholder="Category"></div>
+          <div><label>Phone</label><input type="text" id="edit-phone-${poi.objectid}" value="${esc(getPoiField(poi,'Phone Number'))}" placeholder="Phone Number"></div>
+          <div><label>Email</label><input type="email" id="edit-email-${poi.objectid}" value="${esc(getPoiField(poi,'Email'))}" placeholder="Email"></div>
+          <div><label>Website</label><input type="url" id="edit-website-${poi.objectid}" value="${esc(getPoiField(poi,'Website'))}" placeholder="https://"></div>
+          <div><label>District (EN)</label><input type="text" id="edit-district-${poi.objectid}" value="${esc(getPoiField(poi,'District (EN)'))}" placeholder="District"></div>
+          <div><label>Latitude</label><input type="text" id="edit-lat-${poi.objectid}" value="${esc(getPoiField(poi,'Latitude'))}" placeholder="24.xx"></div>
+          <div><label>Longitude</label><input type="text" id="edit-lon-${poi.objectid}" value="${esc(getPoiField(poi,'Longitude'))}" placeholder="46.xx"></div>
+        </div>
+        <button class="btn-save-poi" onclick="savePoi(${poi.objectid})">Save to database</button>
+        <div class="poi-edit-msg" id="edit-msg-${poi.objectid}"></div>
+      </div>
+      <div class="media-grid" id="grid-${poi.objectid}" style="display:none;">
+        ${poi.media.map(m => mediaCard(poi.objectid, m, c[m.id])).join('')}
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function mediaCard(oid, m, curType) {
+  const sizeKb = (m.size/1024).toFixed(0);
+  const kwTag = m.keywords ? `<span class="auto-tag">${esc(m.keywords)}</span>` : '';
+  const heic = isHeic(m);
+
+  let preview;
+  if (m.isVideo) {
+    preview = `<video controls preload="none" src="${m.url}"></video>`;
+  } else if (heic) {
+    preview = `<div class="media-preview" data-url="${m.url}">
+      <div class="loading" style="cursor:pointer" onclick="convertHeic(this,'${m.url}')">
+        HEIC - Click to preview
+      </div></div>`;
+  } else {
+    preview = `<div class="media-preview">
+      <img src="${m.url}" loading="lazy" onclick="openLightbox('${m.url}')"
+        onerror="this.outerHTML='<div class=error>Load failed<br><a href=\\'${m.url}\\' target=_blank style=color:#8b9cf7;font-size:11px>Open</a></div>'">
+      </div>`;
+  }
+
+  const btns = TYPES.map(t => {
+    const act = curType === t ? `active-${t}` : '';
+    return `<button class="type-btn ${act}" onclick="classify(${oid},${m.id},'${t}')">${t}</button>`;
+  }).join('');
+
+  if (m.isVideo || heic) {
+    return `<div class="media-item" id="media-${oid}-${m.id}">
+      ${preview}
+      <div class="media-meta"><span class="fname">${esc(m.name)}</span><span>${sizeKb}KB ${kwTag}</span></div>
+      <div class="media-classify">${btns}</div></div>`;
+  }
+
+  return `<div class="media-item" id="media-${oid}-${m.id}">
+    <div class="media-preview">
+      <img src="${m.url}" loading="lazy" onclick="openLightbox('${m.url}')"
+        onerror="this.outerHTML='<div class=error>Load failed<br><a href=\\'${m.url}\\' target=_blank style=color:#8b9cf7;font-size:11px>Open</a></div>'">
+    </div>
+    <div class="media-meta"><span class="fname">${esc(m.name)}</span><span>${sizeKb}KB ${kwTag}</span></div>
+    <div class="media-classify">${btns}</div></div>`;
+}
+
+async function convertHeic(el, url) {
+  if (heicCache[url]) {
+    el.parentElement.innerHTML = `<img src="${heicCache[url]}" style="max-width:100%;max-height:100%;object-fit:contain;cursor:pointer" onclick="openLightbox('${heicCache[url]}')">`;
+    return;
+  }
+  el.textContent = 'Converting HEIC...';
+  el.style.color = '#8b9cf7';
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const jpeg = await heic2any({ blob, toType:'image/jpeg', quality:0.7 });
+    const result = Array.isArray(jpeg) ? jpeg[0] : jpeg;
+    const burl = URL.createObjectURL(result);
+    heicCache[url] = burl;
+    el.parentElement.innerHTML = `<img src="${burl}" style="max-width:100%;max-height:100%;object-fit:contain;cursor:pointer" onclick="openLightbox('${burl}')">`;
+  } catch(e) {
+    el.innerHTML = `Failed<br><a href="${url}" target="_blank" style="color:#8b9cf7;font-size:11px">Download</a>`;
+  }
+}
+
+function classify(oid, attId, type) {
+  if (!classifications[oid]) classifications[oid] = {};
+  classifications[oid][attId] = type;
+
+  const item = document.getElementById(`media-${oid}-${attId}`);
+  if (item) {
+    item.querySelectorAll('.type-btn').forEach(btn => {
+      const t = btn.textContent;
+      btn.className = `type-btn ${t===type ? 'active-'+type : ''}`;
+    });
+  }
+
+  const poi = allPois.find(p => p.objectid === oid);
+  if (poi) {
+    const c = classifications[oid];
+    const allDone = poi.media.every(m => c[m.id]);
+    const card = document.getElementById(`poi-${oid}`);
+    if (card) {
+      card.className = `poi-card ${allDone?'reviewed':'has-unclassified'}`;
+      const st = card.querySelector('.poi-status');
+      st.className = `poi-status ${allDone?'reviewed':'pending'}`;
+      st.textContent = allDone?'✓ Done':'Pending';
+      const cnt = card.querySelector('.poi-media-count');
+      cnt.textContent = `${poi.media.length} media (${poi.media.filter(m=>c[m.id]).length} done)`;
+    }
+  }
+  saveProgress();
+  updateStats();
+}
+
+function togglePoi(oid) {
+  const g = document.getElementById(`grid-${oid}`);
+  const wasHidden = g.style.display === 'none';
+  g.style.display = wasHidden ? 'grid' : 'none';
+}
+
+function toggleEditPoi(oid) {
+  const panel = document.getElementById(`edit-${oid}`);
+  if (!panel) return;
+  panel.classList.toggle('open');
+}
+
+async function savePoi(oid) {
+  const msgEl = document.getElementById(`edit-msg-${oid}`);
+  const sb = document.getElementById(`edit-${oid}`)?.querySelector('.btn-save-poi');
+  if (sb) sb.disabled = true;
+  if (msgEl) { msgEl.textContent = 'Saving...'; msgEl.className = 'poi-edit-msg'; }
+
+  const body = {
+    name_ar: document.getElementById(`edit-name_ar-${oid}`)?.value ?? '',
+    name_en: document.getElementById(`edit-name_en-${oid}`)?.value ?? '',
+    category: document.getElementById(`edit-category-${oid}`)?.value ?? '',
+    data: {
+      'Phone Number': document.getElementById(`edit-phone-${oid}`)?.value ?? '',
+      'Email': document.getElementById(`edit-email-${oid}`)?.value ?? '',
+      'Website': document.getElementById(`edit-website-${oid}`)?.value ?? '',
+      'District (EN)': document.getElementById(`edit-district-${oid}`)?.value ?? '',
+      'Latitude': document.getElementById(`edit-lat-${oid}`)?.value ?? '',
+      'Longitude': document.getElementById(`edit-lon-${oid}`)?.value ?? ''
+    }
+  };
+
+  try {
+    const r = await fetch(`/api/poi/${oid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const poi = allPois.find(p => p.objectid === oid);
+    if (poi) {
+      poi.name_ar = body.name_ar;
+      poi.name_en = body.name_en;
+      poi.category = body.category;
+      if (poi.data) Object.assign(poi.data, body.data); else poi.data = body.data;
+      const h = document.querySelector(`#poi-${oid} .poi-info`);
+      if (h) {
+        const nm = h.querySelector('.poi-name'); if (nm) nm.textContent = body.name_en || '(no name)';
+        const ar = h.querySelector('.poi-name-ar'); if (ar) ar.textContent = body.name_ar || '';
+        const cat = h.querySelector('.poi-category'); if (cat) cat.textContent = body.category || '';
+      }
+    }
+    if (msgEl) { msgEl.textContent = 'Saved to database'; msgEl.className = 'poi-edit-msg saved'; }
+    setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = 'Error: ' + e.message; msgEl.className = 'poi-edit-msg error'; }
+    console.error('Save POI failed:', e);
+  }
+  if (sb) sb.disabled = false;
+}
+
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.getElementById('lightboxImg').src = '';
+}
+
+function prevPage() { if (currentPage > 0) { currentPage--; renderPage(); scrollTo(0,0); } }
+function nextPage() {
+  const pp = parseInt(document.getElementById('perPage').value);
+  if ((currentPage+1)*pp < filteredPois.length) { currentPage++; renderPage(); scrollTo(0,0); }
+}
+
+let saveTimer = null;
+function saveProgress() {
+  localStorage.setItem('poi_media_cls', JSON.stringify(classifications));
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    for (const oid of Object.keys(classifications)) {
+      if (!classifications[oid] || !Object.keys(classifications[oid]).length) continue;
+      try {
+        await fetch(`/api/poi/${oid}/classifications`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ classifications: classifications[oid] })
+        });
+      } catch (e) { console.warn('Save classification failed:', e); }
+    }
+  }, 500);
+}
+
+function updateStats() {
+  let rev = 0, totalM = 0;
+  allPois.forEach(p => {
+    const c = classifications[p.objectid]||{};
+    if (p.media.every(m => c[m.id])) rev++;
+    totalM += p.media.length;
+  });
+  document.getElementById('totalPois').textContent = allPois.length;
+  document.getElementById('totalMedia').textContent = totalM;
+  document.getElementById('reviewedCount').textContent = rev;
+  document.getElementById('pendingCount').textContent = allPois.length - rev;
+  document.getElementById('progressFill').style.width = `${(rev/allPois.length*100).toFixed(1)}%`;
+}
+
+function exportCSV() {
+  let csv = 'ID,GlobalID,Name (EN),Name (AR),Category,exterior photo URL,interior photo URL,menu photo URL,video,license photo URL,additional photo URLs,Number of Additional Photos,Review Status\n';
+
+  allPois.forEach((poi, idx) => {
+    const c = classifications[poi.objectid]||{};
+    const by = {exterior:[],interior:[],menu:[],video:[],license:[],additional:[]};
+    poi.media.forEach(m => {
+      const t = c[m.id] || m.autoType || 'additional';
+      if (t !== 'skip' && by[t]) by[t].push(m.url);
+    });
+    const done = poi.media.every(m => c[m.id]);
+    csv += [idx+1, `{${poi.globalid.toUpperCase()}}`, ce(poi.name_en), ce(poi.name_ar), ce(poi.category),
+      ce(by.exterior.join(', ')||'UNAVAILABLE'), ce(by.interior.join(', ')||'UNAVAILABLE'),
+      ce(by.menu.join(', ')||'UNAVAILABLE'), ce(by.video.join(', ')||'UNAVAILABLE'),
+      ce(by.license.join(', ')||'UNAVAILABLE'), ce(by.additional.join(', ')||'UNAVAILABLE'),
+      by.additional.length+by.exterior.length+by.interior.length, done?'Reviewed':'Pending'
+    ].join(',') + '\n';
+  });
+
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'POI_Media_Classifications.csv'; a.click();
+}
+
+function getPoiField(poi, key) {
+  if (!poi) return '';
+  return (poi.data && poi.data[key]) || poi[key] || '';
+}
+function ce(v) {
+  if (v==null) return '';
+  const s = String(v);
+  return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-bar button[onclick="switchTab('${tab}')"]`).classList.add('active');
+  document.getElementById('reviewPanel').style.display = tab === 'review' ? 'flex' : 'none';
+  document.getElementById('reviewMain').style.display = tab === 'review' ? 'block' : 'none';
+  document.getElementById('qaPanel').style.display = tab === 'qa' ? 'block' : 'none';
+  if (tab === 'qa' && document.getElementById('qaResults').style.display !== 'block') {
+    document.getElementById('qaStatus').textContent = 'Click "Run QA Pipeline" to validate POIs';
+  }
+}
+
+async function runQA(useLocalData) {
+  const btn = document.getElementById('btnRunQa');
+  const btnLocal = document.getElementById('btnRunQaLocal');
+  const status = document.getElementById('qaStatus');
+  btn.disabled = btnLocal.disabled = true;
+  status.textContent = 'Running QA pipeline...';
+  status.style.color = '#888';
+  try {
+    let r;
+    if (useLocalData && allPois.length) {
+      const payload = allPois.map(p => {
+        const c = classifications[p.objectid] || {};
+        const byType = { exterior: [], interior: [], menu: [], video: [] };
+        (p.media || []).forEach(m => {
+          const t = c[m.id] || m.autoType;
+          if (byType[t]) byType[t].push(m.url);
+        });
+        return {
+          objectid: p.objectid, globalid: p.globalid, name_ar: p.name_ar, name_en: p.name_en,
+          category: p.category, Latitude: p.Latitude || p.latitude, Longitude: p.Longitude || p.longitude,
+          'Phone Number': p['Phone Number'], 'Commercial License Number': p['Commercial License Number'],
+          'exterior photo URL': (p['exterior photo URL'] || byType.exterior.join(', ')) || 'UNAVAILABLE',
+          'interior photo URL': (p['interior photo URL'] || byType.interior.join(', ')) || 'UNAVAILABLE',
+          'menu photo URL': (p['menu photo URL'] || byType.menu.join(', ')) || 'UNAVAILABLE',
+          video: (p.video || byType.video.join(', ')) || 'UNAVAILABLE',
+          'Working Hours for Each Day': p['Working Hours for Each Day'],
+          Website: p.Website, 'Has Family Seating': p['Has Family Seating'], 'Has a Waiting Area': p['Has a Waiting Area'], 'Dine In': p['Dine In']
+        };
+      });
+      r = await fetch('/api/qa/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    } else {
+      r = await fetch('/api/qa/run');
+    }
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const report = await r.json();
+    renderQAReport(report);
+    status.textContent = 'Done';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#e57373';
+    console.error('QA failed:', e);
+  }
+  btn.disabled = btnLocal.disabled = false;
+}
+
+function renderQAReport(report) {
+  document.getElementById('qaResults').style.display = 'block';
+  const s = report.summary || {};
+  document.getElementById('qaTotal').textContent = s.total || 0;
+  document.getElementById('qaPass').textContent = s.pass || 0;
+  document.getElementById('qaFail').textContent = s.fail || 0;
+  document.getElementById('qaAccuracy').textContent = (s.accuracy || 0) + '%';
+  document.getElementById('qaDupes').textContent = s.duplicatePairs || report.duplicates?.length || 0;
+
+  function tbl(id, arr, cols) {
+    const el = document.getElementById(id);
+    if (!arr || !arr.length) { el.innerHTML = '<p style="color:#666;font-size:12px">None</p>'; return; }
+    el.innerHTML = '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' +
+      arr.slice(0, 50).map(row => '<tr>' + cols.map(c => '<td>' + esc(row[c] || '') + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table>' + (arr.length > 50 ? '<p style="color:#888;font-size:12px;margin-top:8px">Showing first 50 of ' + arr.length + '</p>' : '');
+  }
+  tbl('qaLicenseTable', report.licenseErrors || [], ['objectid', 'error']);
+  tbl('qaPhoneTable', report.phoneErrors || [], ['objectid', 'name', 'value']);
+  tbl('qaMediaTable', report.mediaConflicts || [], ['objectid', 'error']);
+  tbl('qaHoursTable', report.hoursErrors || [], ['objectid', 'error']);
+  tbl('qaDupesTable', report.duplicates || [], ['objectid1', 'objectid2', 'name', 'dist']);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') closeLightbox();
+  if (e.key==='ArrowLeft') prevPage();
+  if (e.key==='ArrowRight') nextPage();
+});
+
+init();
+</script>
 </body>
 </html>
