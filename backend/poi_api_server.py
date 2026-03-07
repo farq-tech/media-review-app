@@ -1051,43 +1051,52 @@ def _migrate_cat(cat, sub):
 @api.route('/migrate-categories', methods=['POST'])
 def migrate_categories():
     """Migrate old categories/subcategories to new taxonomy. POST with ?apply=true to execute."""
-    apply = request.args.get('apply', '').lower() == 'true'
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT "GlobalID_DB", "Name_EN", "Category", "Subcategory" FROM pois')
-    pois = cur.fetchall()
+    try:
+        do_apply = request.args.get('apply', '').lower() == 'true'
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT "GlobalID_DB", "Name_EN", "Category", "Subcategory" FROM pois')
+        pois = cur.fetchall()
 
-    changes = []
-    for p in pois:
-        old_cat = (p['Category'] or '').strip()
-        old_sub = (p['Subcategory'] or '').strip()
-        if not old_cat:
-            continue
-        new_cat, new_sub = _migrate_cat(old_cat, old_sub)
-        if new_cat != old_cat or new_sub != old_sub:
-            changes.append({
-                'gid': p['GlobalID_DB'],
-                'name': p['Name_EN'],
-                'old_cat': old_cat, 'old_sub': old_sub,
-                'new_cat': new_cat, 'new_sub': new_sub,
-            })
+        changes = []
+        for p in pois:
+            old_cat = (p['Category'] or '').strip()
+            old_sub = (p['Subcategory'] or '').strip()
+            if not old_cat:
+                continue
+            new_cat, new_sub = _migrate_cat(old_cat, old_sub)
+            if new_cat != old_cat or new_sub != old_sub:
+                changes.append({
+                    'gid': p['GlobalID_DB'],
+                    'name': p['Name_EN'] or '',
+                    'old_cat': old_cat, 'old_sub': old_sub,
+                    'new_cat': new_cat, 'new_sub': new_sub,
+                })
 
-    if apply and changes:
+        if do_apply and changes:
+            for c in changes:
+                cur.execute('UPDATE pois SET "Category" = %s, "Subcategory" = %s WHERE "GlobalID_DB" = %s',
+                            (c['new_cat'], c['new_sub'], c['gid']))
+            conn.commit()
+
+        cur.close()
+        conn.close()
+
+        # Summarize by mapping type
+        from collections import Counter
+        summary = Counter()
         for c in changes:
-            cur.execute('UPDATE pois SET "Category" = %s, "Subcategory" = %s WHERE "GlobalID_DB" = %s',
-                        (c['new_cat'], c['new_sub'], c['gid']))
-        conn.commit()
+            key = f"{c['old_cat']}>{c['old_sub']} -> {c['new_cat']}>{c['new_sub']}"
+            summary[key] += 1
 
-    cur.close()
-    conn.close()
-    return jsonify({
-        'mode': 'applied' if apply else 'dry_run',
-        'total_pois': len(pois),
-        'changes_count': len(changes),
-        'changes': [{'gid': c['gid'][:12], 'name': c['name'],
-                      'from': f"{c['old_cat']} >> {c['old_sub']}",
-                      'to': f"{c['new_cat']} >> {c['new_sub']}"} for c in changes]
-    })
+        return jsonify({
+            'mode': 'applied' if do_apply else 'dry_run',
+            'total_pois': len(pois),
+            'changes_count': len(changes),
+            'summary': [{'mapping': k, 'count': v} for k, v in summary.most_common()],
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ===== API: POI Validation (21-Error QA Pipeline) =====
