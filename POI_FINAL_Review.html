@@ -1497,7 +1497,8 @@ function goPage(p) { if (p<0) return; currentPage=p; renderTable(); document.get
 function photoLink(url) {
   if (!url||url==='UNAVAILABLE'||url==='-') return '<span style="color:#bbb">-</span>';
   const u = url.split(',').map(s=>s.trim()).filter(Boolean);
-  return `<a class="photo-link" href="${esc(u[0])}" target="_blank" onclick="event.stopPropagation()">View${u.length>1?' ('+u.length+')':''}</a>`;
+  const link = u[0].includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(u[0]) : u[0];
+  return `<a class="photo-link" href="${esc(link)}" target="_blank" onclick="event.stopPropagation()">View${u.length>1?' ('+u.length+')':''}</a>`;
 }
 
 // ===== EXCEL TABLE VIEW =====
@@ -2008,10 +2009,12 @@ function showPreview(e, idx) {
     const p = filteredPois[idx];
     if (!p) return;
     const pv = document.getElementById('poiPreview');
-    const extUrl = p.Exterior_Photo_URL && p.Exterior_Photo_URL !== 'UNAVAILABLE' && p.Exterior_Photo_URL.startsWith('http') ? p.Exterior_Photo_URL : '';
-    const intUrl = p.Interior_Photo_URL && p.Interior_Photo_URL !== 'UNAVAILABLE' && p.Interior_Photo_URL.startsWith('http') ? p.Interior_Photo_URL : '';
-    const extSrc = extUrl ? (extUrl.includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(extUrl) : extUrl) : '';
-    const intSrc = intUrl ? (intUrl.includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(intUrl) : intUrl) : '';
+    const getFirstUrl = v => { if (!v || v === 'UNAVAILABLE' || v === 'UNAPPLICABLE') return ''; const u = v.split(',')[0].trim(); return u.startsWith('http') ? u : ''; };
+    const extUrl = getFirstUrl(p.Exterior_Photo_URL);
+    const intUrl = getFirstUrl(p.Interior_Photo_URL);
+    const proxyUrl = u => u.includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(u) : u;
+    const extSrc = extUrl ? proxyUrl(extUrl) : '';
+    const intSrc = intUrl ? proxyUrl(intUrl) : '';
     const qs = parseInt(p.QA_Score)||0;
     const qColor = qs>=80?'#2e7d32':qs>=60?'#f57f17':'#c62828';
     const errs = validationResults.get(p.GlobalID);
