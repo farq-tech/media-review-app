@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://poi-api-sagg.onrender.com/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://poi-api-eu.onrender.com/api/:path*" }
   ],
   "headers": [
     {
