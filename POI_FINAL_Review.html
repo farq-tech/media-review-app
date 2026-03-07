@@ -229,6 +229,22 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 .pagination span { font-size: 12px; color: #666; }
 
+/* ============ HOVER PREVIEW ============ */
+.poi-preview {
+  position: fixed; z-index: 50; pointer-events: none;
+  background: #fff; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  width: 340px; overflow: hidden; display: none; border: 1px solid #e0e0e0;
+}
+.poi-preview.show { display: block; }
+.poi-preview .pv-photos { display: flex; height: 120px; gap: 1px; background: #eee; }
+.poi-preview .pv-photos img { flex: 1; object-fit: cover; min-width: 0; background: #f5f5f5; }
+.poi-preview .pv-photos .pv-no { flex: 1; display: flex; align-items: center; justify-content: center; background: #f5f5f5; color: #bbb; font-size: 11px; }
+.poi-preview .pv-body { padding: 10px 14px; }
+.poi-preview .pv-name { font-size: 14px; font-weight: 700; color: #1a237e; margin-bottom: 2px; }
+.poi-preview .pv-name-ar { font-size: 13px; color: #555; direction: rtl; text-align: right; margin-bottom: 6px; }
+.poi-preview .pv-row { display: flex; justify-content: space-between; font-size: 11px; color: #666; padding: 2px 0; }
+.poi-preview .pv-row b { color: #333; }
+
 /* ============ DUPLICATES VIEW ============ */
 .dup-group {
   background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
@@ -484,6 +500,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
   <div id="mediaAssignOptions"></div>
   <button onclick="closeMediaAssign()" style="margin-top:12px; padding:6px 16px; background:#666; color:#fff; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
 </div>
+
+<!-- Hover Preview -->
+<div class="poi-preview" id="poiPreview"></div>
 
 <!-- Detail Panel -->
 <div class="overlay" id="overlay" onclick="closeDetail()"></div>
@@ -1378,7 +1397,7 @@ function renderTable() {
     const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Flag?'flagged':'';
     const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
     const chk = selectedPois.has(p.GlobalID)?'checked':'';
-    h += `<tr class="${rc}"${ed}>
+    h += `<tr class="${rc}"${ed} onmouseenter="showPreview(event,${idx})" onmouseleave="hidePreview()">
       <td onclick="event.stopPropagation()"><input type="checkbox" ${chk} onchange="toggleSelect('${p.GlobalID}',this)"></td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${idx+1}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Name_EN||'')}</td>
@@ -1957,6 +1976,57 @@ function ce(v) { if (v==null) return ''; const s=String(v); return (s.includes('
 function trunc(s,n) { return s&&s.length>n ? s.substring(0,n)+'...' : (s||''); }
 function openLightbox(url) { document.getElementById('lightboxImg').src=url; document.getElementById('lightbox').classList.add('active'); }
 function toast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+
+// ===== HOVER PREVIEW =====
+let previewTimer = null;
+function showPreview(e, idx) {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const p = filteredPois[idx];
+    if (!p) return;
+    const pv = document.getElementById('poiPreview');
+    const extUrl = p.Exterior_Photo_URL && p.Exterior_Photo_URL !== 'UNAVAILABLE' && p.Exterior_Photo_URL.startsWith('http') ? p.Exterior_Photo_URL : '';
+    const intUrl = p.Interior_Photo_URL && p.Interior_Photo_URL !== 'UNAVAILABLE' && p.Interior_Photo_URL.startsWith('http') ? p.Interior_Photo_URL : '';
+    const extSrc = extUrl ? (extUrl.includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(extUrl) : extUrl) : '';
+    const intSrc = intUrl ? (intUrl.includes('arcgis.com') ? '/api/arcgis-image?url=' + encodeURIComponent(intUrl) : intUrl) : '';
+    const qs = parseInt(p.QA_Score)||0;
+    const qColor = qs>=80?'#2e7d32':qs>=60?'#f57f17':'#c62828';
+    const errs = validationResults.get(p.GlobalID);
+    const errHtml = errs ? `<span style="color:#c62828;font-weight:600;">${errs.length} errors</span>` : '<span style="color:#2e7d32;">OK</span>';
+
+    pv.innerHTML = `<div class="pv-photos">
+      ${extSrc ? `<img src="${extSrc}" onerror="this.outerHTML='<div class=pv-no>Ext N/A</div>'" alt="Exterior">` : '<div class="pv-no">No Exterior</div>'}
+      ${intSrc ? `<img src="${intSrc}" onerror="this.outerHTML='<div class=pv-no>Int N/A</div>'" alt="Interior">` : '<div class="pv-no">No Interior</div>'}
+    </div>
+    <div class="pv-body">
+      <div class="pv-name">${esc(p.Name_EN||'Unnamed')}</div>
+      <div class="pv-name-ar">${esc(p.Name_AR||'')}</div>
+      <div class="pv-row"><span><b>Category:</b> ${esc(p.Category||'-')}</span></div>
+      <div class="pv-row"><span><b>Subcategory:</b> ${esc(p.Subcategory||'-')}</span></div>
+      <div class="pv-row"><span><b>District:</b> ${esc(p.District_EN||'-')}</span><span><b>QA:</b> <span style="color:${qColor};font-weight:700;">${qs}</span></span></div>
+      <div class="pv-row"><span><b>Phone:</b> ${esc(p.Phone_Number||'-')}</span><span><b>Status:</b> ${esc(p.Company_Status||'-')}</span></div>
+      <div class="pv-row"><span><b>Hours:</b> ${esc(trunc(p.Working_Hours||'-',30))}</span></div>
+      <div class="pv-row"><span><b>Video:</b> ${p.Video_URL && p.Video_URL !== 'UNAVAILABLE' ? 'Yes' : 'No'}</span><span><b>Validation:</b> ${errHtml}</span></div>
+      ${p.Review_Flag ? `<div class="pv-row" style="color:#c62828;"><b>Flag:</b> ${esc(trunc(p.Review_Flag,40))}</div>` : ''}
+    </div>`;
+
+    // Position: show to the right of mouse, or left if near edge
+    const rect = pv.getBoundingClientRect();
+    let x = e.clientX + 20;
+    let y = e.clientY - 60;
+    if (x + 350 > window.innerWidth) x = e.clientX - 360;
+    if (y + 300 > window.innerHeight) y = window.innerHeight - 310;
+    if (y < 10) y = 10;
+    pv.style.left = x + 'px';
+    pv.style.top = y + 'px';
+    pv.classList.add('show');
+  }, 300);
+}
+
+function hidePreview() {
+  clearTimeout(previewTimer);
+  document.getElementById('poiPreview').classList.remove('show');
+}
 
 // ===== DUPLICATE DETECTION & MERGE =====
 let dupGroups = []; // array of { members: [indices], goldenIdx: number, merged: boolean, distance, matchRules }
