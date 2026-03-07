@@ -30,22 +30,26 @@ def get_db():
 # ===== API: Get all POIs =====
 @api.route('/pois', methods=['GET'])
 def get_pois():
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN";')
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    result = []
-    for row in rows:
-        d = {}
-        for k, v in row.items():
-            if k in ('created_at', 'updated_at', 'delivery_date'):
-                d[k] = str(v) if v else ''
-            else:
-                d[k] = v if v is not None else ''
-        result.append(d)
-    return jsonify(result)
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN";')
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        result = []
+        for row in rows:
+            d = {}
+            for k, v in row.items():
+                if k in ('created_at', 'updated_at', 'delivery_date'):
+                    d[k] = str(v) if v else ''
+                else:
+                    d[k] = v if v is not None else ''
+            result.append(d)
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 # ===== API: Get single POI =====
 @api.route('/pois/<globalid>', methods=['GET'])
