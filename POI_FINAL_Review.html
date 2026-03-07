@@ -537,33 +537,23 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 
 <!-- ARCGIS MEDIA VIEW -->
 <div id="arcgisView" class="view-content">
-  <!-- Top Bar: Search POI + Status -->
+  <!-- Filter Bar -->
   <div style="padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <div style="font-weight:600; font-size:13px; color:#333;">Search POI:</div>
-    <input type="text" id="arcPoiSearch" placeholder="Type POI name to find media..." oninput="arcSearchPoi()" style="flex:1; min-width:250px; padding:7px 12px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
-    <select id="arcViewFilter" onchange="arcApplyFilter()" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
-      <option value="suggestions">Has Suggestions (88)</option>
-      <option value="has_arc">Has ArcGIS Media (743)</option>
-      <option value="no_media">No Media in DB (250)</option>
-      <option value="all">All Matched (835)</option>
+    <select id="arcTypeFilter" onchange="renderUnassignedMedia()" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+      <option value="all">All Types</option>
+      <option value="exterior">Exterior</option>
+      <option value="interior">Interior</option>
+      <option value="menu">Menu</option>
+      <option value="video">Video</option>
+      <option value="license">License</option>
+      <option value="other">Other / Unclassified</option>
     </select>
+    <input type="text" id="arcSourceSearch" placeholder="Filter by POI source name..." oninput="renderUnassignedMedia()" style="flex:1; min-width:200px; padding:7px 12px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
     <span id="arcStatus" style="font-size:12px; color:#666;"></span>
     <span id="arcCounter" style="font-size:12px; color:#666; margin-left:auto;"></span>
   </div>
-
-  <!-- Content: POI List + Selected POI Detail -->
-  <div style="display:flex; height:calc(100vh - 180px); overflow:hidden;">
-    <!-- Left: POI List -->
-    <div id="arcPoiList" style="width:340px; min-width:300px; border-right:1px solid #eee; overflow-y:auto; background:#fff;"></div>
-    <!-- Right: Selected POI Media Detail -->
-    <div id="arcPoiDetail" style="flex:1; overflow-y:auto; padding:16px; background:#fafafa;">
-      <div style="text-align:center; padding:60px 20px; color:#999;">
-        <div style="font-size:40px; margin-bottom:12px;">&#128269;</div>
-        <div style="font-size:15px;">Search for a POI or select one from the list</div>
-        <div style="font-size:12px; margin-top:6px;">You'll see current DB media and ArcGIS suggestions side by side</div>
-      </div>
-    </div>
-  </div>
+  <!-- Unassigned Media Grid -->
+  <div id="arcMediaGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 180px); align-content:start;"></div>
 </div>
 
 <!-- AUDIT LOG VIEW -->
@@ -2966,12 +2956,12 @@ let arcPois = [];
 let arcDecisions = {};
 let arcInitialized = false;
 let arcToken = '';
-let arcCurrentMode = 'arcgis';
 const MEDIA_TYPES = ['exterior','interior','menu','video','license','additional'];
 const MEDIA_DB_FIELDS = {exterior:'Exterior_Photo_URL',interior:'Interior_Photo_URL',menu:'Menu_Photo_URL',video:'Video_URL',license:'License_Photo_URL',additional:'Additional_Photo_URLs'};
 const MEDIA_COLORS = {exterior:'#f59e0b',interior:'#8b5cf6',menu:'#f97316',video:'#ec4899',license:'#14b8a6',additional:'#78909c'};
 let arcCatalogue = []; // full ArcGIS attachment catalogue
-let arcSelectedGid = null;
+let arcAllMedia = []; // flattened list of all media items
+let arcAssignedUrls = new Set(); // URLs already in DB
 
 async function initArcGISMedia() {
   if (arcInitialized) return;
@@ -2990,19 +2980,107 @@ async function initArcGISMedia() {
   try {
     const resp = await fetch('arcgis_full_catalogue.json');
     arcCatalogue = await resp.json();
-    const suggestions = arcCatalogue.filter(c => c.missing_types.length > 0).length;
-    const withArc = arcCatalogue.filter(c => c.arc_total > 0).length;
-    document.getElementById('arcgisBadge').textContent = suggestions;
-    document.getElementById('arcgisBadge').style.display = 'inline';
-    statusEl.innerHTML = arcToken
-      ? `<span style="color:#2e7d32;">Ready — ${arcCatalogue.length} POIs, ${withArc} with ArcGIS media</span>`
-      : `<span style="color:#f59e0b;">Token failed — images may not load</span>`;
   } catch(e) {
     arcCatalogue = [];
     statusEl.innerHTML = '<span style="color:#d32f2f;">Failed to load catalogue</span>';
+    return;
   }
 
-  arcApplyFilter();
+  // Build flat media list + assigned URLs set
+  buildMediaIndex();
+  renderUnassignedMedia();
+}
+
+function buildMediaIndex() {
+  arcAllMedia = [];
+  arcAssignedUrls = new Set();
+
+  // Collect all URLs currently assigned in DB POIs
+  const mediaFields = ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs'];
+  for (const p of allPois) {
+    for (const f of mediaFields) {
+      const v = (p[f]||'').trim();
+      if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE') {
+        arcAssignedUrls.add(v);
+      }
+    }
+  }
+
+  // Flatten all catalogue attachments into one list
+  for (const cat of arcCatalogue) {
+    const atts = cat.arc_attachments || {};
+    for (const [type, items] of Object.entries(atts)) {
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        arcAllMedia.push({
+          ...item,
+          type: type,
+          sourceGid: cat.GlobalID,
+          sourceName: cat.Name_EN || cat.Name_AR || '?',
+          sourceCategory: cat.Category || ''
+        });
+      }
+    }
+  }
+
+  const unassigned = arcAllMedia.filter(m => !arcAssignedUrls.has(m.url));
+  const badge = document.getElementById('arcgisBadge');
+  badge.textContent = unassigned.length;
+  badge.style.display = 'inline';
+
+  const statusEl = document.getElementById('arcStatus');
+  statusEl.innerHTML = arcToken
+    ? `<span style="color:#2e7d32;">Ready — ${arcAllMedia.length} total media, ${unassigned.length} unassigned</span>`
+    : `<span style="color:#f59e0b;">Token issue — images may not load</span>`;
+}
+
+function renderUnassignedMedia() {
+  const typeFilter = document.getElementById('arcTypeFilter').value;
+  const search = (document.getElementById('arcSourceSearch').value||'').toLowerCase().trim();
+  const grid = document.getElementById('arcMediaGrid');
+
+  // Filter to unassigned only
+  let items = arcAllMedia.filter(m => !arcAssignedUrls.has(m.url));
+
+  // Apply type filter
+  if (typeFilter !== 'all') items = items.filter(m => m.type === typeFilter);
+
+  // Apply source name search
+  if (search.length >= 2) items = items.filter(m => m.sourceName.toLowerCase().includes(search));
+
+  document.getElementById('arcCounter').textContent = `${items.length} unassigned media`;
+
+  if (!items.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#999;"><div style="font-size:40px;margin-bottom:12px;">&#10003;</div><div style="font-size:15px;">No unassigned media found</div><div style="font-size:12px;margin-top:6px;">All media has been assigned or no matches for your filter</div></div>';
+    return;
+  }
+
+  // Limit render to 200 for performance
+  const show = items.slice(0, 200);
+  const remaining = items.length - show.length;
+
+  grid.innerHTML = show.map(m => {
+    const isVid = m.type === 'video' || (m.contentType||'').includes('video') || (m.name||'').match(/\.(mp4|mov)$/i);
+    const tUrl = isVid ? arcVid(m.url) : arcImg(m.url);
+    const color = MEDIA_COLORS[m.type] || '#78909c';
+    const key = 'um_' + Math.random().toString(36).substr(2,8);
+    _pendingAssign[key] = {gid: m.sourceGid, url: m.url};
+
+    return `<div style="background:#fff;border-radius:8px;overflow:hidden;border:1px solid #eee;box-shadow:0 1px 3px rgba(0,0,0,0.06);cursor:pointer;" onclick="_safeOpenAssign('${key}')">
+      ${isVid
+        ? `<video style="width:100%;height:150px;object-fit:cover;background:#000;" preload="none" poster=""><source src="${tUrl}"></video>`
+        : `<img src="${tUrl}" style="width:100%;height:150px;object-fit:cover;background:#f0f0f0;" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:100%;height:150px;align-items:center;justify-content:center;background:#f5f5f5;color:#ccc;font-size:28px;">&#128247;</div>`
+      }
+      <div style="padding:8px 10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;background:${color};color:#fff;">${m.type.toUpperCase()}</span>
+          <span style="font-size:10px;color:#999;">${m.size_kb}KB</span>
+        </div>
+        <div style="font-size:11px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.sourceName}">${m.sourceName}</div>
+        <div style="font-size:10px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.name||''}</div>
+      </div>
+    </div>`;
+  }).join('') + (remaining > 0 ? `<div style="grid-column:1/-1;text-align:center;padding:20px;color:#999;font-size:13px;">+ ${remaining} more items. Use filters to narrow down.</div>` : '');
 }
 
 function arcImg(url) {
@@ -3012,219 +3090,6 @@ function arcImg(url) {
 function arcVid(url) {
   if (!url || !url.includes('arcgis.com')) return url;
   return url + (url.includes('?')?'&':'?') + 'token=' + (arcToken||'');
-}
-
-// ── POI List Rendering ──
-function arcApplyFilter() {
-  const filter = document.getElementById('arcViewFilter').value;
-  const search = (document.getElementById('arcPoiSearch').value||'').toLowerCase().trim();
-  let list = [];
-
-  if (search.length >= 2) {
-    // Search across ALL POIs (both catalogue + DB-only)
-    const catGids = new Set(arcCatalogue.map(c => c.GlobalID));
-    // From catalogue
-    list = arcCatalogue.filter(c =>
-      (c.Name_EN||'').toLowerCase().includes(search) || (c.Name_AR||'').includes(search)
-    );
-    // Add DB-only POIs not in catalogue
-    for (const p of allPois) {
-      if (!catGids.has(p.GlobalID) &&
-          ((p.Name_EN||'').toLowerCase().includes(search) || (p.Name_AR||'').includes(search))) {
-        list.push({
-          GlobalID: p.GlobalID, Name_EN: p.Name_EN, Name_AR: p.Name_AR,
-          Category: p.Category, arc_total: 0, missing_types: [],
-          has_suggestions: false, db_media: {}, arc_attachments: {}
-        });
-      }
-    }
-  } else {
-    // Filter catalogue
-    if (filter === 'suggestions') list = arcCatalogue.filter(c => c.missing_types.length > 0);
-    else if (filter === 'has_arc') list = arcCatalogue.filter(c => c.arc_total > 0);
-    else if (filter === 'no_media') {
-      // POIs with no media in DB
-      list = arcCatalogue.filter(c => {
-        const dbPoi = allPois.find(p => p.GlobalID === c.GlobalID);
-        if (!dbPoi) return false;
-        return !['Exterior_Photo_URL','Interior_Photo_URL','Video_URL','License_Photo_URL'].some(f => {
-          const v = (dbPoi[f]||'').trim();
-          return v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE';
-        });
-      });
-    } else {
-      list = arcCatalogue;
-    }
-  }
-
-  document.getElementById('arcCounter').textContent = `${list.length} POIs`;
-  renderArcPoiList(list);
-}
-
-function arcSearchPoi() {
-  arcApplyFilter();
-}
-
-function renderArcPoiList(list) {
-  const container = document.getElementById('arcPoiList');
-  if (!list.length) {
-    container.innerHTML = '<div style="padding:30px;text-align:center;color:#999;font-size:13px;">No POIs found</div>';
-    return;
-  }
-
-  container.innerHTML = list.map(c => {
-    const gid = c.GlobalID;
-    const dbPoi = allPois.find(p => p.GlobalID === gid);
-    // Count current DB media
-    let dbCount = 0;
-    if (dbPoi) {
-      for (const f of ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL']) {
-        const v = (dbPoi[f]||'').trim();
-        if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE') dbCount++;
-      }
-    }
-    const hasSuggestions = c.missing_types && c.missing_types.length > 0;
-    const isSelected = arcSelectedGid === gid;
-
-    return `<div onclick="arcSelectPoi('${gid}')" style="padding:10px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${isSelected?'#e3f2fd':'#fff'};transition:background 0.15s;" onmouseover="if(!this.style.background.includes('e3f2fd'))this.style.background='#f8f9fa'" onmouseout="if('${gid}'!==arcSelectedGid)this.style.background='#fff'">
-      <div style="display:flex;justify-content:space-between;align-items:start;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.Name_EN||'?'}</div>
-          <div style="font-size:11px;color:#888;direction:rtl;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.Name_AR||''}</div>
-          <div style="font-size:10px;color:#999;margin-top:2px;">${c.Category||''}</div>
-        </div>
-        <div style="text-align:right;min-width:70px;margin-left:8px;">
-          <div style="font-size:11px;color:${dbCount>=3?'#22c55e':dbCount>=1?'#f59e0b':'#ef4444'};font-weight:600;">${dbCount}/5 DB</div>
-          ${c.arc_total > 0 ? `<div style="font-size:10px;color:#1976d2;">${c.arc_total} ArcGIS</div>` : '<div style="font-size:10px;color:#ccc;">No ArcGIS</div>'}
-          ${hasSuggestions ? `<div style="margin-top:2px;">${c.missing_types.map(t=>`<span style="display:inline-block;padding:1px 4px;border-radius:6px;font-size:8px;font-weight:600;background:${MEDIA_COLORS[t]||'#999'};color:#fff;margin:1px;">${t}</span>`).join('')}</div>` : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// ── POI Detail (Right Panel) ──
-function arcSelectPoi(gid) {
-  arcSelectedGid = gid;
-  // Re-highlight list
-  document.querySelectorAll('#arcPoiList > div').forEach(el => {
-    el.style.background = el.getAttribute('onclick')?.includes(gid) ? '#e3f2fd' : '#fff';
-  });
-
-  const catEntry = arcCatalogue.find(c => c.GlobalID === gid);
-  const dbPoi = allPois.find(p => p.GlobalID === gid);
-  if (!dbPoi) {
-    document.getElementById('arcPoiDetail').innerHTML = '<div style="padding:40px;text-align:center;color:#999;">POI not found in DB</div>';
-    return;
-  }
-
-  const detail = document.getElementById('arcPoiDetail');
-  let html = '';
-
-  // Header
-  html += `<div style="margin-bottom:16px;">
-    <h2 style="font-size:18px;margin:0;color:#333;">${dbPoi.Name_EN||'?'}</h2>
-    <div style="font-size:14px;color:#888;direction:rtl;margin-top:2px;">${dbPoi.Name_AR||''}</div>
-    <div style="font-size:12px;color:#666;margin-top:4px;">${dbPoi.Category||''} ${catEntry ? `| ${catEntry.arc_total} ArcGIS attachments` : '| No ArcGIS match'}</div>
-  </div>`;
-
-  // Media fields - each row shows: DB current + ArcGIS suggestions
-  const mediaTypes = ['exterior','interior','menu','video','license'];
-
-  for (const mt of mediaTypes) {
-    const dbField = MEDIA_DB_FIELDS[mt];
-    const dbVal = (dbPoi[dbField]||'').trim();
-    const dbHas = dbVal && dbVal !== 'UNAVAILABLE' && dbVal !== 'UNAPPLICABLE';
-    const isVid = mt === 'video';
-
-    // Get ArcGIS suggestions
-    const arcItems = catEntry ? (catEntry.arc_attachments[mt] || []) : [];
-    // Also include 'other' unclassified attachments as potential suggestions
-    const otherItems = catEntry ? (catEntry.arc_attachments.other || []) : [];
-    const isMissing = catEntry && catEntry.missing_types.includes(mt);
-
-    html += `<div style="background:#fff;border-radius:8px;border:1px solid ${isMissing?'#22c55e33':'#eee'};padding:12px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:600;text-transform:uppercase;color:${MEDIA_COLORS[mt]};">${mt}
-          ${dbHas ? '<span style="color:#22c55e;font-size:11px;"> &#10003; In DB</span>' : '<span style="color:#ef4444;font-size:11px;"> &#x2717; Missing</span>'}
-          ${isMissing ? '<span style="background:#22c55e;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;">SUGGESTION AVAILABLE</span>' : ''}
-        </div>
-      </div>`;
-
-    // Current DB media
-    html += '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
-    if (dbHas) {
-      const previewUrl = dbVal.startsWith('http') ? (dbVal.includes('arcgis.com') ? (isVid ? arcVid(dbVal) : arcImg(dbVal)) : dbVal) : '';
-      html += `<div style="min-width:160px;">
-        <div style="font-size:10px;color:#1976d2;margin-bottom:3px;font-weight:600;">Current in DB</div>`;
-      if (previewUrl) {
-        html += isVid
-          ? `<video style="width:200px;border-radius:6px;border:2px solid #1976d2;" controls preload="none"><source src="${previewUrl}"></video>`
-          : `<img src="${previewUrl}" style="width:200px;height:140px;object-fit:cover;border-radius:6px;border:2px solid #1976d2;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'padding:8px;color:#999;font-size:11px;background:#f5f5f5;border-radius:6px;width:200px;text-align:center\\'>URL exists but cannot preview</div>'">`;
-      }
-      html += `<div style="margin-top:4px;display:flex;gap:4px;">
-        <button onclick="clearMediaField('${gid}','${dbField}')" style="font-size:10px;padding:2px 8px;background:#ef4444;color:#fff;border:none;border-radius:3px;cursor:pointer;">Clear</button>
-        <button onclick="promptMediaUrl('${gid}','${dbField}','${mt}')" style="font-size:10px;padding:2px 8px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer;">Change URL</button>
-      </div></div>`;
-    } else {
-      html += `<div style="width:200px;height:140px;background:#f5f5f5;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #ddd;">
-        <div style="font-size:28px;color:#ddd;">&#x2717;</div>
-        <div style="font-size:11px;color:#999;margin-top:4px;">No ${mt} in DB</div>
-        <button onclick="promptMediaUrl('${gid}','${dbField}','${mt}')" style="margin-top:6px;font-size:10px;padding:2px 8px;background:#1976d2;color:#fff;border:none;border-radius:3px;cursor:pointer;">Add URL</button>
-      </div>`;
-    }
-
-    // ArcGIS suggestions
-    if (arcItems.length > 0) {
-      for (const item of arcItems) {
-        const tUrl = isVid ? arcVid(item.url) : arcImg(item.url);
-        html += `<div style="min-width:160px;">
-          <div style="font-size:10px;color:#22c55e;margin-bottom:3px;font-weight:600;">ArcGIS: ${item.name||mt} <span style="color:#999;">${item.size_kb}KB</span></div>`;
-        html += isVid
-          ? `<video style="width:200px;border-radius:6px;border:2px solid #22c55e;" controls preload="none"><source src="${tUrl}"></video>`
-          : `<img src="${tUrl}" style="width:200px;height:140px;object-fit:cover;border-radius:6px;border:2px solid #22c55e;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`;
-        html += `<div style="margin-top:4px;display:flex;gap:4px;">
-          ${assignBtn(gid, dbField, item.url, 'Use as ' + mt.toUpperCase())}
-          ${reassignBtn(gid, item.url)}
-        </div></div>`;
-      }
-    }
-    html += '</div></div>';
-  }
-
-  // Unclassified / Other ArcGIS attachments
-  const otherItems = catEntry ? (catEntry.arc_attachments.other || []) : [];
-  if (otherItems.length > 0) {
-    html += `<div style="background:#fff;border-radius:8px;border:1px solid #eee;padding:12px;margin-bottom:10px;">
-      <div style="font-size:13px;font-weight:600;color:#78909c;margin-bottom:8px;">UNCLASSIFIED ArcGIS Attachments (${otherItems.length})</div>
-      <div style="font-size:11px;color:#888;margin-bottom:8px;">These attachments weren't auto-classified. Review and assign to the correct type:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;">`;
-    for (const item of otherItems) {
-      const isVid = (item.contentType||'').includes('video') || (item.name||'').match(/\.(mp4|mov)$/i);
-      const tUrl = isVid ? arcVid(item.url) : arcImg(item.url);
-      html += `<div style="min-width:160px;max-width:220px;">
-        <div style="font-size:10px;color:#78909c;margin-bottom:3px;">${item.name||'?'} <span style="color:#999;">${item.size_kb}KB</span></div>`;
-      html += isVid
-        ? `<video style="width:100%;border-radius:6px;border:1px solid #ccc;" controls preload="none"><source src="${tUrl}"></video>`
-        : `<img src="${tUrl}" style="width:100%;height:120px;object-fit:cover;border-radius:6px;border:1px solid #ccc;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`;
-      html += `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;">`;
-      for (const mt of mediaTypes) {
-        html += assignBtn(gid, MEDIA_DB_FIELDS[mt], item.url, mt);
-      }
-      html += `</div></div>`;
-    }
-    html += '</div></div>';
-  }
-
-  // Quick actions
-  if (catEntry && catEntry.missing_types.length > 0) {
-    html += `<div style="background:#e8f5e9;border-radius:8px;padding:12px;margin-top:8px;text-align:center;">
-      <div style="font-size:12px;color:#2e7d32;margin-bottom:8px;font-weight:600;">Quick: Auto-assign all suggested media for this POI</div>
-      <button onclick="arcAutoAssign('${gid}')" style="padding:8px 24px;background:#22c55e;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Auto-Assign All Suggestions</button>
-    </div>`;
-  }
-
-  detail.innerHTML = html;
 }
 
 async function arcAutoAssign(gid) {
@@ -3279,11 +3144,9 @@ async function assignMedia(gid, field, url) {
       const typeName = Object.entries(MEDIA_DB_FIELDS).find(([k,v])=>v===field)?.[0] || field;
       statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:600;">&#10003; Assigned ${typeName} for ${name}</span>`;
       if (poi) poi[field] = url;
-      // Refresh current view to show updated state
-      setTimeout(() => {
-        if (arcCurrentMode === 'arcgis') renderArcGISMode();
-        else renderDBMediaMode();
-      }, 500);
+      // Rebuild index and refresh grid
+      buildMediaIndex();
+      renderUnassignedMedia();
     } else {
       statusEl.innerHTML = `<span style="color:#d32f2f;">Failed: ${JSON.stringify(r)}</span>`;
     }
