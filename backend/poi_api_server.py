@@ -744,6 +744,243 @@ def ack_updates():
     conn.close()
     return jsonify({'ok': True, 'acknowledged': count})
 
+# ===== API: POI Validation (21-Error QA Pipeline) =====
+import re as _re
+
+_FNB_CATS = {'Restaurants','Coffee Shops','Food and Beverages','Hospitality','Bakery','Fast Food',
+             'Cafe','Cafes','Restaurant','Coffee Shop','Food & Beverage','Fine Dining','Buffet',
+             'Food Truck','Juice Bar','Ice Cream','Dessert','Catering'}
+_MOSQUE_CATS = {'Mosques','Mosque'}
+_ATTRACTION_CATS = {'Entertainment and Recreation','Sports','Amusement Park','Cinema','Stadium','Park'}
+
+_FNB_ONLY_BOOLS = {'Menu','Drive_Thru','Dine_In','Only_Delivery','Shisha','Order_from_Car',
+                    'Live_Sports','Family_Seating','Large_Groups','Waiting_Area','Private_Dining',
+                    'Smoking_Area','Iftar_Menu','Open_Suhoor','Cuisine','Menu_Barcode_URL','Menu_Photo_URL'}
+_MOSQUE_ONLY_BOOLS = {'Women_Prayer_Room','Iftar_Tent'}
+_ATTRACTION_ONLY_BOOLS = {'Require_Ticket','Is_Landmark','Free_Entry'}
+_ALL_BOOLS = {'Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket',
+              'Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot',
+              'Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining',
+              'Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending',
+              'Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'}
+
+_AR_CATEGORY_WORDS = {'مطعم','صيدلية','مقهى','مغسلة','بقالة','مسجد','مدرسة','مستشفى','فندق','مقاولات','محل'}
+_EN_CATEGORY_WORDS = {'restaurant','pharmacy','cafe','laundry','grocery','mosque','school','hospital','hotel','shop','store'}
+
+_SAUDI_PHONE = _re.compile(r'^(\+9665\d{8}|05\d{8}|\+9661[1-9]\d{6,7}|01[1-9]\d{6,7}|800\d{7}|900\d{7}|920\d{6}|911)$')
+_EMAIL_RE = _re.compile(r'^[^@]+@[^@]+\.[^@]+$')
+
+@api.route('/validate-poi', methods=['POST'])
+def validate_poi():
+    """Full QA validation for a single POI record. Returns corrected record + QA report."""
+    poi = request.get_json()
+    if not poi:
+        return jsonify({'error': 'No data'}), 400
+
+    corrected = dict(poi)
+    blockers = []
+    warnings = []
+    changes = []
+
+    cat = (poi.get('Category') or '').strip()
+    is_fnb = cat in _FNB_CATS or any(w in cat.lower() for w in ['food','restaurant','cafe','coffee'])
+    is_mosque = cat in _MOSQUE_CATS
+    is_attraction = cat in _ATTRACTION_CATS
+
+    def flag_b(rule, field, issue, fix=''):
+        blockers.append({'rule_id': rule, 'field': field, 'issue': issue, 'suggested_fix': fix})
+    def flag_w(rule, field, issue, fix=''):
+        warnings.append({'rule_id': rule, 'field': field, 'issue': issue, 'suggested_fix': fix})
+    def change(field, old, new, reason):
+        corrected[field] = new
+        changes.append({'field': field, 'from': old, 'to': new, 'reason': reason})
+
+    # A) Name_AR
+    name_ar = (poi.get('Name_AR') or '').strip()
+    if not name_ar or len(name_ar) < 2:
+        flag_b('GATE-A1', 'Name_AR', 'Missing or too short', 'Provide Arabic name (2+ chars)')
+    elif _re.search(r'[A-Za-z]', name_ar):
+        flag_w('GATE-A2', 'Name_AR', 'Contains English characters', 'Remove English from Arabic name')
+    elif name_ar in _AR_CATEGORY_WORDS:
+        flag_b('GATE-A3', 'Name_AR', 'Name is just a category word', 'Provide specific business name')
+
+    # B) Name_EN
+    name_en = (poi.get('Name_EN') or '').strip()
+    if not name_en or len(name_en) < 2:
+        flag_b('GATE-B1', 'Name_EN', 'Missing or too short', 'Provide English name (2+ chars)')
+    elif _re.search(r'[\u0600-\u06FF]', name_en):
+        flag_w('GATE-B2', 'Name_EN', 'Contains Arabic characters', 'Remove Arabic from English name')
+    elif name_en.lower() in _EN_CATEGORY_WORDS:
+        flag_b('GATE-B3', 'Name_EN', 'Name is just a category word', 'Provide specific business name')
+
+    # C) Legal Name
+    legal = (poi.get('Legal_Name') or '').strip()
+    if not legal or len(legal) < 3:
+        change('Legal_Name', legal, 'UNAVAILABLE', 'Legal name missing/too short')
+        flag_w('GATE-C1', 'Legal_Name', 'Missing or too short', 'Set UNAVAILABLE')
+
+    # D) Media URLs
+    ext_url = (poi.get('Exterior_Photo_URL') or '').strip()
+    int_url = (poi.get('Interior_Photo_URL') or '').strip()
+    menu_url = (poi.get('Menu_Photo_URL') or '').strip()
+    video_url = (poi.get('Video_URL') or '').strip()
+
+    if not ext_url or ext_url == 'UNAVAILABLE':
+        flag_b('GATE-D1', 'Exterior_Photo_URL', 'Missing exterior photo', 'Add valid exterior photo URL')
+    if not int_url or int_url == 'UNAVAILABLE':
+        flag_b('GATE-D2', 'Interior_Photo_URL', 'Missing interior photo', 'Add valid interior photo URL')
+    if ext_url and int_url and ext_url == int_url:
+        flag_b('GATE-D3', 'Interior_Photo_URL', 'Exterior and interior photos are identical', 'Use different photos')
+        change('Interior_Photo_URL', int_url, 'UNAVAILABLE', 'Duplicate of exterior photo')
+
+    if not is_fnb:
+        if menu_url and menu_url not in ('UNAVAILABLE', 'UNAPPLICABLE'):
+            change('Menu_Photo_URL', menu_url, 'UNAPPLICABLE', 'Not F&B category')
+        if not menu_url:
+            change('Menu_Photo_URL', '', 'UNAPPLICABLE', 'Not F&B category')
+
+    if video_url and video_url not in ('UNAVAILABLE', 'UNAPPLICABLE', ''):
+        if not _re.search(r'\.(mp4|mov)$', video_url, _re.I) and 'youtube' not in video_url and 'youtu.be' not in video_url:
+            flag_w('GATE-D4', 'Video_URL', 'Invalid video format (must be mp4/mov/youtube)', 'Fix URL or set UNAVAILABLE')
+            change('Video_URL', video_url, 'UNAVAILABLE', 'Invalid video format')
+
+    # E) Category
+    if not cat:
+        flag_b('GATE-E1', 'Category', 'Category is empty', 'Select a valid category')
+    # Keyword mismatch detection
+    name_lower = (name_ar + ' ' + name_en).lower()
+    if 'صيدلية' in name_lower or 'pharmacy' in name_lower:
+        if cat and 'health' not in cat.lower() and 'clinic' not in cat.lower() and 'pharma' not in cat.lower():
+            flag_w('GATE-E2', 'Category', f'Name suggests pharmacy but category is {cat}', 'Consider Healthcare or Clinics & Labs')
+    if 'مطعم' in name_lower or 'restaurant' in name_lower:
+        if cat and not is_fnb:
+            flag_w('GATE-E3', 'Category', f'Name suggests restaurant but category is {cat}', 'Consider Restaurants')
+
+    # F) Company Status
+    status = (poi.get('Company_Status') or '').strip()
+    valid_statuses = {'Open', 'Temporarily Closed', 'Permanently Closed', 'Closed'}
+    if status and status not in valid_statuses:
+        flag_w('GATE-F1', 'Company_Status', f'Invalid status: {status}', 'Use Open/Temporarily Closed/Permanently Closed')
+    if status == 'Closed':
+        change('Company_Status', 'Closed', 'Permanently Closed', 'Normalized Closed → Permanently Closed')
+
+    # G) Coordinates
+    try:
+        lat = float(poi.get('Latitude', 0) or 0)
+        lon = float(poi.get('Longitude', 0) or 0)
+        if lat < 15 or lat > 35:
+            flag_b('GATE-G1', 'Latitude', f'Out of Saudi bounds: {lat}', 'Must be 15-35')
+        if lon < 35 or lon > 60:
+            flag_b('GATE-G2', 'Longitude', f'Out of Saudi bounds: {lon}', 'Must be 35-60')
+    except (TypeError, ValueError):
+        flag_b('GATE-G3', 'Latitude', 'Non-numeric coordinates', 'Provide valid lat/lon')
+
+    # District
+    district_en = (poi.get('District_EN') or '').strip()
+    if not district_en:
+        flag_w('GATE-G4', 'District_EN', 'District EN is empty', 'Provide district name')
+
+    # H) Building/Floor/Entrance
+    bldg = (poi.get('Building_Number') or '').strip()
+    if bldg and bldg != 'UNAVAILABLE' and not _re.match(r'^\d{4}$', bldg):
+        flag_w('GATE-H1', 'Building_Number', f'Not 4 digits: {bldg}', 'Must be 4-digit number or UNAVAILABLE')
+
+    floor = (poi.get('Floor_Number') or '').strip()
+    valid_floors = {'G', 'B1', '1', '2', '3', '4', '5', 'UNAVAILABLE', ''}
+    if floor and floor not in valid_floors:
+        flag_w('GATE-H2', 'Floor_Number', f'Invalid floor: {floor}', 'Use G/B1/1-5 or UNAVAILABLE')
+        change('Floor_Number', floor, 'UNAVAILABLE', 'Invalid floor value')
+
+    # I) Phone
+    phone = (poi.get('Phone_Number') or '').strip()
+    if phone and phone != 'UNAVAILABLE':
+        if _re.match(r'.*[eE]\+', phone):  # Scientific notation
+            flag_w('GATE-I1', 'Phone_Number', 'Phone in scientific notation', 'Fix format or UNAVAILABLE')
+            change('Phone_Number', phone, 'UNAVAILABLE', 'Scientific notation detected')
+        elif not _SAUDI_PHONE.match(phone.replace(' ', '').replace('-', '')):
+            flag_w('GATE-I2', 'Phone_Number', f'Invalid phone format: {phone}', 'Must be Saudi format')
+
+    # Email
+    email = (poi.get('Email') or '').strip()
+    if email and email != 'UNAVAILABLE' and not _EMAIL_RE.match(email):
+        flag_w('GATE-I3', 'Email', f'Invalid email: {email}', 'Fix format or set UNAVAILABLE')
+        change('Email', email, 'UNAVAILABLE', 'Invalid email format')
+
+    # Website - no Google Maps
+    website = (poi.get('Website') or '').strip()
+    if website and ('google.com/maps' in website or 'goo.gl/maps' in website):
+        flag_w('GATE-I4', 'Website', 'Website is a Google Maps link', 'Move to Google_Map_URL, set Website=UNAVAILABLE')
+        if not poi.get('Google_Map_URL'):
+            change('Google_Map_URL', '', website, 'Moved Google Maps link from Website')
+        change('Website', website, 'UNAVAILABLE', 'Was Google Maps link')
+
+    # Social Media - no WhatsApp / no phone numbers
+    social = (poi.get('Social_Media') or '').strip()
+    if social and social != 'UNAVAILABLE':
+        if 'wa.me' in social or 'whatsapp' in social.lower():
+            flag_w('GATE-I5', 'Social_Media', 'Contains WhatsApp link', 'Use social profile URL only')
+        if _re.match(r'^\+?\d{10,}$', social.replace(' ', '')):
+            flag_w('GATE-I6', 'Social_Media', 'Contains phone number instead of social profile', 'Use profile URL')
+            change('Social_Media', social, 'UNAVAILABLE', 'Was phone number, not social profile')
+
+    # J) Working Hours
+    hours = (poi.get('Working_Hours') or '').strip()
+    if not hours:
+        flag_b('GATE-J1', 'Working_Hours', 'Working hours missing', 'Provide working hours')
+
+    # K) Boolean fields - category logic
+    for field in _ALL_BOOLS:
+        val = (poi.get(field) or '').strip()
+        if val and val not in ('Yes', 'No', 'UNAVAILABLE', 'UNAPPLICABLE'):
+            change(field, val, 'UNAVAILABLE', f'Invalid boolean value: {val}')
+            flag_w('GATE-K1', field, f'Invalid value: {val}', 'Must be Yes/No/UNAVAILABLE/UNAPPLICABLE')
+
+        # F&B-only fields for non-F&B
+        if field in _FNB_ONLY_BOOLS and not is_fnb:
+            if val and val not in ('UNAPPLICABLE', ''):
+                change(field, val, 'UNAPPLICABLE', 'Not F&B category')
+        # Mosque-only for non-mosque
+        if field in _MOSQUE_ONLY_BOOLS and not is_mosque:
+            if val and val not in ('UNAPPLICABLE', ''):
+                change(field, val, 'UNAPPLICABLE', 'Not Mosque category')
+        # Attraction-only for non-attraction
+        if field in _ATTRACTION_ONLY_BOOLS and not is_attraction:
+            if val and val not in ('UNAPPLICABLE', ''):
+                change(field, val, 'UNAPPLICABLE', 'Not Attraction category')
+
+    # Commercial License
+    lic = (poi.get('Commercial_License') or '').strip()
+    if lic and lic != 'UNAVAILABLE' and not _re.match(r'^\d{10,11}$', lic):
+        flag_w('GATE-L1', 'Commercial_License', f'Not 10-11 digits: {lic}', 'Fix or set UNAVAILABLE')
+
+    # Duplicate media detection (errors 3/16/20)
+    urls_seen = {}
+    for mfield in ['Exterior_Photo_URL', 'Interior_Photo_URL', 'Menu_Photo_URL', 'Video_URL', 'License_Photo_URL']:
+        u = (corrected.get(mfield) or '').strip()
+        if u and u not in ('UNAVAILABLE', 'UNAPPLICABLE', ''):
+            if u in urls_seen:
+                flag_w('GATE-DUP', mfield, f'Duplicate URL (same as {urls_seen[u]})', 'Use unique media per field')
+                change(mfield, u, 'UNAVAILABLE', f'Duplicate of {urls_seen[u]}')
+            else:
+                urls_seen[u] = mfield
+
+    # Determine status
+    status_val = 'PASS'
+    if blockers:
+        status_val = 'FAIL_BLOCKER'
+    elif warnings or changes:
+        status_val = 'PASS_WITH_WARNINGS'
+
+    return jsonify({
+        'poi_final': corrected,
+        'qa_report': {
+            'status': status_val,
+            'blockers': blockers,
+            'warnings': warnings,
+            'changes_made': changes
+        }
+    })
+
 # Register API blueprint
 app.register_blueprint(api)
 
