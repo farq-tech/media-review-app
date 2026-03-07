@@ -1055,7 +1055,7 @@ def migrate_categories():
         do_apply = request.args.get('apply', '').lower() == 'true'
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('SELECT "GlobalID_DB", "Name_EN", "Category", "Subcategory" FROM pois')
+        cur.execute('SELECT "GlobalID", "Name_EN", "Category", "Subcategory" FROM final_delivery')
         pois = cur.fetchall()
 
         changes = []
@@ -1067,7 +1067,7 @@ def migrate_categories():
             new_cat, new_sub = _migrate_cat(old_cat, old_sub)
             if new_cat != old_cat or new_sub != old_sub:
                 changes.append({
-                    'gid': p['GlobalID_DB'],
+                    'gid': p['GlobalID'],
                     'name': p['Name_EN'] or '',
                     'old_cat': old_cat, 'old_sub': old_sub,
                     'new_cat': new_cat, 'new_sub': new_sub,
@@ -1075,7 +1075,7 @@ def migrate_categories():
 
         if do_apply and changes:
             for c in changes:
-                cur.execute('UPDATE pois SET "Category" = %s, "Subcategory" = %s WHERE "GlobalID_DB" = %s',
+                cur.execute('UPDATE final_delivery SET "Category" = %s, "Subcategory" = %s WHERE "GlobalID" = %s',
                             (c['new_cat'], c['new_sub'], c['gid']))
             conn.commit()
 
