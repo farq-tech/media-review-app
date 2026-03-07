@@ -974,7 +974,8 @@ _FNB_CATS = {'Restaurants','Coffee Shops','Food and Beverages','Hospitality','Ba
              'Cafe','Cafes','Restaurant','Coffee Shop','Food & Beverage','Fine Dining','Buffet',
              'Food Truck','Juice Bar','Ice Cream','Dessert','Catering'}
 _MOSQUE_CATS = {'Mosques','Mosque'}
-_ATTRACTION_CATS = {'Entertainment and Recreation','Sports','Amusement Park','Cinema','Stadium','Park'}
+_ATTRACTION_CATS = {'Entertainment','Sports','Cultural Sites','Nature','Public Parks',
+                     'Entertainment and Recreation','Amusement Park','Cinema','Stadium','Park'}
 
 _FNB_ONLY_BOOLS = {'Menu','Drive_Thru','Dine_In','Only_Delivery','Shisha','Order_from_Car',
                     'Live_Sports','Family_Seating','Large_Groups','Waiting_Area','Private_Dining',
@@ -1074,7 +1075,7 @@ def validate_poi():
     name_lower = (name_ar + ' ' + name_en).lower()
     if 'صيدلية' in name_lower or 'pharmacy' in name_lower:
         if cat and 'health' not in cat.lower() and 'clinic' not in cat.lower() and 'pharma' not in cat.lower():
-            flag_w('GATE-E2', 'Category', f'Name suggests pharmacy but category is {cat}', 'Consider Healthcare or Clinics & Labs')
+            flag_w('GATE-E2', 'Category', f'Name suggests pharmacy but category is {cat}', 'Consider Pharmacies')
     if 'مطعم' in name_lower or 'restaurant' in name_lower:
         if cat and not is_fnb:
             flag_w('GATE-E3', 'Category', f'Name suggests restaurant but category is {cat}', 'Consider Restaurants')
