@@ -3731,8 +3731,9 @@ async function submitPoiForm() {
     // Reload data
     const dataResp = await fetch('/api/pois?limit=5000');
     const dataResult = await dataResp.json();
-    if (dataResult.pois) {
-      allPois = dataResult.pois;
+    const newPois = Array.isArray(dataResult) ? dataResult : (dataResult.pois || []);
+    if (newPois.length) {
+      allPois = newPois;
       applyFilters();
       buildStats();
     }
@@ -3754,7 +3755,7 @@ async function checkForUpdates() {
     const resp = await fetch('/api/pois/recent-updates');
     if (!resp.ok) return;
     const data = await resp.json();
-    pendingUpdates = data.updates || [];
+    pendingUpdates = Array.isArray(data) ? data : (data.updates || []);
     const badge = document.getElementById('updatesBadge');
     if (pendingUpdates.length > 0) {
       badge.textContent = pendingUpdates.length;
@@ -3814,8 +3815,9 @@ async function ackAllUpdates() {
     // Reload data to reflect changes
     const resp = await fetch('/api/pois?limit=5000');
     const data = await resp.json();
-    if (data.pois) {
-      allPois = data.pois;
+    const reloaded = Array.isArray(data) ? data : (data.pois || []);
+    if (reloaded.length) {
+      allPois = reloaded;
       applyFilters();
       buildStats();
     }
