@@ -268,6 +268,100 @@ def arcgis_image_proxy():
     except Exception as e:
         return f'Proxy error: {e}', 500
 
+# ===== API: Search ArcGIS features by name and get attachments =====
+@api.route('/arcgis-search', methods=['GET'])
+def arcgis_search_features():
+    """Search ArcGIS features by name and return matching features with attachments."""
+    import requests as req
+    q = request.args.get('q', '').strip()
+    if not q or len(q) < 2:
+        return jsonify({'error': 'Query too short (min 2 chars)'}), 400
+
+    token = _get_agol_token()
+    if not token:
+        return jsonify({'error': 'Token failed'}), 500
+
+    base = 'https://services5.arcgis.com/pYlVm2T6SvR7ytZv/arcgis/rest/services/survey123_1ed04c063d54418b893c165594e88840_results/FeatureServer/0'
+
+    where_clause = f"poi_name_en LIKE '%{q}%' OR poi_name_ar LIKE '%{q}%' OR place_name LIKE '%{q}%'"
+    try:
+        r = req.get(f'{base}/query', params={
+            'where': where_clause,
+            'outFields': 'objectid,globalid,poi_name_en,poi_name_ar,place_name',
+            'resultRecordCount': 50,
+            'f': 'json',
+            'token': token
+        }, timeout=30)
+        data = r.json()
+        features = data.get('features', [])
+    except Exception as e:
+        return jsonify({'error': f'Query failed: {e}'}), 500
+
+    if not features:
+        return jsonify({'results': []})
+
+    # Get attachments for matching features
+    oids = [f['attributes']['objectid'] for f in features if f['attributes'].get('objectid')]
+    att_map = {}
+    for i in range(0, len(oids), 50):
+        batch = oids[i:i+50]
+        try:
+            ar = req.get(f'{base}/queryAttachments', params={
+                'objectIds': ','.join(str(o) for o in batch),
+                'f': 'json', 'token': token
+            }, timeout=30)
+            ad = ar.json()
+            for group in ad.get('attachmentGroups', []):
+                pid = group['parentObjectId']
+                att_map[pid] = group.get('attachmentInfos', [])
+        except:
+            pass
+
+    results = []
+    for f in features:
+        a = f['attributes']
+        oid = a.get('objectid')
+        atts = att_map.get(oid, [])
+        att_list = []
+        for att in atts:
+            url = f"{base}/{oid}/attachments/{att['id']}"
+            name = (att.get('name', '') or '').lower()
+            kw = (att.get('keywords', '') or '').lower()
+            ct = (att.get('contentType', '') or '').lower()
+            is_vid = 'video' in ct or name.endswith('.mov') or name.endswith('.mp4')
+
+            mtype = 'other'
+            if 'exterior' in kw or 'entrance' in kw or 'exterior' in name or 'entrance' in name:
+                mtype = 'exterior'
+            elif 'interior' in kw or 'walkthrough' in kw or 'interior' in name:
+                mtype = 'interior'
+            elif 'menu' in kw or 'menu' in name:
+                mtype = 'menu'
+            elif is_vid:
+                mtype = 'video'
+            elif 'license' in kw or 'licence' in kw or 'license' in name:
+                mtype = 'license'
+
+            att_list.append({
+                'url': url,
+                'name': att.get('name', ''),
+                'contentType': ct,
+                'size_kb': round((att.get('size', 0) or 0) / 1024, 1),
+                'keywords': att.get('keywords', ''),
+                'type': mtype
+            })
+
+        results.append({
+            'objectid': oid,
+            'globalid': a.get('globalid', ''),
+            'name_en': a.get('poi_name_en', '') or a.get('place_name', ''),
+            'name_ar': a.get('poi_name_ar', ''),
+            'attachments': att_list,
+            'att_count': len(att_list)
+        })
+
+    return jsonify({'results': results})
+
 # Register API blueprint
 app.register_blueprint(api)
 
