@@ -967,6 +967,129 @@ def ack_updates():
     conn.close()
     return jsonify({'ok': True, 'acknowledged': count})
 
+# ===== API: Category Migration =====
+_CAT_MAP = {
+    'Services & Industry': 'Corporate',
+    'Shopping & Distribution': 'Shopping',
+    'Real Estate': 'Corporate',
+    'Life & Convenience': 'Corporate',
+    'Health & Medical': 'Hospitals',
+}
+_SUB_OVERRIDE = {
+    ('Services & Industry', 'Laundry'): ('Corporate', 'Laundries and Dry-Cleaning'),
+    ('Services & Industry', 'Attorney'): ('Corporate', 'Attorney'),
+    ('Services & Industry', 'Building Contractor'): ('Corporate', 'Building Contractor'),
+    ('Services & Industry', 'Insurance'): ('Corporate', 'Insurance'),
+    ('Services & Industry', 'Equipment Rental'): ('Corporate', 'Equipment Rental'),
+    ('Services & Industry', 'Real Estate'): ('Corporate', 'Real Estate Company'),
+    ('Services & Industry', 'Government Services'): ('Government Services', 'Government Office'),
+    ('Services & Industry', 'Park'): ('Public Parks', 'Park'),
+    ('Services & Industry', 'Mending'): ('Corporate', 'Machine repair service'),
+    ('Services & Industry', 'mending'): ('Corporate', 'Machine repair service'),
+    ('Services & Industry', 'Retail'): ('Shopping', 'General store'),
+    ('Services & Industry', 'Support & Outsourcing Services'): ('Corporate', 'Business Services Office'),
+    ('Shopping & Distribution', 'Retail'): ('Shopping', 'General store'),
+    ('Shopping & Distribution', 'Automotive & Car Accessories'): ('Automotive Services', 'Car Accessories'),
+    ('Shopping & Distribution', 'Fashion'): ('Shopping', 'Fashion accessories store'),
+    ('Shopping & Distribution', 'Wholesale & Retail'): ('Shopping', 'Wholesaler'),
+    ('Real Estate', 'Real Estate Company'): ('Corporate', 'Real Estate Company'),
+    ('Real Estate', 'Projects & Developments'): ('Corporate', 'Projects & Developments'),
+    ('Life & Convenience', 'Cleaning Service'): ('Corporate', 'Cleaning Service'),
+    ('Life & Convenience', 'Retail'): ('Shopping', 'General store'),
+    ('Life & Convenience', 'Car Wash'): ('Automotive Services', 'Car Wash Services'),
+    ('Life & Convenience', 'Mending'): ('Corporate', 'Machine repair service'),
+    ('Life & Convenience', 'Repair Services'): ('Corporate', 'Machine repair service'),
+    ('Life & Convenience', 'Life & Convenience'): ('Corporate', 'General Contractor'),
+    ('Health & Medical', 'Hospitals & Clinics'): ('Hospitals', 'Clinic'),
+    ('Health & Medical', 'Support & Outsourcing Services'): ('Hospitals', 'Clinic'),
+    ('Shopping', 'Shopping'): ('Shopping', 'General store'),
+    ('Restaurants', 'Restaurants'): ('Restaurants', 'International Restaurant'),
+    ('Beauty and Spa', 'Beauty and Spa'): ('Beauty and Spa', 'Beauty Salon'),
+    ('Coffee Shops', 'Coffee Shops'): ('Coffee Shops', 'Specialty Coffee'),
+    ('Corporate', 'Corporate'): ('Corporate', 'Business Services Office'),
+    ('Automotive Services', 'Automotive Services'): ('Automotive Services', 'Car Repair Workshop'),
+    ('Home Goods', 'Home Goods'): ('Home Goods', 'Appliance Store'),
+    ('Food and Beverages', 'Food and Beverages'): ('Food and Beverages', 'Food Court'),
+    ('Grocery', 'Grocery'): ('Grocery', 'Grocery Store'),
+    ('Banks', 'Banks'): ('Banks', 'Islamic Bank'),
+    ('Sports', 'Sports'): ('Sports', 'Sport Club'),
+    ('Hospitals', 'Hospitals'): ('Hospitals', 'Hospital'),
+    ('Hotels and Accommodations', 'Hotels and Accommodations'): ('Hotels and Accommodations', 'Hotel'),
+    ('Pharmacies', 'Pharmacies'): ('Pharmacies', 'Pharmacy'),
+    ('Cultural Sites', 'Cultural Sites'): ('Cultural Sites', 'Cultural Centers'),
+    ('Fuel Stations', 'Fuel Stations'): ('Fuel Stations', 'Gas Station'),
+    ('Transportation', 'Transportation'): ('Transportation', 'Taxi Service'),
+    ('Entertainment', 'Entertainment'): ('Entertainment', 'Family Entertainment Centers'),
+    ('Education', 'Education'): ('Education', 'School'),
+    ('Government Services', 'Government Services'): ('Government Services', 'Government Office'),
+    ('Nature', 'Nature'): ('Nature', 'Nature Reserves'),
+    ('Public Parks', 'Public Parks'): ('Public Parks', 'Park'),
+    ('Public Services', 'Public Services'): ('Public Services', 'Charity'),
+    ('Restaurants', 'Arab Cuisine'): ('Restaurants', 'Traditional Saudi'),
+    ('Restaurants', 'Cafes & Desserts'): ('Coffee Shops', 'Brunch Cafes'),
+    ('Shopping', 'General Wholesale & Retail'): ('Shopping', 'Wholesaler'),
+    ('Home Goods', 'Household Goods'): ('Home Goods', 'Appliance Store'),
+    ('Home Goods', 'Furniture & Interior'): ('Home Goods', 'Furniture Stores'),
+    ('Sports', "Men's Gym"): ('Sports', 'Gym'),
+    ('Beauty and Spa', "Men's Barber"): ('Beauty and Spa', 'Barbershops'),
+    ('Shopping', 'Optical'): ('Shopping', 'Glasses Store'),
+    ('Grocery', 'Convenience Store'): ('Grocery', 'Grocery Store'),
+    ('Hotels and Accommodations', 'Support & Outsourcing Services'): ('Hotels and Accommodations', 'Hotel'),
+    ('Transportation', 'Parking'): ('Transportation', 'Parking Facilities'),
+    ('Transportation', 'Retail'): ('Transportation', 'Taxi Service'),
+    ('Shopping', 'Fashion'): ('Shopping', 'Fashion accessories store'),
+}
+
+def _migrate_cat(cat, sub):
+    key = (cat, sub)
+    if key in _SUB_OVERRIDE:
+        return _SUB_OVERRIDE[key]
+    if cat in _CAT_MAP:
+        return (_CAT_MAP[cat], sub)
+    return (cat, sub)
+
+@api.route('/migrate-categories', methods=['POST'])
+def migrate_categories():
+    """Migrate old categories/subcategories to new taxonomy. POST with ?apply=true to execute."""
+    apply = request.args.get('apply', '').lower() == 'true'
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT "GlobalID_DB", "Name_EN", "Category", "Subcategory" FROM pois')
+    pois = cur.fetchall()
+
+    changes = []
+    for p in pois:
+        old_cat = (p['Category'] or '').strip()
+        old_sub = (p['Subcategory'] or '').strip()
+        if not old_cat:
+            continue
+        new_cat, new_sub = _migrate_cat(old_cat, old_sub)
+        if new_cat != old_cat or new_sub != old_sub:
+            changes.append({
+                'gid': p['GlobalID_DB'],
+                'name': p['Name_EN'],
+                'old_cat': old_cat, 'old_sub': old_sub,
+                'new_cat': new_cat, 'new_sub': new_sub,
+            })
+
+    if apply and changes:
+        for c in changes:
+            cur.execute('UPDATE pois SET "Category" = %s, "Subcategory" = %s WHERE "GlobalID_DB" = %s',
+                        (c['new_cat'], c['new_sub'], c['gid']))
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return jsonify({
+        'mode': 'applied' if apply else 'dry_run',
+        'total_pois': len(pois),
+        'changes_count': len(changes),
+        'changes': [{'gid': c['gid'][:12], 'name': c['name'],
+                      'from': f"{c['old_cat']} >> {c['old_sub']}",
+                      'to': f"{c['new_cat']} >> {c['new_sub']}"} for c in changes]
+    })
+
+
 # ===== API: POI Validation (21-Error QA Pipeline) =====
 import re as _re
 
