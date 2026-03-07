@@ -282,7 +282,50 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
   .excel-wrapper { padding: 0 4px 4px; }
   .filter-bar { padding: 10px 16px 0; }
   .poi-container { margin: 0 16px; }
+  .poi-form-modal { width: 96%; max-width: 96%; }
 }
+
+/* ============ POI FORM MODAL ============ */
+.poi-form-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 300; display: none; }
+.poi-form-overlay.active { display: flex; align-items: flex-start; justify-content: center; padding: 30px 0; overflow-y: auto; }
+.poi-form-modal { background: #fff; border-radius: 12px; width: 720px; max-width: 90%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+.poi-form-header { background: #1a237e; color: #fff; padding: 14px 20px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.poi-form-header h2 { font-size: 16px; font-weight: 600; }
+.poi-form-header .close-btn { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 2px 8px; border-radius: 4px; }
+.poi-form-header .close-btn:hover { background: rgba(255,255,255,0.2); }
+.poi-form-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.poi-form-section { margin-bottom: 16px; }
+.poi-form-section h3 { font-size: 12px; font-weight: 700; color: #1a237e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #e8eaf6; }
+.poi-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.poi-form-field { display: flex; flex-direction: column; gap: 3px; }
+.poi-form-field label { font-size: 11px; font-weight: 600; color: #555; }
+.poi-form-field input, .poi-form-field select, .poi-form-field textarea { padding: 7px 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; background: #fafafa; transition: border-color 0.2s; }
+.poi-form-field input:focus, .poi-form-field select:focus, .poi-form-field textarea:focus { border-color: #1a237e; outline: none; background: #fff; }
+.poi-form-field textarea { resize: vertical; min-height: 60px; }
+.poi-form-field.full-width { grid-column: 1 / -1; }
+.poi-form-footer { padding: 12px 20px; background: #f5f5f5; border-top: 1px solid #eee; border-radius: 0 0 12px 12px; display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.poi-form-footer button { padding: 8px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.poi-form-footer .btn-cancel { background: #eee; color: #333; }
+.poi-form-footer .btn-cancel:hover { background: #ddd; }
+.poi-form-footer .btn-submit { background: #1a237e; color: #fff; }
+.poi-form-footer .btn-submit:hover { background: #283593; }
+
+/* ============ NOTIFICATION BADGE ============ */
+.notif-badge { position: relative; }
+.notif-badge .badge-count { position: absolute; top: -6px; right: -6px; background: #f44336; color: #fff; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 5px; min-width: 16px; text-align: center; display: none; }
+.notif-badge .badge-count.show { display: block; animation: pulse 0.3s; }
+@keyframes pulse { 0% { transform: scale(0.8); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+/* Updates dropdown */
+.updates-dropdown { position: absolute; top: 100%; right: 0; background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); width: 380px; max-height: 400px; overflow-y: auto; z-index: 310; display: none; }
+.updates-dropdown.show { display: block; }
+.updates-dropdown .ud-header { padding: 10px 14px; font-size: 13px; font-weight: 700; color: #1a237e; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+.updates-dropdown .ud-item { padding: 10px 14px; border-bottom: 1px solid #f5f5f5; font-size: 12px; cursor: pointer; }
+.updates-dropdown .ud-item:hover { background: #f0f2ff; }
+.updates-dropdown .ud-item .ud-name { font-weight: 600; color: #333; }
+.updates-dropdown .ud-item .ud-meta { color: #888; font-size: 11px; margin-top: 2px; }
+.updates-dropdown .ud-item .ud-fields { color: #1a237e; font-size: 11px; margin-top: 3px; }
+.updates-dropdown .ud-empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -293,6 +336,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <p id="headerInfo">Loading...</p>
   </div>
   <div class="header-actions">
+    <button onclick="openPoiForm('add')" style="background:rgba(76,175,80,0.3);border-color:#4caf50;">+ Add POI</button>
+    <span class="notif-badge" style="position:relative;display:inline-block;">
+      <button onclick="toggleUpdatesDropdown()" id="updatesBtn">Updates</button>
+      <span class="badge-count" id="updatesBadge">0</span>
+      <div class="updates-dropdown" id="updatesDropdown"></div>
+    </span>
     <button onclick="runValidation()" style="background:rgba(255,200,0,0.3);border-color:#ffca28;">Validate All</button>
     <button onclick="runDuplicateDetection()" style="background:rgba(255,100,100,0.3);border-color:#ef5350;">Detect Duplicates</button>
     <button onclick="exportCSV()">Export All CSV</button>
@@ -531,13 +580,29 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
     <button class="btn btn-success" onclick="approvePoi()">Approve</button>
     <button class="btn btn-primary" onclick="saveEdits()">Save</button>
-    <button class="btn btn-danger" onclick="deletePoi()" style="margin-left:auto;">Delete POI</button>
+    <button class="btn btn-primary" onclick="openPoiForm('edit')" style="margin-left:auto;background:#0d47a1;">Edit POI</button>
+    <button class="btn btn-danger" onclick="deletePoi()">Delete POI</button>
   </div>
 </div>
 
 <div class="lightbox" id="lightbox" onclick="this.classList.remove('active')"><img id="lightboxImg" src=""></div>
 <div class="toast" id="toast"></div>
 <input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFile(event)">
+
+<!-- POI Form Modal -->
+<div class="poi-form-overlay" id="poiFormOverlay" onclick="if(event.target===this)closePoiForm()">
+  <div class="poi-form-modal">
+    <div class="poi-form-header">
+      <h2 id="poiFormTitle">Add New POI</h2>
+      <button class="close-btn" onclick="closePoiForm()">&times;</button>
+    </div>
+    <div class="poi-form-body" id="poiFormBody"></div>
+    <div class="poi-form-footer">
+      <button class="btn-cancel" onclick="closePoiForm()">Cancel</button>
+      <button class="btn-submit" id="poiFormSubmit" onclick="submitPoiForm()">Save POI</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ===== STATE =====
@@ -1229,6 +1294,7 @@ async function init() {
   if (dbMode) {
     document.getElementById('headerInfo').textContent += ' | DB: Connected';
     toast('Connected to PostgreSQL database');
+    checkForUpdates();
   }
 }
 
@@ -3366,6 +3432,426 @@ function exportInvoicePDF() {
   win.document.close();
   setTimeout(() => win.print(), 500);
 }
+
+// ===== POI FORM MODAL =====
+let poiFormMode = 'add'; // 'add' or 'edit'
+let poiFormGid = null;
+
+const FORM_SECTIONS = [
+  { title: 'IDENTITY', fields: [
+    { name:'Name_AR', label:'Name (Arabic)', type:'text', required:true },
+    { name:'Name_EN', label:'Name (English)', type:'text', required:true },
+    { name:'Legal_Name', label:'Legal Name', type:'text' },
+    { name:'Category', label:'Category', type:'category' },
+    { name:'Subcategory', label:'Subcategory', type:'subcategory' },
+    { name:'Category_Level_3', label:'Category Level 3', type:'level3' },
+    { name:'Company_Status', label:'Company Status', type:'company_status' },
+  ]},
+  { title: 'LOCATION', fields: [
+    { name:'Latitude', label:'Latitude', type:'number', required:true },
+    { name:'Longitude', label:'Longitude', type:'number', required:true },
+    { name:'District_AR', label:'District (Arabic)', type:'text' },
+    { name:'District_EN', label:'District (English)', type:'text' },
+    { name:'Building_Number', label:'Building Number', type:'text' },
+    { name:'Floor_Number', label:'Floor Number', type:'floor' },
+    { name:'Entrance_Location', label:'Entrance Location', type:'field_dropdown', options:'Entrance_Location' },
+  ]},
+  { title: 'CONTACT', fields: [
+    { name:'Phone_Number', label:'Phone Number', type:'text' },
+    { name:'Email', label:'Email', type:'text' },
+    { name:'Website', label:'Website', type:'text' },
+    { name:'Social_Media', label:'Social Media', type:'text' },
+    { name:'Language', label:'Language', type:'field_dropdown', options:'Language' },
+    { name:'Cuisine', label:'Cuisine', type:'field_dropdown', options:'Cuisine' },
+    { name:'Payment_Methods', label:'Payment Methods', type:'field_dropdown', options:'Payment_Methods' },
+    { name:'Commercial_License', label:'Commercial License', type:'text' },
+  ]},
+  { title: 'OPERATIONS', fields: [
+    { name:'Working_Days', label:'Working Days', type:'field_dropdown', options:'Working_Days' },
+    { name:'Working_Hours', label:'Working Hours', type:'field_dropdown', options:'Working_Hours' },
+    { name:'Break_Time', label:'Break Time', type:'field_dropdown', options:'Break_Time' },
+    { name:'Delivery_Method', label:'Delivery Method', type:'text' },
+    { name:'Iftar_Tent', label:'Iftar Tent', type:'yesno' },
+  ]},
+  { title: 'AMENITIES', fields: [
+    { name:'Menu', label:'Menu', type:'yesno' },
+    { name:'Drive_Thru', label:'Drive Thru', type:'yesno' },
+    { name:'Dine_In', label:'Dine In', type:'yesno' },
+    { name:'Only_Delivery', label:'Only Delivery', type:'yesno' },
+    { name:'Reservation', label:'Reservation', type:'yesno' },
+    { name:'Require_Ticket', label:'Require Ticket', type:'yesno' },
+    { name:'Order_from_Car', label:'Order from Car', type:'yesno' },
+    { name:'Pickup_Point', label:'Pickup Point', type:'yesno' },
+    { name:'WiFi', label:'WiFi', type:'yesno' },
+    { name:'Music', label:'Music', type:'yesno' },
+    { name:'Valet_Parking', label:'Valet Parking', type:'yesno' },
+    { name:'Has_Parking_Lot', label:'Has Parking Lot', type:'yesno' },
+    { name:'Wheelchair_Accessible', label:'Wheelchair Accessible', type:'yesno' },
+    { name:'Family_Seating', label:'Family Seating', type:'yesno' },
+    { name:'Waiting_Area', label:'Waiting Area', type:'yesno' },
+    { name:'Private_Dining', label:'Private Dining', type:'yesno' },
+    { name:'Smoking_Area', label:'Smoking Area', type:'yesno' },
+    { name:'Children_Area', label:'Children Area', type:'yesno' },
+    { name:'Shisha', label:'Shisha', type:'yesno' },
+    { name:'Live_Sports', label:'Live Sports', type:'yesno' },
+    { name:'Is_Landmark', label:'Is Landmark', type:'yesno' },
+    { name:'Is_Trending', label:'Is Trending', type:'yesno' },
+    { name:'Large_Groups', label:'Large Groups', type:'yesno' },
+    { name:'Women_Prayer_Room', label:'Women Prayer Room', type:'yesno' },
+    { name:'Iftar_Menu', label:'Iftar Menu', type:'yesno' },
+    { name:'Open_Suhoor', label:'Open Suhoor', type:'yesno' },
+    { name:'Free_Entry', label:'Free Entry', type:'yesno' },
+  ]},
+  { title: 'MEDIA', fields: [
+    { name:'Exterior_Photo_URL', label:'Exterior Photo URL', type:'url' },
+    { name:'Interior_Photo_URL', label:'Interior Photo URL', type:'url' },
+    { name:'Menu_Photo_URL', label:'Menu Photo URL', type:'url' },
+    { name:'Video_URL', label:'Video URL', type:'url' },
+    { name:'License_Photo_URL', label:'License Photo URL', type:'url' },
+    { name:'Additional_Photo_URLs', label:'Additional Photo URLs', type:'textarea' },
+  ]},
+];
+
+function openPoiForm(mode, gid) {
+  poiFormMode = mode;
+  const overlay = document.getElementById('poiFormOverlay');
+  const title = document.getElementById('poiFormTitle');
+  let poi = {};
+
+  if (mode === 'edit') {
+    if (gid) {
+      poi = allPois.find(p => p.GlobalID === gid) || {};
+      poiFormGid = gid;
+    } else if (currentPoiIdx >= 0 && filteredPois[currentPoiIdx]) {
+      poi = filteredPois[currentPoiIdx];
+      poiFormGid = poi.GlobalID;
+    } else {
+      toast('No POI selected to edit');
+      return;
+    }
+    title.textContent = 'Edit POI: ' + (poi.Name_EN || poi.Name_AR || '');
+  } else {
+    poiFormGid = null;
+    title.textContent = 'Add New POI';
+  }
+
+  let html = '';
+  for (const section of FORM_SECTIONS) {
+    html += `<div class="poi-form-section"><h3>${section.title}</h3><div class="poi-form-grid">`;
+    for (const f of section.fields) {
+      const val = poi[f.name] || '';
+      html += renderFormField(f, val);
+    }
+    html += '</div></div>';
+  }
+
+  document.getElementById('poiFormBody').innerHTML = html;
+  document.getElementById('poiFormSubmit').textContent = mode === 'edit' ? 'Update POI' : 'Create POI';
+  overlay.classList.add('active');
+
+  // Populate cascading dropdowns in edit mode
+  if (mode === 'edit' && poi.Category) {
+    const catSel = document.querySelector('.poi-form-modal select[name="Category"]');
+    const subSel = document.getElementById('formSubcategory');
+    const l3Sel = document.getElementById('formLevel3');
+    if (catSel && subSel) {
+      const subs = getSubcategories(poi.Category);
+      subSel.innerHTML = '<option value="">-- Select --</option>';
+      subs.forEach(s => {
+        const ar = getSubcategoryAr(poi.Category, s);
+        subSel.innerHTML += `<option value="${s}"${poi.Subcategory===s?' selected':''}>${s}${ar?' ('+ar+')':''}</option>`;
+      });
+      if (poi.Subcategory && !subs.includes(poi.Subcategory)) {
+        subSel.innerHTML += `<option value="${esc(poi.Subcategory)}" selected>${esc(poi.Subcategory)} (custom)</option>`;
+      }
+    }
+    if (catSel && subSel && l3Sel && poi.Subcategory) {
+      const l3s = getLevel3(poi.Category, poi.Subcategory);
+      l3Sel.innerHTML = '<option value="">-- Select --</option>';
+      l3s.forEach(l => { l3Sel.innerHTML += `<option value="${l}"${poi.Category_Level_3===l?' selected':''}>${l}</option>`; });
+      if (poi.Category_Level_3 && !l3s.includes(poi.Category_Level_3)) {
+        l3Sel.innerHTML += `<option value="${esc(poi.Category_Level_3)}" selected>${esc(poi.Category_Level_3)} (custom)</option>`;
+      }
+    }
+  }
+}
+
+function renderFormField(f, val) {
+  const req = f.required ? ' *' : '';
+  let input = '';
+
+  switch (f.type) {
+    case 'text':
+    case 'number':
+    case 'url':
+      input = `<input type="${f.type === 'url' ? 'text' : f.type}" name="${f.name}" value="${esc(val)}" placeholder="${f.label}">`;
+      break;
+    case 'textarea':
+      input = `<textarea name="${f.name}" placeholder="${f.label}">${esc(val)}</textarea>`;
+      break;
+    case 'yesno':
+      input = `<select name="${f.name}">`;
+      ['','Yes','No','UNAVAILABLE','UNAPPLICABLE'].forEach(opt => {
+        input += `<option value="${opt}"${val===opt?' selected':''}>${opt || '-- Select --'}</option>`;
+      });
+      input += '</select>';
+      break;
+    case 'category':
+      input = `<select name="${f.name}" onchange="onFormCategoryChange()">`;
+      input += '<option value="">-- Select --</option>';
+      ALLOWED_CATEGORIES.forEach(c => {
+        const ar = getCategoryAr(c);
+        input += `<option value="${c}"${val===c?' selected':''}>${c}${ar?' ('+ar+')':''}</option>`;
+      });
+      if (val && !ALLOWED_CATEGORIES.includes(val)) input += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+      input += '</select>';
+      break;
+    case 'subcategory': {
+      const cat = document.querySelector ? '' : '';
+      input = `<select name="${f.name}" id="formSubcategory" onchange="onFormSubcategoryChange()">`;
+      input += '<option value="">-- Select --</option>';
+      if (val) input += `<option value="${esc(val)}" selected>${esc(val)}</option>`;
+      input += '</select>';
+      break;
+    }
+    case 'level3':
+      input = `<select name="${f.name}" id="formLevel3">`;
+      input += '<option value="">-- Select --</option>';
+      if (val) input += `<option value="${esc(val)}" selected>${esc(val)}</option>`;
+      input += '</select>';
+      break;
+    case 'company_status':
+      input = `<select name="${f.name}">`;
+      input += '<option value="">-- Select --</option>';
+      ALLOWED_COMPANY_STATUS.forEach(s => {
+        input += `<option value="${s}"${val===s?' selected':''}>${s}</option>`;
+      });
+      input += '</select>';
+      break;
+    case 'floor':
+      input = `<select name="${f.name}">`;
+      input += '<option value="">-- Select --</option>';
+      input += `<option value="UNAVAILABLE"${val==='UNAVAILABLE'?' selected':''}>UNAVAILABLE</option>`;
+      ALLOWED_FLOOR_NUMBERS.forEach(fl => {
+        input += `<option value="${fl}"${val===fl?' selected':''}>${fl==='G'?'G (Ground)':fl}</option>`;
+      });
+      input += '</select>';
+      break;
+    case 'field_dropdown':
+      input = `<select name="${f.name}">`;
+      input += '<option value="">-- Select --</option>';
+      const opts = FIELD_DROPDOWN_OPTIONS[f.options] || [];
+      opts.forEach(opt => {
+        input += `<option value="${esc(opt)}"${val===opt?' selected':''}>${esc(opt)}</option>`;
+      });
+      if (val && !opts.includes(val)) input += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+      input += '</select>';
+      break;
+    default:
+      input = `<input type="text" name="${f.name}" value="${esc(val)}">`;
+  }
+
+  const cls = f.type === 'textarea' ? ' full-width' : '';
+  return `<div class="poi-form-field${cls}"><label>${f.label}${req}</label>${input}</div>`;
+}
+
+function onFormCategoryChange() {
+  const catSel = document.querySelector('.poi-form-modal select[name="Category"]');
+  const subSel = document.getElementById('formSubcategory');
+  const l3Sel = document.getElementById('formLevel3');
+  if (!catSel || !subSel) return;
+  const cat = catSel.value;
+  const subs = getSubcategories(cat);
+  subSel.innerHTML = '<option value="">-- Select --</option>';
+  subs.forEach(s => {
+    const ar = getSubcategoryAr(cat, s);
+    subSel.innerHTML += `<option value="${s}">${s}${ar?' ('+ar+')':''}</option>`;
+  });
+  if (l3Sel) l3Sel.innerHTML = '<option value="">-- Select --</option>';
+}
+
+function onFormSubcategoryChange() {
+  const catSel = document.querySelector('.poi-form-modal select[name="Category"]');
+  const subSel = document.getElementById('formSubcategory');
+  const l3Sel = document.getElementById('formLevel3');
+  if (!catSel || !subSel || !l3Sel) return;
+  const cat = catSel.value;
+  const sub = subSel.value;
+  const l3s = getLevel3(cat, sub);
+  l3Sel.innerHTML = '<option value="">-- Select --</option>';
+  l3s.forEach(l => { l3Sel.innerHTML += `<option value="${l}">${l}</option>`; });
+}
+
+function closePoiForm() {
+  document.getElementById('poiFormOverlay').classList.remove('active');
+}
+
+async function submitPoiForm() {
+  const formBody = document.getElementById('poiFormBody');
+  const data = {};
+  formBody.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.name && el.value) data[el.name] = el.value;
+  });
+
+  // Validate required fields
+  if (!data.Name_AR && !data.Name_EN) {
+    toast('Name (Arabic or English) is required');
+    return;
+  }
+
+  const submitBtn = document.getElementById('poiFormSubmit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving...';
+
+  try {
+    let url, method;
+    if (poiFormMode === 'edit' && poiFormGid) {
+      url = '/api/pois/' + encodeURIComponent(poiFormGid);
+      method = 'PATCH';
+    } else {
+      url = '/api/pois';
+      method = 'POST';
+    }
+
+    const resp = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+
+    if (!resp.ok) {
+      toast('Error: ' + (result.error || 'Failed to save'));
+      return;
+    }
+
+    closePoiForm();
+    toast(poiFormMode === 'edit' ? 'POI updated successfully' : 'POI created successfully');
+
+    // Reload data
+    const dataResp = await fetch('/api/pois?limit=5000');
+    const dataResult = await dataResp.json();
+    if (dataResult.pois) {
+      allPois = dataResult.pois;
+      applyFilters();
+      buildStats();
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = poiFormMode === 'edit' ? 'Update POI' : 'Create POI';
+  }
+}
+
+// ===== NOTIFICATION SYSTEM =====
+let pendingUpdates = [];
+let updatesDropdownOpen = false;
+
+async function checkForUpdates() {
+  if (!dbMode) return;
+  try {
+    const resp = await fetch('/api/pois/recent-updates');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    pendingUpdates = data.updates || [];
+    const badge = document.getElementById('updatesBadge');
+    if (pendingUpdates.length > 0) {
+      badge.textContent = pendingUpdates.length;
+      badge.classList.add('show');
+    } else {
+      badge.classList.remove('show');
+    }
+  } catch (e) { /* silent */ }
+}
+
+function toggleUpdatesDropdown() {
+  const dd = document.getElementById('updatesDropdown');
+  updatesDropdownOpen = !updatesDropdownOpen;
+  if (updatesDropdownOpen) {
+    renderUpdatesDropdown();
+    dd.classList.add('show');
+  } else {
+    dd.classList.remove('show');
+  }
+}
+
+function renderUpdatesDropdown() {
+  const dd = document.getElementById('updatesDropdown');
+  if (pendingUpdates.length === 0) {
+    dd.innerHTML = '<div class="ud-empty">No new updates</div>';
+    return;
+  }
+
+  let html = `<div class="ud-header"><span>${pendingUpdates.length} New Updates</span><button class="btn btn-sm btn-primary" onclick="ackAllUpdates()" style="font-size:10px;padding:3px 8px;">Mark all read</button></div>`;
+
+  pendingUpdates.forEach(u => {
+    const fields = u.changed_fields ? Object.keys(u.changed_fields).join(', ') : '';
+    const time = u.created_at ? new Date(u.created_at).toLocaleString() : '';
+    html += `<div class="ud-item" onclick="viewUpdatePoi('${esc(u.global_id||'')}')">
+      <div class="ud-name">${esc(u.poi_name||'Unknown POI')}</div>
+      <div class="ud-meta">${esc(u.source||'')} | ${esc(u.action||'')} | ${time}</div>
+      ${fields ? `<div class="ud-fields">Changed: ${esc(fields)}</div>` : ''}
+    </div>`;
+  });
+
+  dd.innerHTML = html;
+}
+
+async function ackAllUpdates() {
+  try {
+    await fetch('/api/pois/recent-updates/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
+    pendingUpdates = [];
+    document.getElementById('updatesBadge').classList.remove('show');
+    document.getElementById('updatesDropdown').classList.remove('show');
+    updatesDropdownOpen = false;
+    toast('All updates acknowledged');
+
+    // Reload data to reflect changes
+    const resp = await fetch('/api/pois?limit=5000');
+    const data = await resp.json();
+    if (data.pois) {
+      allPois = data.pois;
+      applyFilters();
+      buildStats();
+    }
+  } catch (e) { toast('Error acknowledging updates'); }
+}
+
+function viewUpdatePoi(gid) {
+  if (!gid) return;
+  document.getElementById('updatesDropdown').classList.remove('show');
+  updatesDropdownOpen = false;
+  const idx = filteredPois.findIndex(p => p.GlobalID === gid);
+  if (idx >= 0) {
+    openDetail(idx);
+  } else {
+    // Search in allPois
+    const poi = allPois.find(p => p.GlobalID === gid);
+    if (poi) {
+      // Reset filters to show all, then find
+      document.getElementById('searchInput').value = poi.Name_EN || poi.Name_AR || '';
+      applyFilters();
+      const newIdx = filteredPois.findIndex(p => p.GlobalID === gid);
+      if (newIdx >= 0) openDetail(newIdx);
+    }
+  }
+}
+
+// Close updates dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  if (updatesDropdownOpen && !e.target.closest('.notif-badge')) {
+    document.getElementById('updatesDropdown').classList.remove('show');
+    updatesDropdownOpen = false;
+  }
+});
+
+// Poll for updates every 60 seconds
+setInterval(checkForUpdates, 60000);
 
 init();
 </script>

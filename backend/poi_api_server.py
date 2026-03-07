@@ -7,8 +7,9 @@ import csv
 import io
 import os
 import sys
+import uuid
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from flask import Flask, jsonify, request, Response, Blueprint
 from flask_cors import CORS
 
@@ -365,6 +366,235 @@ def arcgis_search_features():
         })
 
     return jsonify({'results': results})
+
+# ===== API: Create new POI =====
+@api.route('/pois', methods=['POST'])
+def create_poi():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+
+    gid = data.get('GlobalID') or '{' + str(uuid.uuid4()).upper() + '}'
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Get column names from table
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'final_delivery' ORDER BY ordinal_position;")
+    all_cols = [r[0] for r in cur.fetchall()]
+    skip = {'created_at', 'updated_at', 'delivery_date'}
+
+    cols = ['"GlobalID"']
+    vals = [gid]
+    placeholders = ['%s']
+
+    for col in all_cols:
+        if col in skip or col == 'GlobalID':
+            continue
+        if col in data:
+            cols.append(f'"{col}"')
+            vals.append(data[col])
+            placeholders.append('%s')
+
+    cols.append('"created_at"')
+    placeholders.append('NOW()')
+    cols.append('"updated_at"')
+    placeholders.append('NOW()')
+
+    sql = f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(placeholders)})'
+    try:
+        cur.execute(sql, vals)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({'error': str(e)}), 500
+
+    cur.close()
+    conn.close()
+    return jsonify({'ok': True, 'GlobalID': gid}), 201
+
+# ===== API: Survey123 Webhook =====
+SURVEY123_FIELD_MAP = {
+    'poi_name_en': 'Name_EN', 'poi_name_ar': 'Name_AR', 'legal_name': 'Legal_Name',
+    'category': 'Category', 'secondary_category': 'Subcategory', 'category_level_3': 'Category_Level_3',
+    'company_status': 'Company_Status', 'latitude': 'Latitude', 'longitude': 'Longitude',
+    'building_number': 'Building_Number', 'floor_number': 'Floor_Number',
+    'entrance_location': 'Entrance_Location', 'phone_number': 'Phone_Number',
+    'email': 'Email', 'website': 'Website', 'social_media': 'Social_Media',
+    'working_days': 'Working_Days', 'working_hours': 'Working_Hours',
+    'break_time': 'Break_Time', 'holidays': 'Holidays',
+    'menu_barcode_url': 'Menu_Barcode_URL', 'language': 'Language',
+    'cuisine': 'Cuisine', 'payment_methods': 'Payment_Methods',
+    'commercial_license': 'Commercial_License', 'district_en': 'District_EN',
+    'district_ar': 'District_AR', 'place_name': 'Name_EN',
+    'exterior_photo_url': 'Exterior_Photo_URL', 'interior_photo_url': 'Interior_Photo_URL',
+    'menu_photo_url': 'Menu_Photo_URL', 'video_url': 'Video_URL',
+}
+
+def _ensure_updates_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS poi_updates (
+            id SERIAL PRIMARY KEY,
+            global_id TEXT,
+            poi_name TEXT,
+            source TEXT DEFAULT 'survey123',
+            action TEXT DEFAULT 'update',
+            changed_fields JSONB,
+            created_at TIMESTAMP DEFAULT NOW(),
+            acknowledged BOOLEAN DEFAULT FALSE
+        );
+    """)
+    conn.commit()
+    cur.close()
+
+@api.route('/webhook/survey123', methods=['POST'])
+def survey123_webhook():
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({'error': 'No data'}), 400
+
+    # Survey123 webhook can send: { feature: { attributes: {...}, geometry: {...} } }
+    # or direct attributes, or eventType + feature
+    attrs = {}
+    if 'feature' in payload:
+        feat = payload['feature']
+        attrs = feat.get('attributes', feat)
+        geo = feat.get('geometry', {})
+        if geo.get('x') and 'longitude' not in attrs:
+            attrs['longitude'] = geo['x']
+        if geo.get('y') and 'latitude' not in attrs:
+            attrs['latitude'] = geo['y']
+    elif 'attributes' in payload:
+        attrs = payload['attributes']
+    else:
+        attrs = payload
+
+    # Map Survey123 field names to DB field names
+    mapped = {}
+    for s_field, value in attrs.items():
+        key = s_field.lower().replace(' ', '_')
+        db_field = SURVEY123_FIELD_MAP.get(key)
+        if db_field and value is not None:
+            mapped[db_field] = str(value) if value is not None else ''
+        elif s_field in ('Name_EN', 'Name_AR', 'Category', 'Latitude', 'Longitude'):
+            mapped[s_field] = str(value) if value is not None else ''
+
+    if not mapped:
+        return jsonify({'error': 'No mappable fields'}), 400
+
+    conn = get_db()
+    _ensure_updates_table(conn)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Try to find existing POI by name match
+    name_en = mapped.get('Name_EN', '')
+    name_ar = mapped.get('Name_AR', '')
+    existing = None
+
+    if name_en:
+        cur.execute('SELECT "GlobalID", "Name_EN" FROM final_delivery WHERE "Name_EN" = %s LIMIT 1;', (name_en,))
+        existing = cur.fetchone()
+    if not existing and name_ar:
+        cur.execute('SELECT "GlobalID", "Name_EN" FROM final_delivery WHERE "Name_AR" = %s LIMIT 1;', (name_ar,))
+        existing = cur.fetchone()
+
+    if existing:
+        # UPDATE existing POI
+        gid = existing['GlobalID']
+        sets = []
+        vals = []
+        changed = {}
+        for field, value in mapped.items():
+            if field in ('GlobalID',):
+                continue
+            sets.append(f'"{field}" = %s')
+            vals.append(value)
+            changed[field] = value
+        if sets:
+            sets.append('"updated_at" = NOW()')
+            vals.append(gid)
+            cur.execute(f'UPDATE final_delivery SET {", ".join(sets)} WHERE "GlobalID" = %s', vals)
+
+            # Log update
+            cur.execute(
+                'INSERT INTO poi_updates (global_id, poi_name, source, action, changed_fields) VALUES (%s, %s, %s, %s, %s)',
+                (gid, name_en or name_ar, 'survey123', 'update', Json(changed))
+            )
+            conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'ok': True, 'action': 'updated', 'GlobalID': gid, 'fields': len(changed)})
+    else:
+        # INSERT new POI
+        gid = '{' + str(uuid.uuid4()).upper() + '}'
+        mapped['GlobalID'] = gid
+
+        cols = []
+        vals = []
+        placeholders = []
+        for field, value in mapped.items():
+            cols.append(f'"{field}"')
+            vals.append(value)
+            placeholders.append('%s')
+        cols.append('"created_at"')
+        placeholders.append('NOW()')
+        cols.append('"updated_at"')
+        placeholders.append('NOW()')
+
+        try:
+            cur.execute(f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(placeholders)})', vals)
+            cur.execute(
+                'INSERT INTO poi_updates (global_id, poi_name, source, action, changed_fields) VALUES (%s, %s, %s, %s, %s)',
+                (gid, name_en or name_ar, 'survey123', 'create', Json(mapped))
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'error': str(e)}), 500
+
+        cur.close()
+        conn.close()
+        return jsonify({'ok': True, 'action': 'created', 'GlobalID': gid}), 201
+
+# ===== API: Recent updates (for notifications) =====
+@api.route('/pois/recent-updates', methods=['GET'])
+def recent_updates():
+    conn = get_db()
+    _ensure_updates_table(conn)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT id, global_id, poi_name, source, action, changed_fields,
+               created_at::text as created_at, acknowledged
+        FROM poi_updates
+        WHERE acknowledged = FALSE
+        ORDER BY created_at DESC
+        LIMIT 50;
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
+@api.route('/pois/recent-updates/ack', methods=['POST'])
+def ack_updates():
+    data = request.get_json()
+    ids = data.get('ids', []) if data else []
+    conn = get_db()
+    cur = conn.cursor()
+    if ids:
+        cur.execute('UPDATE poi_updates SET acknowledged = TRUE WHERE id = ANY(%s)', (ids,))
+    else:
+        cur.execute('UPDATE poi_updates SET acknowledged = TRUE WHERE acknowledged = FALSE')
+    conn.commit()
+    count = cur.rowcount
+    cur.close()
+    conn.close()
+    return jsonify({'ok': True, 'acknowledged': count})
 
 # Register API blueprint
 app.register_blueprint(api)
