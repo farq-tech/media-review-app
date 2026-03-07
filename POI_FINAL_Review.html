@@ -811,7 +811,7 @@ const ALLOWED_PAYMENT_METHODS = ['Cash','Visa','Mastercard','Mada','Apple Pay','
 const GATE_RULES = {
   N1: { field:'Name_AR',   check: v => v && v.trim().length >= 2, msg:'Name AR missing or too short', fix:'Provide Arabic name (≥2 chars)' },
   N2: { field:'Name_EN',   check: v => v && v.trim().length >= 2, msg:'Name EN missing or too short', fix:'Provide English name (≥2 chars)' },
-  P1: { field:'Phone_Number', check: v => !v || v==='UNAVAILABLE' || /^(966|05|\+966)\d{7,9}$/.test(v.replace(/[\s\-()]/g,'')), msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX or 05XXXXXXXX' },
+  // Phone is not mandatory — moved to FIELD_VALIDATORS as MAJOR
   M1: { field:'Exterior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing exterior photo', fix:'Add valid exterior photo URL' },
   M2: { field:'Interior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing interior photo', fix:'Add valid interior photo URL' },
   M3: { field:'Latitude',  check: v => { const n=parseFloat(v); return !isNaN(n) && n>=15 && n<=35; }, msg:'Latitude out of Saudi bounds (15-35)', fix:'Correct latitude' },
@@ -824,7 +824,7 @@ const GATE_RULES = {
     const int = poi.Interior_Photo_URL||'';
     return v !== int;
   }, msg:'Exterior and interior photo URLs are identical', fix:'Use different photos' },
-  V2: { field:'Commercial_License', check: v => !v || v==='UNAVAILABLE' || /^\d{11}$/.test(v.replace(/\D/g,'')), msg:'Commercial license must be 11 digits', fix:'Provide 11-digit license number' },
+  // Commercial License is not mandatory — moved to FIELD_VALIDATORS as MAJOR
   C1: { field:'Category', check: v => {
     if (!v) return true;
     if (ALLOWED_CATEGORIES.includes(v)) return true;
@@ -878,11 +878,15 @@ const FIELD_VALIDATORS = {
   Company_Status: [
     { id:'CS1', check: v => !v || ALLOWED_COMPANY_STATUS.includes(v), severity:'MAJOR', msg:'Invalid company status', fix:'Use Open/Closed/Temporarily Closed' },
   ],
-  Commercial_License: [
-    { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Use digits only' },
-  ],
   Social_Media: [
     { id:'SM1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Social media missing URL', fix:'Add full URL' },
+  ],
+  Phone_Number: [
+    { id:'PH2', check: v => !v || v==='UNAVAILABLE' || /^(966|05|\+966)\d{7,9}$/.test(v.replace(/[\s\-()]/g,'')), severity:'MAJOR', msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX or 05XXXXXXXX' },
+  ],
+  Commercial_License: [
+    { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Use digits only' },
+    { id:'CL2', check: v => !v || v==='UNAVAILABLE' || /^\d{11}$/.test(v.replace(/\D/g,'')), severity:'MAJOR', msg:'Commercial license should be 11 digits', fix:'Provide 11-digit license number' },
   ],
 };
 
@@ -913,6 +917,35 @@ function validatePoi(poi) {
     if (!poi.Menu_Photo_URL || poi.Menu_Photo_URL === 'UNAVAILABLE') {
       errors.push({ column: 'Menu_Photo_URL', rule_id: 'XF1', severity: 'MAJOR', fail_reason: 'F&B POI missing menu photo', suggested_fix: 'Add menu photo for food establishment' });
     }
+  }
+  // Cross-field: Category / Subcategory / L3 mismatch
+  const sub = (poi.Subcategory || '').trim();
+  const l3 = (poi.Category_Level_3 || '').trim();
+  if (cat && sub) {
+    // Build valid map on first call
+    if (!validatePoi._catTree) {
+      validatePoi._catTree = {};
+      allPois.forEach(p => {
+        const c = (p.Category||'').trim(), s = (p.Subcategory||'').trim(), t = (p.Category_Level_3||'').trim();
+        if (!c) return;
+        if (!validatePoi._catTree[c]) validatePoi._catTree[c] = {};
+        if (!validatePoi._catTree[c][s]) validatePoi._catTree[c][s] = new Set();
+        if (t) validatePoi._catTree[c][s].add(t);
+      });
+    }
+    const tree = validatePoi._catTree;
+    if (tree[cat] && !tree[cat][sub]) {
+      errors.push({ column: 'Subcategory', rule_id: 'CAT1', severity: 'MAJOR', fail_reason: `Subcategory "${sub}" not found under "${cat}"`, suggested_fix: `Use: ${Object.keys(tree[cat]).join(', ')}` });
+    }
+    if (l3 && tree[cat] && tree[cat][sub] && !tree[cat][sub].has(l3)) {
+      errors.push({ column: 'Category_Level_3', rule_id: 'CAT2', severity: 'MAJOR', fail_reason: `L3 "${l3}" not found under "${cat} > ${sub}"`, suggested_fix: `Use: ${[...tree[cat][sub]].join(', ')}` });
+    }
+  }
+  if (cat && !sub) {
+    errors.push({ column: 'Subcategory', rule_id: 'CAT3', severity: 'MAJOR', fail_reason: 'Subcategory is empty', suggested_fix: 'Add subcategory' });
+  }
+  if (sub && !l3) {
+    errors.push({ column: 'Category_Level_3', rule_id: 'CAT4', severity: 'MINOR', fail_reason: 'Category Level 3 is empty', suggested_fix: 'Add L3 classification' });
   }
   // Cross-field: Dropdown fields should be valid values
   DROPDOWN_FIELDS.forEach(field => {
