@@ -8,6 +8,10 @@ import io
 import os
 import sys
 import uuid
+import time
+import threading
+import urllib.request
+import urllib.parse
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
 from flask import Flask, jsonify, request, Response, Blueprint
@@ -17,6 +21,144 @@ from flask_cors import CORS
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
     DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/poi_server'
+
+# ===== ArcGIS Feature Layer Sync =====
+ARCGIS_LAYER_URL = os.environ.get('ARCGIS_LAYER_URL',
+    'https://services5.arcgis.com/pYlVm2T6SvR7ytZv/arcgis/rest/services/Farq_pilot_2_2_26/FeatureServer/0')
+ARCGIS_USERNAME = os.environ.get('ARCGIS_USERNAME', 'nagadco0000')
+ARCGIS_PASSWORD = os.environ.get('ARCGIS_PASSWORD', 'Nagad$1390')
+
+_arcgis_sync_token = {'token': None, 'expires': 0}
+
+def _get_sync_token():
+    """Get or refresh ArcGIS token for Feature Layer sync."""
+    now = int(time.time() * 1000)
+    if _arcgis_sync_token['token'] and _arcgis_sync_token['expires'] > now + 60000:
+        return _arcgis_sync_token['token']
+    try:
+        data = urllib.parse.urlencode({
+            'username': ARCGIS_USERNAME,
+            'password': ARCGIS_PASSWORD,
+            'referer': 'https://media-review-app-1.vercel.app',
+            'f': 'json'
+        }).encode()
+        req = urllib.request.Request('https://www.arcgis.com/sharing/rest/generateToken', data=data)
+        resp = urllib.request.urlopen(req, timeout=15)
+        result = json.loads(resp.read().decode())
+        if 'token' in result:
+            _arcgis_sync_token['token'] = result['token']
+            _arcgis_sync_token['expires'] = result.get('expires', now + 3600000)
+            return result['token']
+    except Exception as e:
+        print(f'[ArcGIS Sync] Token error: {e}')
+    return None
+
+def _arcgis_post(endpoint, params):
+    """POST to ArcGIS Feature Layer endpoint."""
+    token = _get_sync_token()
+    if not token:
+        print('[ArcGIS Sync] No token available')
+        return None
+    params['token'] = token
+    params['f'] = 'json'
+    data = urllib.parse.urlencode(params).encode()
+    try:
+        req = urllib.request.Request(f'{ARCGIS_LAYER_URL}/{endpoint}', data=data)
+        resp = urllib.request.urlopen(req, timeout=30)
+        return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f'[ArcGIS Sync] POST {endpoint} error: {e}')
+        return None
+
+def _find_feature_oid(global_id_db):
+    """Find OBJECTID in Feature Layer by GlobalID_DB field."""
+    token = _get_sync_token()
+    if not token:
+        return None
+    params = urllib.parse.urlencode({
+        'where': f"GlobalID_DB = '{global_id_db}'",
+        'outFields': 'OBJECTID',
+        'returnGeometry': 'false',
+        'f': 'json',
+        'token': token
+    })
+    try:
+        url = f'{ARCGIS_LAYER_URL}/query?{params}'
+        resp = urllib.request.urlopen(url, timeout=15)
+        result = json.loads(resp.read().decode())
+        features = result.get('features', [])
+        if features:
+            return features[0]['attributes']['OBJECTID']
+    except Exception as e:
+        print(f'[ArcGIS Sync] Query error: {e}')
+    return None
+
+# Fields that exist in the Feature Layer
+_FL_FIELDS = {
+    'GlobalID_DB','Name_AR','Name_EN','Legal_Name','Category','Subcategory',
+    'Category_Level_3','Company_Status','District_AR','District_EN',
+    'Building_Number','Floor_Number','Entrance_Location','Phone_Number',
+    'Email','Website','Social_Media','Working_Days','Working_Hours',
+    'Break_Time','Language','Cuisine','Payment_Methods','Commercial_License',
+    'Menu_Barcode_URL','Delivery_Method','Exterior_Photo_URL','Interior_Photo_URL',
+    'Menu_Photo_URL','Video_URL','Review_Status','Review_Notes','Review_Flag',
+    'Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','WiFi','Music',
+    'Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating',
+    'Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark',
+    'Is_Trending','Women_Prayer_Room','Iftar_Tent','Free_Entry'
+}
+
+def sync_to_arcgis(action, global_id, data=None):
+    """Sync a POI change to ArcGIS Feature Layer (runs in background thread)."""
+    def _sync():
+        try:
+            if action == 'create' and data:
+                lat = float(data.get('Latitude', 0) or 0)
+                lon = float(data.get('Longitude', 0) or 0)
+                attrs = {'GlobalID_DB': global_id}
+                for k, v in data.items():
+                    if k in _FL_FIELDS and k != 'GlobalID_DB':
+                        attrs[k] = str(v or '')
+                feature = {
+                    'geometry': {'x': lon, 'y': lat, 'spatialReference': {'wkid': 4326}},
+                    'attributes': attrs
+                }
+                result = _arcgis_post('addFeatures', {'features': json.dumps([feature])})
+                print(f'[ArcGIS Sync] Created: {result}')
+
+            elif action == 'update' and data:
+                oid = _find_feature_oid(global_id)
+                if oid is None:
+                    print(f'[ArcGIS Sync] OID not found for {global_id}, skipping update')
+                    return
+                attrs = {'OBJECTID': oid}
+                geometry = None
+                for k, v in data.items():
+                    if k in _FL_FIELDS:
+                        attrs[k] = str(v or '')
+                    if k == 'Latitude' or k == 'Longitude':
+                        geometry = True
+                feature = {'attributes': attrs}
+                if geometry:
+                    lat = float(data.get('Latitude', 0) or 0)
+                    lon = float(data.get('Longitude', 0) or 0)
+                    if lat and lon:
+                        feature['geometry'] = {'x': lon, 'y': lat, 'spatialReference': {'wkid': 4326}}
+                result = _arcgis_post('updateFeatures', {'features': json.dumps([feature])})
+                print(f'[ArcGIS Sync] Updated: {result}')
+
+            elif action == 'delete':
+                oid = _find_feature_oid(global_id)
+                if oid is None:
+                    print(f'[ArcGIS Sync] OID not found for {global_id}, skipping delete')
+                    return
+                result = _arcgis_post('deleteFeatures', {'objectIds': str(oid)})
+                print(f'[ArcGIS Sync] Deleted: {result}')
+
+        except Exception as e:
+            print(f'[ArcGIS Sync] Error ({action}): {e}')
+
+    threading.Thread(target=_sync, daemon=True).start()
 
 app = Flask(__name__)
 CORS(app)
@@ -101,6 +243,7 @@ def update_poi(globalid):
 
     if updated == 0:
         return jsonify({'error': 'Not found'}), 404
+    sync_to_arcgis('update', globalid, data)
     return jsonify({'ok': True, 'updated': updated, 'globalid': globalid})
 
 # ===== API: Bulk update =====
@@ -196,6 +339,7 @@ def delete_poi(globalid):
     conn.close()
     if deleted == 0:
         return jsonify({'error': 'Not found'}), 404
+    sync_to_arcgis('delete', globalid)
     return jsonify({'ok': True, 'deleted': deleted})
 
 # ===== API: ArcGIS Token Proxy =====
@@ -413,6 +557,8 @@ def create_poi():
 
     cur.close()
     conn.close()
+    data['GlobalID'] = gid
+    sync_to_arcgis('create', gid, data)
     return jsonify({'ok': True, 'GlobalID': gid}), 201
 
 # ===== API: Survey123 Webhook =====
@@ -526,6 +672,7 @@ def survey123_webhook():
             conn.commit()
         cur.close()
         conn.close()
+        sync_to_arcgis('update', gid, mapped)
         return jsonify({'ok': True, 'action': 'updated', 'GlobalID': gid, 'fields': len(changed)})
     else:
         # INSERT new POI
@@ -559,6 +706,7 @@ def survey123_webhook():
 
         cur.close()
         conn.close()
+        sync_to_arcgis('create', gid, mapped)
         return jsonify({'ok': True, 'action': 'created', 'GlobalID': gid}), 201
 
 # ===== API: Recent updates (for notifications) =====
