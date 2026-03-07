@@ -531,6 +531,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
     <button class="btn btn-success" onclick="approvePoi()">Approve</button>
     <button class="btn btn-primary" onclick="saveEdits()">Save</button>
+    <button class="btn btn-danger" onclick="deletePoi()" style="margin-left:auto;">Delete POI</button>
   </div>
 </div>
 
@@ -1923,6 +1924,28 @@ function approvePoi() {
 }
 
 function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
+
+async function deletePoi() {
+  const poi = filteredPois[currentPoiIdx];
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
+  if (!confirm(`Delete "${name}" permanently?\n\nThis will remove it from the database and cannot be undone.`)) return;
+  if (dbMode) {
+    try {
+      const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID), { method: 'DELETE' });
+      const r = await resp.json();
+      if (!r.ok) { toast('Delete failed: ' + (r.error || 'Unknown error')); return; }
+    } catch(e) { toast('Delete failed: ' + e.message); return; }
+  }
+  allPois = allPois.filter(p => p.GlobalID !== poi.GlobalID);
+  delete edits[poi.GlobalID];
+  validationResults.delete(poi.GlobalID);
+  saveEditsToStorage();
+  closeDetail();
+  applyFilters();
+  buildStats();
+  toast('Deleted: ' + name);
+}
 
 function saveEditsToStorage() {
   localStorage.setItem('poi_review_edits', JSON.stringify(edits));
