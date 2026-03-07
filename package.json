@@ -1,12 +1,8 @@
 {
   "name": "media-review-app",
-  "version": "1.0.0",
-  "description": "POI Media Review with database persistence",
+  "version": "2.0.0",
+  "description": "POI Final Review Dashboard",
   "scripts": {
-    "build": "echo 'No build needed'",
-    "seed": "node scripts/seed-db.js"
-  },
-  "dependencies": {
-    "pg": "^8.11.3"
+    "build": "echo 'No build needed'"
   }
 }

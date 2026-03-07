@@ -1,0 +1,2985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POI Final Review Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #333; }
+.header { background: linear-gradient(135deg, #1a237e, #0d47a1); color: #fff; padding: 16px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.header h1 { font-size: 20px; }
+.header p { opacity: 0.8; font-size: 13px; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.header-actions button { padding: 7px 14px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.15); color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.header-actions button:hover { background: rgba(255,255,255,0.25); }
+
+.stats { display: flex; gap: 10px; padding: 14px 30px; flex-wrap: wrap; }
+.stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; min-width: 110px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.stat-card .label { font-size: 10px; color: #666; text-transform: uppercase; }
+.stat-card .value { font-size: 24px; font-weight: 700; color: #1a237e; }
+.stat-card.alert .value { color: #c62828; }
+.stat-card.success .value { color: #2e7d32; }
+.stat-card.warn .value { color: #e65100; }
+
+/* View tabs */
+.view-tabs { display: flex; gap: 0; padding: 0 30px; border-bottom: 2px solid #ddd; background: #fff; }
+.view-tab { padding: 10px 20px; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; font-size: 13px; white-space: nowrap; }
+.view-tab:hover { color: #1a237e; }
+.view-tab.active { color: #1a237e; border-bottom-color: #1a237e; }
+.view-tab .badge { font-size: 10px; background: #e57373; color: #fff; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
+.view-tab .badge.done { background: #4caf50; }
+
+.view-content { display: none; }
+.view-content.active { display: block; }
+
+/* Filter bar */
+.filter-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; padding: 16px 30px 0; }
+.filter-bar input, .filter-bar select { padding: 7px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; background: #fff; }
+.filter-bar input { width: 260px; }
+.filter-bar .count { font-size: 13px; color: #666; margin-left: auto; }
+
+/* Data filter sub-tabs */
+.data-tabs { display: flex; gap: 0; padding: 0 30px; margin-bottom: 12px; }
+.data-tab { padding: 6px 14px; cursor: pointer; font-weight: 500; color: #888; font-size: 12px; border: 1px solid #ddd; border-bottom: none; background: #f5f5f5; border-radius: 4px 4px 0 0; margin-right: -1px; }
+.data-tab:hover { color: #1a237e; background: #e8eaf6; }
+.data-tab.active { color: #1a237e; background: #fff; border-bottom: 1px solid #fff; font-weight: 600; }
+
+/* Main POI table (card view) */
+.poi-container { max-height: 72vh; overflow-y: auto; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin: 0 30px; }
+.poi-table { width: 100%; border-collapse: collapse; background: #fff; }
+.poi-table th { background: #1a237e; color: #fff; padding: 9px 10px; text-align: left; font-size: 11px; position: sticky; top: 0; z-index: 10; white-space: nowrap; }
+.poi-table td { padding: 7px 10px; border-bottom: 1px solid #eee; font-size: 12px; }
+.poi-table tr { cursor: pointer; }
+.poi-table tr:hover td { background: #e8eaf6; }
+.poi-table tr.selected td { background: #c5cae9; }
+.poi-table tr.reviewed td { background: #e8f5e9; }
+.poi-table tr.flagged td { background: #fff3e0; }
+.ar-text { direction: rtl; text-align: right; }
+.qa-high { background: #c8e6c9; color: #1b5e20; font-weight: 700; text-align: center; border-radius: 3px; padding: 2px 6px; }
+.qa-mid { background: #fff9c4; color: #f57f17; font-weight: 700; text-align: center; border-radius: 3px; padding: 2px 6px; }
+.qa-low { background: #ffcdd2; color: #b71c1c; font-weight: 700; text-align: center; border-radius: 3px; padding: 2px 6px; }
+.status-flagged { color: #c62828; font-weight: 600; }
+.status-ok { color: #2e7d32; font-weight: 600; }
+.status-pending { color: #666; }
+.photo-link { color: #1565c0; text-decoration: none; font-size: 11px; }
+.photo-link:hover { text-decoration: underline; }
+
+/* ============ EXCEL TABLE VIEW ============ */
+.excel-wrapper { padding: 0 16px 16px; }
+.excel-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #e8eaf6; border-radius: 6px 6px 0 0; border: 1px solid #c5cae9; border-bottom: none; }
+.excel-toolbar input { padding: 6px 10px; border: 1px solid #c5cae9; border-radius: 4px; font-size: 12px; width: 240px; }
+.excel-toolbar select { padding: 6px 8px; border: 1px solid #c5cae9; border-radius: 4px; font-size: 12px; }
+.excel-toolbar button { padding: 6px 12px; border: 1px solid #c5cae9; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.excel-toolbar button:hover { background: #c5cae9; }
+.excel-toolbar .toolbar-info { font-size: 11px; color: #555; margin-left: auto; }
+
+.excel-container { overflow: auto; max-height: 72vh; border: 1px solid #c5cae9; border-radius: 0 0 6px 6px; }
+.excel-table { border-collapse: collapse; background: #fff; font-size: 12px; white-space: nowrap; }
+.excel-table th {
+  background: #e8eaf6; color: #1a237e; padding: 6px 8px; text-align: left; font-size: 11px;
+  position: sticky; top: 0; z-index: 12; border: 1px solid #c5cae9; font-weight: 600;
+  cursor: pointer; user-select: none; min-width: 80px;
+}
+.excel-table th:hover { background: #c5cae9; }
+.excel-table th.sorted-asc::after { content: ' \\25B2'; font-size: 9px; }
+.excel-table th.sorted-desc::after { content: ' \\25BC'; font-size: 9px; }
+.excel-table td {
+  padding: 1px 2px; border: 1px solid #e0e0e0; position: relative;
+}
+.excel-table tr:nth-child(even) { background: #fafbff; }
+.excel-table tr:hover td { background: #e8eaf6; }
+.excel-table tr.excel-edited td { background: #f1f8e9; }
+
+/* Row number column */
+.excel-table .row-num {
+  background: #e8eaf6; color: #666; text-align: center; font-size: 10px;
+  padding: 4px 6px; min-width: 40px; position: sticky; left: 0; z-index: 11;
+  border-right: 2px solid #c5cae9; cursor: pointer;
+}
+.excel-table th.row-num-header {
+  position: sticky; left: 0; z-index: 13; min-width: 40px; background: #d0d4f0;
+}
+
+/* Editable cells */
+.excel-cell {
+  width: 100%; border: none; background: transparent; padding: 4px 6px;
+  font-size: 12px; font-family: inherit; outline: none; min-width: 60px;
+}
+.excel-cell:focus { background: #fff; box-shadow: inset 0 0 0 2px #1a237e; }
+.excel-cell.changed { background: #e8f5e9; }
+.excel-cell.ar { direction: rtl; text-align: right; }
+
+/* Frozen columns */
+.excel-table .frozen {
+  position: sticky; z-index: 11; background: inherit;
+}
+
+/* Column resize handle */
+.resize-handle {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 4px;
+  cursor: col-resize; background: transparent;
+}
+.resize-handle:hover { background: #1a237e; }
+
+/* Detail Panel (slide-in) */
+.detail-panel {
+  position: fixed; top: 0; right: 0; width: 58%; max-width: 800px; height: 100vh;
+  background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+  z-index: 100; transform: translateX(100%); transition: transform 0.3s ease;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.detail-panel.open { transform: translateX(0); }
+.detail-header {
+  background: #1a237e; color: #fff; padding: 14px 20px;
+  display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+}
+.detail-header h2 { font-size: 15px; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-close { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 4px 8px; }
+.detail-close:hover { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+.detail-view-toggle { display: flex; gap: 0; border-bottom: 2px solid #eee; flex-shrink: 0; background: #f5f5f5; }
+.detail-view-toggle button { padding: 8px 16px; background: transparent; border: none; cursor: pointer; font-size: 12px; font-weight: 600; color: #666; border-bottom: 2px solid transparent; }
+.detail-view-toggle button:hover { color: #1a237e; }
+.detail-view-toggle button.active { color: #1a237e; border-bottom-color: #1a237e; }
+
+.detail-body { flex: 1; overflow-y: auto; padding: 0; }
+
+/* Detail Excel Table (Field | Value) */
+.detail-excel { width: 100%; border-collapse: collapse; }
+.detail-excel th { background: #e8eaf6; color: #1a237e; padding: 6px 12px; text-align: left; font-size: 11px; border: 1px solid #c5cae9; position: sticky; top: 0; z-index: 2; }
+.detail-excel td { padding: 2px 4px; border: 1px solid #e0e0e0; font-size: 12px; }
+.detail-excel .field-name { background: #f5f6fa; color: #555; font-weight: 600; padding: 5px 10px; width: 180px; white-space: nowrap; font-size: 11px; }
+.detail-excel .field-value { padding: 0; }
+.detail-excel .field-value input,
+.detail-excel .field-value textarea {
+  width: 100%; border: none; padding: 5px 8px; font-size: 12px; font-family: inherit;
+  background: transparent; outline: none; resize: vertical;
+}
+.detail-excel .field-value input:focus,
+.detail-excel .field-value textarea:focus { background: #fff; box-shadow: inset 0 0 0 2px #1a237e; }
+.detail-excel .field-value input.changed,
+.detail-excel .field-value textarea.changed { background: #e8f5e9; }
+.detail-excel .field-value .readonly { padding: 5px 8px; color: #888; }
+.detail-excel .field-value a { color: #1565c0; padding: 5px 8px; display: inline-block; }
+.detail-excel tr:nth-child(even) td { background: #fafbff; }
+.detail-excel tr:hover td { background: #e8eaf6; }
+.detail-excel .section-row td { background: #1a237e; color: #fff; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 12px; }
+
+/* Card view in detail */
+.detail-section { padding: 14px 20px; border-bottom: 1px solid #eee; }
+.detail-section h3 { font-size: 12px; color: #1a237e; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.attr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.attr-item { display: flex; flex-direction: column; padding: 4px 0; }
+.attr-item.full { grid-column: 1 / -1; }
+.attr-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
+.attr-value { font-size: 12px; color: #333; word-break: break-word; }
+.attr-value.unavailable { color: #bbb; font-style: italic; }
+.attr-value a { color: #1565c0; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.photo-card { border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+.photo-card img { width: 100%; height: 130px; object-fit: cover; cursor: pointer; }
+.photo-card .photo-label { padding: 4px 8px; font-size: 10px; color: #666; }
+.photo-card .no-photo { height: 130px; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 11px; background: #fafafa; }
+.tag { display: inline-block; background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 10px; margin: 2px; font-size: 10px; }
+.tag.yes { background: #e8f5e9; color: #2e7d32; }
+.tag.no { background: #fafafa; color: #999; }
+
+/* Detail actions */
+.detail-actions {
+  padding: 10px 20px; background: #f5f5f5; border-top: 1px solid #eee;
+  display: flex; gap: 6px; align-items: center; flex-shrink: 0; flex-wrap: wrap;
+}
+.detail-actions select { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; max-width: 200px; }
+.detail-actions input { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; flex: 1; min-width: 120px; }
+.btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
+.btn-primary { background: #1a237e; color: #fff; }
+.btn-primary:hover { background: #283593; }
+.btn-success { background: #2e7d32; color: #fff; }
+.btn-success:hover { background: #388e3c; }
+.btn-warn { background: #e65100; color: #fff; }
+.btn-warn:hover { background: #ef6c00; }
+.btn-danger { background: #c62828; color: #fff; }
+.btn-danger:hover { background: #d32f2f; }
+.btn-sm { padding: 4px 10px; font-size: 10px; }
+
+/* Overlay / Lightbox / Toast */
+.overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 90; display: none; }
+.overlay.active { display: block; }
+.lightbox { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 200; display: none; align-items: center; justify-content: center; cursor: pointer; }
+.lightbox.active { display: flex; }
+.lightbox img { max-width: 95vw; max-height: 95vh; object-fit: contain; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 22px; border-radius: 6px; font-size: 13px; z-index: 999; display: none; }
+.toast.show { display: block; animation: slideUp 0.3s; }
+@keyframes slideUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.loading { text-align: center; padding: 60px; color: #888; }
+.loading .spinner, .spinner { display: inline-block; width: 36px; height: 36px; border: 3px solid #eee; border-top-color: #1a237e; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pagination { display: flex; gap: 6px; align-items: center; justify-content: center; padding: 12px 30px; }
+.pagination button { padding: 5px 12px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.pagination button:hover { background: #e8eaf6; }
+.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pagination span { font-size: 12px; color: #666; }
+
+/* ============ DUPLICATES VIEW ============ */
+.dup-group {
+  background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  margin-bottom: 14px; overflow: hidden; border: 1px solid #e0e0e0;
+}
+.dup-group.merged { opacity: 0.5; }
+.dup-group-header {
+  background: #fff3e0; padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid #ffe0b2; flex-wrap: wrap; cursor: pointer;
+}
+.dup-group-header:hover { background: #ffe0b2; }
+.dup-group-header .group-label { font-weight: 700; color: #e65100; font-size: 13px; }
+.dup-group-header .group-info { font-size: 11px; color: #666; }
+.dup-group-header .group-actions { margin-left: auto; display: flex; gap: 6px; }
+.dup-group-body { display: none; }
+.dup-group.open .dup-group-body { display: block; }
+.dup-row {
+  display: grid; grid-template-columns: 40px 1fr 1fr 120px 100px 80px 80px 100px;
+  gap: 0; border-bottom: 1px solid #f0f0f0; font-size: 12px; align-items: center;
+}
+.dup-row:hover { background: #f5f5f5; }
+.dup-row.golden { background: #e8f5e9; border-left: 4px solid #4caf50; }
+.dup-row > div { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-row-header { background: #f5f5f5; font-weight: 600; font-size: 11px; color: #555; border-bottom: 2px solid #e0e0e0; }
+.dup-compare { padding: 10px 16px; background: #fafafa; border-top: 1px solid #eee; }
+.dup-compare table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.dup-compare th { background: #e8eaf6; padding: 4px 8px; text-align: left; font-size: 10px; border: 1px solid #c5cae9; }
+.dup-compare td { padding: 4px 8px; border: 1px solid #e0e0e0; }
+.dup-compare td.diff { background: #fff9c4; }
+.dup-compare td.golden-val { background: #e8f5e9; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .detail-panel { width: 100%; max-width: 100%; }
+  .attr-grid { grid-template-columns: 1fr; }
+  .excel-wrapper { padding: 0 4px 4px; }
+  .filter-bar { padding: 10px 16px 0; }
+  .poi-container { margin: 0 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>POI FINAL REVIEW DASHBOARD</h1>
+    <p id="headerInfo">Loading...</p>
+  </div>
+  <div class="header-actions">
+    <button onclick="runValidation()" style="background:rgba(255,200,0,0.3);border-color:#ffca28;">Validate All</button>
+    <button onclick="runDuplicateDetection()" style="background:rgba(255,100,100,0.3);border-color:#ef5350;">Detect Duplicates</button>
+    <button onclick="exportCSV()">Export All CSV</button>
+    <button onclick="exportEdits()">Export Edits Only</button>
+    <button onclick="clearEdits()">Clear Edits</button>
+    <button onclick="document.getElementById('fileInput').click()">Import / Update CSV</button>
+  </div>
+</div>
+
+<div class="stats" id="statsBar"></div>
+
+<!-- Main View Tabs: Card View vs Excel View -->
+<div class="view-tabs" id="viewTabs">
+  <div class="view-tab active" onclick="switchView('card')">Card View</div>
+  <div class="view-tab" onclick="switchView('excel')">Excel Table View</div>
+  <div class="view-tab" onclick="switchView('duplicates')">Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
+  <div class="view-tab" onclick="switchView('map')">Map View</div>
+  <div class="view-tab" onclick="switchView('arcgis')">ArcGIS Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
+</div>
+
+<!-- CARD VIEW -->
+<div id="cardView" class="view-content active">
+  <div class="filter-bar">
+    <input type="text" id="searchInput" placeholder="Search name, ID, category, flag..." oninput="applyFilters()">
+    <select id="filterCategory" onchange="applyFilters()"><option value="">All Categories</option></select>
+    <select id="filterSeverity" onchange="applyFilters()">
+      <option value="">All QA</option>
+      <option value="high">QA &gt;= 80</option>
+      <option value="mid">QA 60-79</option>
+      <option value="low">QA &lt; 60</option>
+    </select>
+    <select id="filterStatus" onchange="applyFilters()">
+      <option value="">All Status</option>
+      <option value="Pending">Pending</option>
+      <option value="Reviewed">Reviewed</option>
+      <option value="Flagged">Flagged</option>
+    </select>
+    <span class="count" id="filterCount"></span>
+  </div>
+  <div class="data-tabs" id="dataTabs">
+    <div class="data-tab active" data-tab="all">All</div>
+    <div class="data-tab" data-tab="flagged">Flagged</div>
+    <div class="data-tab" data-tab="lowqa">Low QA</div>
+    <div class="data-tab" data-tab="reviewed">Reviewed</div>
+    <div class="data-tab" data-tab="errors">With Errors</div>
+  </div>
+  <!-- Bulk Action Bar -->
+  <div id="bulkBar" style="display:none; padding:8px 30px; background:#fff3e0; border-bottom:1px solid #ffe0b2; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span style="font-size:13px; font-weight:600; color:#e65100;" id="bulkCount">0 selected</span>
+    <button class="btn btn-success btn-sm" onclick="bulkApprove()">Approve Selected</button>
+    <select id="bulkFlagSelect" style="padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:11px; max-width:200px;">
+      <option value="">-- Select Flag --</option>
+    </select>
+    <button class="btn btn-warn btn-sm" onclick="bulkFlag()">Flag Selected</button>
+    <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="bulkClear()">Clear Selection</button>
+    <button class="btn btn-sm" onclick="bulkSelectPage()">Select Page</button>
+    <button class="btn btn-sm" onclick="bulkSelectAll()">Select All Filtered</button>
+  </div>
+  <div class="poi-container" id="tableContainer">
+    <div class="loading"><div class="spinner"></div><br>Loading POI data...</div>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<!-- EXCEL VIEW -->
+<div id="excelView" class="view-content">
+  <div class="excel-wrapper">
+    <div class="excel-toolbar">
+      <input type="text" id="excelSearch" placeholder="Search in table..." oninput="renderExcelTable()">
+      <select id="excelColFilter" onchange="renderExcelTable()">
+        <option value="all">All 72 Columns</option>
+        <option value="key">Key Columns</option>
+        <option value="basic">Basic Info</option>
+        <option value="contact">Contact</option>
+        <option value="hours">Hours</option>
+        <option value="photos">Photos/Media</option>
+        <option value="amenities">Amenities</option>
+        <option value="qa">QA & Review</option>
+      </select>
+      <select id="excelPageSize" onchange="excelPage=0; renderExcelTable()">
+        <option value="50">50 rows</option>
+        <option value="100">100 rows</option>
+        <option value="200">200 rows</option>
+        <option value="500">500 rows</option>
+      </select>
+      <button onclick="excelPage=Math.max(0,excelPage-1); renderExcelTable()">Prev</button>
+      <span id="excelPageInfo" style="font-size:11px;color:#555;">1/1</span>
+      <button onclick="excelPage++; renderExcelTable()">Next</button>
+      <span class="toolbar-info" id="excelInfo">0 rows | 0 edited</span>
+    </div>
+    <div class="excel-container" id="excelContainer"></div>
+  </div>
+</div>
+
+<!-- DUPLICATES VIEW -->
+<div id="duplicatesView" class="view-content">
+  <div style="padding:16px 30px 0;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <span style="font-weight:700;font-size:14px;color:#1a237e;">Duplicate Groups</span>
+      <span id="dupSummary" style="font-size:12px;color:#666;"></span>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <label style="font-size:11px;color:#555;display:flex;align-items:center;gap:4px;">
+          Distance (m): <input type="number" id="dupDistThreshold" value="50" min="10" max="200" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+        </label>
+        <label style="font-size:11px;color:#555;display:flex;align-items:center;gap:4px;">
+          Name similarity: <input type="number" id="dupNameThreshold" value="85" min="50" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">%
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="runDuplicateDetection()">Re-scan</button>
+        <button class="btn btn-success btn-sm" onclick="mergeAllDuplicates()">Merge All (auto)</button>
+        <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="exportDuplicatesCSV()">Export Removed</button>
+      </div>
+    </div>
+  </div>
+  <div id="dupContainer" style="padding:0 30px 20px; max-height:75vh; overflow-y:auto;">
+    <div style="text-align:center;padding:40px;color:#888;font-size:13px;">
+      Click <b>Detect Duplicates</b> to scan for potential duplicate POIs.
+    </div>
+  </div>
+</div>
+
+<!-- MAP VIEW -->
+<div id="mapView" class="view-content">
+  <div style="padding:8px 16px; background:#fff; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <span style="font-weight:700; font-size:14px; color:#1a237e;">POI Map</span>
+    <select id="mapCategoryFilter" onchange="updateMapMarkers()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+      <option value="">All Categories</option>
+    </select>
+    <select id="mapQaFilter" onchange="updateMapMarkers()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+      <option value="">All QA Scores</option>
+      <option value="100">100 Only</option>
+      <option value="90">90+</option>
+      <option value="80">80+</option>
+      <option value="low">&lt; 80</option>
+    </select>
+    <span id="mapCount" style="font-size:12px; color:#666;"></span>
+    <button onclick="resetMapView()" style="margin-left:auto; padding:5px 12px; border:1px solid #ddd; border-radius:4px; font-size:11px; cursor:pointer; background:#f5f5f5;">Reset View</button>
+  </div>
+  <div id="mapContainer" style="height:calc(100vh - 170px); width:100%;"></div>
+</div>
+
+<!-- ARCGIS MEDIA VIEW -->
+<div id="arcgisView" class="view-content">
+  <!-- Top Bar: Search POI + Status -->
+  <div style="padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <div style="font-weight:600; font-size:13px; color:#333;">Search POI:</div>
+    <input type="text" id="arcPoiSearch" placeholder="Type POI name to find media..." oninput="arcSearchPoi()" style="flex:1; min-width:250px; padding:7px 12px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
+    <select id="arcViewFilter" onchange="arcApplyFilter()" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+      <option value="suggestions">Has Suggestions (88)</option>
+      <option value="has_arc">Has ArcGIS Media (743)</option>
+      <option value="no_media">No Media in DB (250)</option>
+      <option value="all">All Matched (835)</option>
+    </select>
+    <span id="arcStatus" style="font-size:12px; color:#666;"></span>
+    <span id="arcCounter" style="font-size:12px; color:#666; margin-left:auto;"></span>
+  </div>
+
+  <!-- Content: POI List + Selected POI Detail -->
+  <div style="display:flex; height:calc(100vh - 180px); overflow:hidden;">
+    <!-- Left: POI List -->
+    <div id="arcPoiList" style="width:340px; min-width:300px; border-right:1px solid #eee; overflow-y:auto; background:#fff;"></div>
+    <!-- Right: Selected POI Media Detail -->
+    <div id="arcPoiDetail" style="flex:1; overflow-y:auto; padding:16px; background:#fafafa;">
+      <div style="text-align:center; padding:60px 20px; color:#999;">
+        <div style="font-size:40px; margin-bottom:12px;">&#128269;</div>
+        <div style="font-size:15px;">Search for a POI or select one from the list</div>
+        <div style="font-size:12px; margin-top:6px;">You'll see current DB media and ArcGIS suggestions side by side</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Media Assign Modal -->
+<div id="mediaAssignOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:2000;" onclick="closeMediaAssign()"></div>
+<div id="mediaAssignModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:12px; padding:20px; width:560px; max-height:85vh; overflow-y:auto; z-index:2001; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+  <h3 style="margin-bottom:12px;">Assign Media to Field</h3>
+  <div id="mediaAssignPreview" style="text-align:center;margin-bottom:12px;"></div>
+  <div id="mediaAssignOptions"></div>
+  <button onclick="closeMediaAssign()" style="margin-top:12px; padding:6px 16px; background:#666; color:#fff; border:none; border-radius:4px; cursor:pointer;">Cancel</button>
+</div>
+
+<!-- Detail Panel -->
+<div class="overlay" id="overlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <div>
+      <h2 id="detailTitle">POI Details</h2>
+      <span id="detailSubtitle" style="font-size:11px;opacity:0.7;"></span>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;" onclick="navPoi(-1)">Prev</button>
+      <span id="detailCounter" style="font-size:11px;opacity:0.7;"></span>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;" onclick="navPoi(1)">Next</button>
+      <button class="detail-close" onclick="closeDetail()">&times;</button>
+    </div>
+  </div>
+  <div class="detail-view-toggle">
+    <button class="active" onclick="setDetailView(this,'excel')">Excel Table</button>
+    <button onclick="setDetailView(this,'cards')">Card View</button>
+    <button onclick="setDetailView(this,'photos')">Photos</button>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
+  <div class="detail-actions">
+    <select id="flagSelect"><option value="">-- Flag --</option></select>
+    <input type="text" id="noteInput" placeholder="Review note...">
+    <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
+    <button class="btn btn-success" onclick="approvePoi()">Approve</button>
+    <button class="btn btn-primary" onclick="saveEdits()">Save</button>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('active')"><img id="lightboxImg" src=""></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFile(event)">
+
+<script>
+// ===== STATE =====
+let allPois = [];
+let filteredPois = [];
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let currentPoiIdx = -1;
+let edits = {};
+let selectedPois = new Set(); // GlobalIDs of selected POIs for bulk actions
+let detailViewMode = 'excel';
+let excelPage = 0;
+let excelSortCol = null;
+let excelSortAsc = true;
+let currentDataTab = 'all';
+
+const REVIEW_FLAGS = [
+  "Business name is incorrect","Image and Text's Phone Number is Different",
+  "Has Multiple Images But Are All The Same","Image is Unusable",
+  "Completely Wrong Category","Commercial License is wrong",
+  "Arabic phonetic rendering of English name does not match","Homepage is incorrect",
+  "Duplicate POI","Wrong Working Hours","Different POI Image Exists",
+  "Different POI's Picture is Mapped","Different POI's Video is Mapped",
+  "Business name is wrong","Video is Unusable","Interior Image is the Same as Exterior",
+  "Video is not of Interior but Exterior","Image Contains Multiple POIs",
+  "Photo is of Menu QR, not Interior","Another photo that appears to be of the same place",
+  "Exterior and interior photo is mixed",
+];
+
+const COL_GROUPS = {
+  key: ['GlobalID','Name_AR','Name_EN','Category','District_EN','Phone_Number','QA_Score','Review_Status','Review_Flag'],
+  basic: ['GlobalID','Name_AR','Name_EN','Legal_Name','Category','Subcategory','Category_Level_3','Company_Status','Latitude','Longitude','Google_Map_URL','District_AR','District_EN','Building_Number','Floor_Number','Entrance_Location'],
+  contact: ['GlobalID','Name_EN','Phone_Number','Email','Website','Social_Media','Menu_Barcode_URL','Language','Cuisine','Payment_Methods','Commercial_License'],
+  hours: ['GlobalID','Name_EN','Working_Days','Working_Hours','Break_Time','Holidays'],
+  photos: ['GlobalID','Name_EN','Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Num_Menu_Photos','Num_Additional_Photos'],
+  amenities: ['GlobalID','Name_EN','Amenities','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'],
+  qa: ['GlobalID','Name_EN','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'],
+};
+
+const ALL_FIELDS = ['GlobalID','Name_AR','Name_EN','Legal_Name','Category','Subcategory','Category_Level_3','Company_Status','Latitude','Longitude','Google_Map_URL','Building_Number','Floor_Number','Entrance_Location','Phone_Number','Email','Website','Social_Media','Working_Days','Working_Hours','Break_Time','Holidays','Menu_Barcode_URL','Language','Cuisine','Payment_Methods','Commercial_License','Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Amenities','District_AR','District_EN','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry','Num_Menu_Photos','Num_Additional_Photos','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'];
+
+const READONLY_FIELDS = new Set(['GlobalID','Google_Map_URL','Confidence','Source','All_Sources','Importance_Score','QA_Score','Num_Menu_Photos','Num_Additional_Photos']);
+
+// Fields that use Yes / No / UNAVAILABLE / UNAPPLICABLE dropdown
+const DROPDOWN_FIELDS = new Set([
+  'Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket',
+  'Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot',
+  'Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining',
+  'Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending',
+  'Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'
+]);
+const DROPDOWN_OPTIONS = ['Yes','No','UNAVAILABLE','UNAPPLICABLE'];
+
+// ===== VALIDATION CONFIG =====
+// ===== FULL CATEGORY TAXONOMY (24 categories) =====
+const CATEGORY_TAXONOMY = {
+  'Accommodation':{ ar:'إقامة', subs:{
+    'Serviced Apartment':{ ar:'شقة مخدومة', l3:['Accommodation'] },
+    'Support & Outsourcing Services':{ ar:'خدمات دعم', l3:['Lodging'] },
+  }},
+  'Automotive Services':{ ar:'خدمات سيارات', subs:{
+    'Auto Parts Store':{ ar:'متجر قطع غيار', l3:[] },
+    'Automotive Services':{ ar:'خدمات سيارات', l3:['Auto Repair Shop','Car Accessories','Hand Car Wash','Tinting Polishing','Tire & Wheel','Transport Services'] },
+    'Car Accessories':{ ar:'إكسسوارات سيارات', l3:['Tinting','Detailing','Wrapping'] },
+    'Car Care':{ ar:'العناية بالسيارات', l3:[] },
+    'Car Rentals':{ ar:'تأجير سيارات', l3:[] },
+    'Car Wash Services':{ ar:'خدمات غسيل سيارات', l3:[] },
+    'Gas Station':{ ar:'محطة بنزين', l3:[] },
+    'Parking':{ ar:'مواقف', l3:[] },
+  }},
+  'Banks':{ ar:'بنوك', subs:{
+    'Banks':{ ar:'بنوك', l3:['ATM','Bank','Financial Services'] },
+    'Investment Bank':{ ar:'بنك استثماري', l3:[] },
+  }},
+  'Beauty and Spa':{ ar:'تجميل وسبا', subs:{
+    'Beauty Salon':{ ar:'صالون تجميل', l3:['Barber'] },
+    'Beauty and Spa':{ ar:'تجميل وسبا', l3:['Barber','Barbershops','Cosmetics Store','Hair Salon','Perfumes','Skin & Care','Women Salon'] },
+    "Men's Barber":{ ar:'حلاق رجالي', l3:[] },
+    "Women's Salon":{ ar:'صالون نسائي', l3:[] },
+    'Spa & Massage':{ ar:'سبا ومساج', l3:[] },
+  }},
+  'Coffee Shops':{ ar:'مقاهي', subs:{
+    'Arabic Coffee':{ ar:'قهوة عربية', l3:[] },
+    'Coffee Roastery':{ ar:'محمصة قهوة', l3:[] },
+    'Coffee Shops':{ ar:'مقاهي', l3:['Coffee','Coffee Shop'] },
+    'Tea Houses':{ ar:'شاي', l3:[] },
+  }},
+  'Corporate':{ ar:'شركات', subs:{
+    'Agricultural':{ ar:'زراعي', l3:[] },
+    'Catering':{ ar:'تموين', l3:[] },
+    'Corporate':{ ar:'شركات', l3:['Business Services','Courier Services','Distribution Media','Marketing Agency','Payment Processing','Telecommunications','Travel Agency'] },
+  }},
+  'Cultural Sites':{ ar:'مواقع ثقافية', subs:{
+    'Castle':{ ar:'قلعة', l3:[] },
+    'Cultural Sites':{ ar:'مواقع ثقافية', l3:[] },
+    'Museum':{ ar:'متحف', l3:['History Museum','Art Museum','Science Museum','Heritage Museum'] },
+  }},
+  'Education':{ ar:'تعليم', subs:{
+    'Academy':{ ar:'أكاديمية', l3:[] },
+    'Education':{ ar:'تعليم', l3:['Kindergarten / Nursery','School / Training Center'] },
+    'Educational Institution':{ ar:'مؤسسة تعليمية', l3:[] },
+    'Elementary School':{ ar:'ابتدائي', l3:[] },
+    'Kindergarten':{ ar:'روضة', l3:[] },
+    'Private School':{ ar:'مدرسة خاصة', l3:[] },
+    'Public Library':{ ar:'مكتبة عامة', l3:[] },
+    'School':{ ar:'مدرسة', l3:['International School','Private School','Public School'] },
+  }},
+  'Entertainment':{ ar:'ترفيه', subs:{
+    'Art and Craft Workshops':{ ar:'ورش فنون وحرف', l3:[] },
+    'Cinema':{ ar:'سينما', l3:[] },
+    'Entertainment':{ ar:'ترفيه', l3:[] },
+    'Park':{ ar:'حديقة', l3:[] },
+  }},
+  'Food and Beverages':{ ar:'أغذية ومشروبات', subs:{
+    'Bakeries':{ ar:'مخابز', l3:[] },
+    'Food and Beverages':{ ar:'أغذية ومشروبات', l3:['Cafe / Restaurant','Levantine','Restaurant'] },
+    'Lounge':{ ar:'لاونج', l3:[] },
+    'Meat Shop':{ ar:'ملحمة', l3:[] },
+    'Pastries':{ ar:'معجنات', l3:[] },
+    'Sweets and Confectionery':{ ar:'حلويات', l3:[] },
+    'Vegetables and Fruits':{ ar:'خضروات وفواكه', l3:[] },
+  }},
+  'Fuel Stations':{ ar:'محطات وقود', subs:{
+    'Car Care':{ ar:'العناية بالسيارات', l3:[] },
+    'Fuel Stations':{ ar:'محطات وقود', l3:[] },
+  }},
+  'Government Services':{ ar:'خدمات حكومية', subs:{
+    'Government Services':{ ar:'خدمات حكومية', l3:[] },
+    'Municipalities (Amana)':{ ar:'الأمانة', l3:[] },
+  }},
+  'Grocery':{ ar:'بقالة', subs:{
+    'Bakeries':{ ar:'مخابز', l3:[] },
+    'Catering':{ ar:'تموين', l3:[] },
+    'Convenience Store':{ ar:'متجر صغير', l3:[] },
+    'Grocery':{ ar:'بقالة', l3:['Grocery Store / Supermarket','Market','Supermarkets And Marts'] },
+    'Meat Shop':{ ar:'ملحمة', l3:[] },
+    'Supermarket':{ ar:'سوبرماركت', l3:[] },
+    'Traditional Souks':{ ar:'أسواق تقليدية', l3:[] },
+    'Vegetables and Fruits':{ ar:'خضروات وفواكه', l3:[] },
+  }},
+  'Health & Medical':{ ar:'صحة وطب', subs:{
+    'Hospitals & Clinics':{ ar:'مستشفيات وعيادات', l3:[] },
+    'Support & Outsourcing Services':{ ar:'خدمات دعم', l3:[] },
+  }},
+  'Home Goods':{ ar:'مستلزمات منزلية', subs:{
+    'Appliance Store':{ ar:'متجر أجهزة', l3:[] },
+    'Building Contractor':{ ar:'مقاول بناء', l3:[] },
+    'Carpenter':{ ar:'نجار', l3:[] },
+    'Electrical Appliances':{ ar:'أجهزة كهربائية', l3:[] },
+    'Furniture & Interior':{ ar:'أثاث وديكور', l3:[] },
+    'Hardware Store':{ ar:'متجر أدوات', l3:[] },
+    'Home Decor':{ ar:'ديكور', l3:[] },
+    'Home Goods':{ ar:'مستلزمات منزلية', l3:['Housing Construction','Retail Store'] },
+    'Household Goods':{ ar:'أدوات منزلية', l3:[] },
+    'Paint Store':{ ar:'متجر طلاء', l3:[] },
+    'Tailoring':{ ar:'خياطة', l3:[] },
+  }},
+  'Hospitals':{ ar:'مستشفيات', subs:{
+    'Ambulance':{ ar:'إسعاف', l3:[] },
+    'Clinic':{ ar:'عيادة', l3:['Dental Clinic','General Hospital','Medical Clinic','Optical Shop'] },
+    'Hospital':{ ar:'مستشفى', l3:[] },
+    'Hospitals':{ ar:'مستشفيات', l3:['Dental Clinic','General Hospital','Medical Clinic','Optical Shop'] },
+  }},
+  'Hotels and Accommodations':{ ar:'فنادق وإقامة', subs:{
+    'Apartment':{ ar:'شقة', l3:[] },
+    'Hotel':{ ar:'فندق', l3:[] },
+    'Hotels and Accommodations':{ ar:'فنادق وإقامة', l3:['Accommodation','Furnished Apartment','Lodging'] },
+    'Serviced Apartment':{ ar:'شقة مخدومة', l3:[] },
+    'Villa':{ ar:'فيلا', l3:[] },
+  }},
+  'Life & Convenience':{ ar:'حياة وراحة', subs:{
+    'Beauty & Personal Care':{ ar:'تجميل وعناية', l3:[] },
+    'Car Wash':{ ar:'غسيل سيارات', l3:[] },
+    'Cleaning Service':{ ar:'خدمات تنظيف', l3:[] },
+    'Life & Convenience':{ ar:'حياة وراحة', l3:[] },
+    'Repair Services':{ ar:'خدمات إصلاح', l3:[] },
+    'mending':{ ar:'إصلاح', l3:[] },
+    'retail':{ ar:'تجزئة', l3:[] },
+  }},
+  'Mosques':{ ar:'مساجد', subs:{
+    'Mosques':{ ar:'مساجد', l3:['Mosque'] },
+  }},
+  'Nature':{ ar:'طبيعة', subs:{
+    'Beaches':{ ar:'شواطئ', l3:[] },
+    'Florist':{ ar:'متجر زهور', l3:[] },
+    'Nature':{ ar:'طبيعة', l3:[] },
+    'Park':{ ar:'حديقة', l3:[] },
+    'Walking Trails':{ ar:'مسارات مشي', l3:[] },
+  }},
+  'Pharmacies':{ ar:'صيدليات', subs:{
+    'Pharmacies':{ ar:'صيدليات', l3:[] },
+    'Pharmacy':{ ar:'صيدلية', l3:[] },
+  }},
+  'Public Parks':{ ar:'حدائق عامة', subs:{
+    'Park':{ ar:'حديقة', l3:[] },
+    'Public Parks':{ ar:'حدائق عامة', l3:[] },
+  }},
+  'Public Services':{ ar:'خدمات عامة', subs:{
+    'Public Services':{ ar:'خدمات عامة', l3:[] },
+  }},
+  'Real Estate':{ ar:'عقارات', subs:{
+    'Projects & Developments':{ ar:'مشاريع', l3:[] },
+    'Real Estate Company':{ ar:'شركة عقارية', l3:['Real Estate Development','Real Estate Leasing'] },
+  }},
+  'Restaurants':{ ar:'مطاعم', subs:{
+    'American':{ ar:'مطعم أمريكي', l3:[] },
+    'Arab Cuisine':{ ar:'مطبخ عربي', l3:[] },
+    'Cafes & Desserts':{ ar:'مقاهي وحلويات', l3:[] },
+    'Catering':{ ar:'تموين', l3:[] },
+    'Fast Food':{ ar:'وجبات سريعة', l3:[] },
+    'Italian':{ ar:'مطعم إيطالي', l3:[] },
+    'Pizza':{ ar:'بيتزا', l3:[] },
+    'Restaurants':{ ar:'مطاعم', l3:['Arabic Restaurant','Buffet Restaurant','Egyptian','Fast Food Restaurant','Hamburger','Indian','Levantine','Pizza','Restaurant','Sandwich','Saudi Cuisine','Shawarma','Turkish Cuisine'] },
+    'Thai':{ ar:'مطعم تايلندي', l3:[] },
+    'Turkish':{ ar:'مطعم تركي', l3:[] },
+    'retail':{ ar:'تجزئة', l3:[] },
+  }},
+  'Services & Industry':{ ar:'خدمات وصناعة', subs:{
+    'Attorney':{ ar:'محامي', l3:[] },
+    'Building Contractor':{ ar:'مقاول بناء', l3:['Building Maintenance','Construction / Contracting'] },
+    'Equipment Rental':{ ar:'تأجير معدات', l3:[] },
+    'Government Services':{ ar:'خدمات حكومية', l3:[] },
+    'Insurance':{ ar:'تأمين', l3:[] },
+    'Real Estate':{ ar:'عقارات', l3:[] },
+    'Support & Outsourcing Services':{ ar:'خدمات دعم', l3:['Facility Maintenance','Financial Consulting','IT Services','Mobile Network Operator'] },
+    'laundry':{ ar:'غسيل', l3:['Laundries / Dry-Cleaning','Laundry Shop'] },
+    'mending':{ ar:'إصلاح', l3:[] },
+    'retail':{ ar:'تجزئة', l3:['Admin Support','Building Maintenance','Business Services','Car Showroom And Sales','Financial Service','Laundries / Dry-Cleaning','Laundry Shop','Mobile Phone Accessories','Real Estate Agency','Real Estate Leasing','Retail Store','Travel Agencies','Women Salon'] },
+  }},
+  'Shopping':{ ar:'تسوق', subs:{
+    'Antique Shop':{ ar:'متجر تحف', l3:[] },
+    'Bicycle Shop':{ ar:'متجر دراجات', l3:[] },
+    'Bookstore':{ ar:'مكتبة', l3:[] },
+    'Educational Supply Store':{ ar:'متجر قرطاسية', l3:[] },
+    'Electrical Appliances':{ ar:'أجهزة كهربائية', l3:[] },
+    'Florist':{ ar:'متجر زهور', l3:[] },
+    'General Wholesale & Retail':{ ar:'جملة وتجزئة', l3:[] },
+    'Gold Store':{ ar:'متجر ذهب', l3:[] },
+    'Optical':{ ar:'بصريات', l3:[] },
+    'Perfume':{ ar:'عطور', l3:[] },
+    'Shoe Stores':{ ar:'متاجر أحذية', l3:[] },
+    'Shopping':{ ar:'تسوق', l3:['Bedding And Curtains','Cosmetics Store','Fashion / Clothing Store','Flower Shop','Furniture','General Household',"Men's Clothing",'Optical Shop','Perfumes','Pet Shop','Retail Store','Uniforms And Teamwear'] },
+    'Shopping Mall':{ ar:'مول', l3:[] },
+    'Tailoring':{ ar:'خياطة', l3:[] },
+    'Toy Store':{ ar:'متجر دمى', l3:[] },
+  }},
+  'Shopping & Distribution':{ ar:'تسوق وتوزيع', subs:{
+    'Automotive & Car Accessories':{ ar:'إكسسوارات سيارات', l3:[] },
+    'Fashion':{ ar:'أزياء', l3:[] },
+    'Wholesale & Retail':{ ar:'جملة وتجزئة', l3:[] },
+    'retail':{ ar:'تجزئة', l3:[] },
+  }},
+  'Sports':{ ar:'رياضة', subs:{
+    'Basketball Club':{ ar:'نادي كرة سلة', l3:[] },
+    'Martial Arts Academy':{ ar:'أكاديمية فنون قتالية', l3:[] },
+    "Men's Gym":{ ar:'نادي رياضي للرجال', l3:[] },
+    'Sports':{ ar:'رياضة', l3:['Gym','Sports Club','Video Games'] },
+    'Stadiums':{ ar:'استادات', l3:[] },
+  }},
+  'Sports & Recreation':{ ar:'رياضة وترفيه', subs:{
+    'Support & Outsourcing Services':{ ar:'خدمات دعم', l3:[] },
+  }},
+  'Transportation':{ ar:'نقل', subs:{
+    'Parking':{ ar:'مواقف', l3:[] },
+    'Transportation':{ ar:'نقل', l3:[] },
+  }},
+  'Culture & Art':{ ar:'ثقافة وفن', subs:{
+    'Religion':{ ar:'دين', l3:[] },
+  }},
+  'Finance & Insurance':{ ar:'مالية وتأمين', subs:{
+    'financial_service':{ ar:'خدمات مالية', l3:[] },
+  }},
+};
+
+// Build flat lists from taxonomy
+const ALLOWED_CATEGORIES = Object.keys(CATEGORY_TAXONOMY);
+function getSubcategories(cat) {
+  const t = CATEGORY_TAXONOMY[cat];
+  return t ? Object.keys(t.subs) : [];
+}
+function getLevel3(cat, sub) {
+  const t = CATEGORY_TAXONOMY[cat];
+  if (!t || !t.subs[sub]) return [];
+  return t.subs[sub].l3 || [];
+}
+function getCategoryAr(cat) { return CATEGORY_TAXONOMY[cat]?.ar || ''; }
+function getSubcategoryAr(cat, sub) { return CATEGORY_TAXONOMY[cat]?.subs[sub]?.ar || ''; }
+
+// ===== DROPDOWN OPTIONS FOR ALL FIELDS =====
+const FIELD_DROPDOWN_OPTIONS = {
+  Working_Days: ['Daily','Sun, Mon, Tue, Wed, Thu, Fri, Sat','Sun, Mon, Tue, Wed, Thu','Sun, Mon, Tue, Wed, Thu, Sat','Sun, Mon, Tue, Wed, Thu, Fri','Mon, Tue, Wed, Thu, Fri','UNAVAILABLE'],
+  Working_Hours: ['06:00 - 22:00','06:00 - 00:00','07:00 - 23:00','08:00 - 22:00','08:00 - 23:00','08:00 - 00:00','09:00 - 17:00','09:00 - 21:00','09:00 - 22:00','09:00 - 23:00','09:00 - 00:00','10:00 - 22:00','10:00 - 23:00','10:00 - 00:00','12:00 - 00:00','16:00 - 00:00','16:00 - 02:00','Open 24 Hours','UNAVAILABLE'],
+  Break_Time: ['No Break','12:00 - 13:00','12:30 - 13:30','13:00 - 14:00','13:00 - 16:00','14:00 - 16:00','15:00 - 17:00','UNAVAILABLE','UNAPPLICABLE'],
+  Holidays: ['No Holidays','Friday','Friday & Saturday','Saturday','National Holidays Only','Ramadan Hours','UNAVAILABLE'],
+  Payment_Methods: ['Cash, Mada, Visa, Mastercard, Apple Pay','Cash, Mada, Visa, Mastercard','Mada, Visa, Mastercard, Apple Pay','Cash, Mada, Visa, Apple Pay','Cash, Mada, Mastercard, Apple Pay','Cash, Mada, Visa, Mastercard, Apple Pay, STC Pay','Cash, Mada, Visa','Cash, Mada','Mada, Visa, Mastercard','Mada, Apple Pay','Cash','Apple Pay','UNAVAILABLE'],
+  Language: ['Arabic','English','Arabic, English','Arabic, English, Urdu','Arabic, English, Filipino','Arabic, English, Hindi','Arabic, English, French','UNAVAILABLE'],
+  Cuisine: ['Fast Food','Mixed','Restaurants','Coffee / Cafe','Coffee','Saudi / Arabic','Saudi','International','Pizza / Italian','Bakery / Pastry','Lebanese','Middle Eastern','Indian','Pakistani','Chinese','Japanese','Korean','Thai','Italian','American','Turkish','Yemeni','Egyptian','Syrian','Seafood','Grills','UNAVAILABLE','UNAPPLICABLE'],
+  Entrance_Location: ['Front','Side','Back','Mall Entrance','Basement','UNAVAILABLE'],
+  District_EN: [], // will be populated from data
+  District_AR: [], // will be populated from data
+};
+
+const FNB_CATEGORIES = new Set([
+  'Restaurants','Food and Beverages','Coffee Shops',
+  'Food & Beverage','Restaurant','Cafe','Cafes','Coffee Shop',
+  'Bakery','Fast Food','Fine Dining','Catering','Food Truck','Juice Bar',
+  'Ice Cream','Dessert','Buffet'
+]);
+
+// Fields only applicable to F&B - auto UNAPPLICABLE for others
+const FNB_ONLY_FIELDS = ['Menu','Dine_In','Only_Delivery','Cuisine','Menu_Barcode_URL','Menu_Photo_URL',
+  'Reservation','Iftar_Tent','Iftar_Menu','Open_Suhoor','Shisha'];
+
+const ALLOWED_COMPANY_STATUS = ['Open','Temporarily Closed','Permanently Closed'];
+const ALLOWED_FLOOR_NUMBERS = ['G','B1','1','2','3','4','5'];
+const ALLOWED_PAYMENT_METHODS = ['Cash','Visa','Mastercard','Mada','Apple Pay','STC Pay','Tabby','Tamara'];
+
+// GATE rules - BLOCKER severity
+const GATE_RULES = {
+  N1: { field:'Name_AR',   check: v => v && v.trim().length >= 2, msg:'Name AR missing or too short', fix:'Provide Arabic name (≥2 chars)' },
+  N2: { field:'Name_EN',   check: v => v && v.trim().length >= 2, msg:'Name EN missing or too short', fix:'Provide English name (≥2 chars)' },
+  P1: { field:'Phone_Number', check: v => !v || v==='UNAVAILABLE' || /^(966|05|\+966)\d{7,9}$/.test(v.replace(/[\s\-()]/g,'')), msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX or 05XXXXXXXX' },
+  M1: { field:'Exterior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing exterior photo', fix:'Add valid exterior photo URL' },
+  M2: { field:'Interior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing interior photo', fix:'Add valid interior photo URL' },
+  M3: { field:'Latitude',  check: v => { const n=parseFloat(v); return !isNaN(n) && n>=15 && n<=35; }, msg:'Latitude out of Saudi bounds (15-35)', fix:'Correct latitude' },
+  M4: { field:'Longitude', check: v => { const n=parseFloat(v); return !isNaN(n) && n>=35 && n<=60; }, msg:'Longitude out of Saudi bounds (35-60)', fix:'Correct longitude' },
+  M5: { field:'Category',  check: v => v && v.trim().length > 0, msg:'Category is empty', fix:'Select a valid category' },
+  M6: { field:'District_EN', check: v => v && v.trim().length > 0, msg:'District EN is empty', fix:'Provide district name' },
+  M7: { field:'Working_Hours', check: v => v && v!=='UNAVAILABLE' && v.trim().length > 0, msg:'Working hours missing', fix:'Provide working hours' },
+  V1: { field:'Exterior_Photo_URL', check: (v,poi) => {
+    if (!v || v==='UNAVAILABLE') return true;
+    const int = poi.Interior_Photo_URL||'';
+    return v !== int;
+  }, msg:'Exterior and interior photo URLs are identical', fix:'Use different photos' },
+  V2: { field:'Commercial_License', check: v => !v || v==='UNAVAILABLE' || /^\d{11}$/.test(v.replace(/\D/g,'')), msg:'Commercial license must be 11 digits', fix:'Provide 11-digit license number' },
+  C1: { field:'Category', check: v => {
+    if (!v) return true;
+    if (ALLOWED_CATEGORIES.includes(v)) return true;
+    // Also accept close matches (fuzzy)
+    const vl = v.toLowerCase();
+    return ALLOWED_CATEGORIES.some(c => vl.includes(c.toLowerCase()) || c.toLowerCase().includes(vl));
+  }, msg:'Category not in taxonomy', fix:'Select from allowed categories' },
+  L1: { field:'Latitude', check: (v,poi) => {
+    const lat = parseFloat(v), lon = parseFloat(poi.Longitude);
+    return !(isNaN(lat) || isNaN(lon) || (lat===0 && lon===0));
+  }, msg:'Coordinates are 0,0', fix:'Provide valid coordinates' },
+  W1: { field:'Working_Hours', check: v => {
+    if (!v || v==='UNAVAILABLE') return true;
+    const m = v.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    if (!m) return true;
+    const t1 = parseInt(m[1])*60+parseInt(m[2]), t2 = parseInt(m[3])*60+parseInt(m[4]);
+    return !(t2 < t1 && t2 > 0);
+  }, msg:'Close time before open time', fix:'Correct working hours order' },
+  D1: { field:'District_AR', check: v => v && v.trim().length > 0, msg:'District AR is empty', fix:'Provide Arabic district name' },
+  H1: { field:'Working_Days', check: v => v && v!=='UNAVAILABLE' && v.trim().length > 0, msg:'Working days missing', fix:'Provide working days' },
+};
+
+// Field-level validators (non-GATE, MAJOR/MINOR severity)
+const FIELD_VALIDATORS = {
+  Name_AR: [
+    { id:'NAR1', check: v => !v || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name' },
+    { id:'NAR2', check: v => !v || v.length <= 100, severity:'MINOR', msg:'Arabic name too long (>100 chars)', fix:'Shorten name' },
+  ],
+  Name_EN: [
+    { id:'NEN1', check: v => !v || !/[\u0600-\u06FF]{2,}/.test(v), severity:'MAJOR', msg:'English name contains Arabic text', fix:'Remove Arabic from English name' },
+    { id:'NEN2', check: v => !v || !/\d{7,}/.test(v), severity:'MAJOR', msg:'Name contains phone number', fix:'Remove phone from name' },
+    { id:'NEN3', check: v => !v || v.length <= 100, severity:'MINOR', msg:'English name too long', fix:'Shorten name' },
+  ],
+  Email: [
+    { id:'EM1', check: v => !v || v==='UNAVAILABLE' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), severity:'MAJOR', msg:'Invalid email format', fix:'Correct email (user@domain.com)' },
+  ],
+  Website: [
+    { id:'WS1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Website missing http(s)://', fix:'Add https:// prefix' },
+    { id:'WS2', check: v => {
+      if (!v || v==='UNAVAILABLE') return true;
+      const bad = ['facebook.com','instagram.com','twitter.com','maps.google','maps.app','wa.me','t.me'];
+      return !bad.some(d => v.toLowerCase().includes(d));
+    }, severity:'MAJOR', msg:'Website is a social media link', fix:'Use actual business website' },
+  ],
+  Phone_Number: [
+    { id:'PH1', check: v => !v || v==='UNAVAILABLE' || !/[eE]\+/.test(v), severity:'MAJOR', msg:'Phone in scientific notation', fix:'Convert to digits' },
+  ],
+  Floor_Number: [
+    { id:'FL1', check: v => !v || v==='UNAVAILABLE' || ALLOWED_FLOOR_NUMBERS.includes(String(v).trim()), severity:'MINOR', msg:'Floor not in allowed list', fix:'Use G, 1-5' },
+  ],
+  Company_Status: [
+    { id:'CS1', check: v => !v || ALLOWED_COMPANY_STATUS.includes(v), severity:'MAJOR', msg:'Invalid company status', fix:'Use Open/Closed/Temporarily Closed' },
+  ],
+  Commercial_License: [
+    { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Use digits only' },
+  ],
+  Social_Media: [
+    { id:'SM1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Social media missing URL', fix:'Add full URL' },
+  ],
+};
+
+// Validate a single POI, returns array of { column, rule_id, severity, fail_reason, suggested_fix }
+function validatePoi(poi) {
+  const errors = [];
+  // GATE rules (all BLOCKER)
+  for (const [ruleId, rule] of Object.entries(GATE_RULES)) {
+    const val = poi[rule.field] || '';
+    const pass = rule.check.length > 1 ? rule.check(val, poi) : rule.check(val);
+    if (!pass) {
+      errors.push({ column: rule.field, rule_id: ruleId, severity: 'BLOCKER', fail_reason: rule.msg, suggested_fix: rule.fix });
+    }
+  }
+  // Field validators (MAJOR/MINOR)
+  for (const [field, rules] of Object.entries(FIELD_VALIDATORS)) {
+    const val = poi[field] || '';
+    for (const rule of rules) {
+      if (!rule.check(val)) {
+        errors.push({ column: field, rule_id: rule.id, severity: rule.severity, fail_reason: rule.msg, suggested_fix: rule.fix });
+      }
+    }
+  }
+  // Cross-field: F&B checks
+  const cat = (poi.Category || '').trim();
+  const isFnb = FNB_CATEGORIES.has(cat) || cat.toLowerCase().includes('food') || cat.toLowerCase().includes('restaurant') || cat.toLowerCase().includes('cafe');
+  if (isFnb) {
+    if (!poi.Menu_Photo_URL || poi.Menu_Photo_URL === 'UNAVAILABLE') {
+      errors.push({ column: 'Menu_Photo_URL', rule_id: 'XF1', severity: 'MAJOR', fail_reason: 'F&B POI missing menu photo', suggested_fix: 'Add menu photo for food establishment' });
+    }
+  }
+  // Cross-field: Dropdown fields should be valid values
+  DROPDOWN_FIELDS.forEach(field => {
+    const val = (poi[field] || '').trim();
+    if (val && !DROPDOWN_OPTIONS.includes(val)) {
+      errors.push({ column: field, rule_id: 'DD1', severity: 'MINOR', fail_reason: `"${val}" not in allowed dropdown values`, suggested_fix: 'Use Yes/No/UNAVAILABLE/UNAPPLICABLE' });
+    }
+  });
+  return errors;
+}
+
+// Validate all POIs, returns Map<GlobalID, errors[]>
+let validationResults = new Map();
+function validateAllPois() {
+  validationResults.clear();
+  let totalBlockers = 0, totalMajor = 0, totalMinor = 0;
+  allPois.forEach(poi => {
+    const errs = validatePoi(poi);
+    if (errs.length > 0) {
+      validationResults.set(poi.GlobalID, errs);
+      errs.forEach(e => {
+        if (e.severity === 'BLOCKER') totalBlockers++;
+        else if (e.severity === 'MAJOR') totalMajor++;
+        else totalMinor++;
+      });
+    }
+  });
+  return { totalBlockers, totalMajor, totalMinor, poisWithErrors: validationResults.size };
+}
+
+// Get severity color for a cell
+function getValidationColor(gid, field) {
+  const errs = validationResults.get(gid);
+  if (!errs) return '';
+  const fieldErrs = errs.filter(e => e.column === field);
+  if (!fieldErrs.length) return '';
+  if (fieldErrs.some(e => e.severity === 'BLOCKER')) return '#ffcdd2'; // red
+  if (fieldErrs.some(e => e.severity === 'MAJOR')) return '#ffe0b2'; // orange
+  return '#fff9c4'; // yellow
+}
+
+function getValidationTooltip(gid, field) {
+  const errs = validationResults.get(gid);
+  if (!errs) return '';
+  return errs.filter(e => e.column === field).map(e => `[${e.severity}] ${e.fail_reason}`).join(' | ');
+}
+
+// ===== SMART DROPDOWNS =====
+function renderCategoryDropdown(val, gid, hasEdit, onchangeFn) {
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="Category" data-gid="${gid}" onchange="${onchangeFn}(this);onCategoryChange('${gid}','${onchangeFn}')" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  ALLOWED_CATEGORIES.forEach(c => {
+    const ar = getCategoryAr(c);
+    h += `<option value="${c}"${val===c?' selected':''}>${c} ${ar?'('+ar+')':''}</option>`;
+  });
+  if (val && !ALLOWED_CATEGORIES.includes(val)) h += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+  h += '</select>';
+  return h;
+}
+
+function renderSubcategoryDropdown(val, gid, hasEdit, onchangeFn) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  const cat = poi ? poi.Category : '';
+  const subs = getSubcategories(cat);
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="Subcategory" data-gid="${gid}" onchange="${onchangeFn}(this);onSubcategoryChange('${gid}','${onchangeFn}')" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  subs.forEach(s => {
+    const ar = getSubcategoryAr(cat, s);
+    h += `<option value="${s}"${val===s?' selected':''}>${s} ${ar?'('+ar+')':''}</option>`;
+  });
+  if (val && !subs.includes(val)) h += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+  h += '</select>';
+  return h;
+}
+
+function renderLevel3Dropdown(val, gid, hasEdit, onchangeFn) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  const cat = poi ? poi.Category : '';
+  const sub = poi ? poi.Subcategory : '';
+  const l3s = getLevel3(cat, sub);
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="Category_Level_3" data-gid="${gid}" onchange="${onchangeFn}(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  l3s.forEach(l => { h += `<option value="${l}"${val===l?' selected':''}>${l}</option>`; });
+  if (val && !l3s.includes(val)) h += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+  h += '</select>';
+  return h;
+}
+
+function onCategoryChange(gid, onchangeFn) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  // Reset subcategory and level 3 when category changes
+  poi.Subcategory = ''; poi.Category_Level_3 = '';
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid].Subcategory = ''; edits[gid].Category_Level_3 = '';
+  saveEditsToStorage();
+  saveFieldsToDb(gid, { Subcategory: '', Category_Level_3: '' });
+  autoLockFnb(gid);
+  // Re-render detail if open
+  if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
+}
+
+function onSubcategoryChange(gid, onchangeFn) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  poi.Category_Level_3 = '';
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid].Category_Level_3 = '';
+  saveEditsToStorage();
+  saveToDb(gid, 'Category_Level_3', '');
+  if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
+}
+
+function renderFloorDropdown(val, gid, hasEdit, onchangeFn) {
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="Floor_Number" data-gid="${gid}" onchange="${onchangeFn}(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  h += `<option value="UNAVAILABLE"${val==='UNAVAILABLE'?' selected':''}>UNAVAILABLE</option>`;
+  ALLOWED_FLOOR_NUMBERS.forEach(f => { h += `<option value="${f}"${val===f?' selected':''}>${f==='G'?'G (Ground)':f}</option>`; });
+  if (val && !ALLOWED_FLOOR_NUMBERS.includes(val) && val!=='UNAVAILABLE' && val) h += `<option value="${esc(val)}" selected>${esc(val)}</option>`;
+  h += '</select>';
+  return h;
+}
+
+function renderCompanyStatusDropdown(val, gid, hasEdit, onchangeFn) {
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="Company_Status" data-gid="${gid}" onchange="${onchangeFn}(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  ALLOWED_COMPANY_STATUS.forEach(s => { h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`; });
+  if (val && !ALLOWED_COMPANY_STATUS.includes(val)) h += `<option value="${esc(val)}" selected>${esc(val)}</option>`;
+  h += '</select>';
+  return h;
+}
+
+// Generic dropdown for fields with predefined options
+function renderFieldDropdown(val, gid, field, options, hasEdit, onchangeFn) {
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="${field}" data-gid="${gid}" onchange="${onchangeFn}(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  h += `<option value="">-- Select --</option>`;
+  options.forEach(opt => { h += `<option value="${esc(opt)}"${val===opt?' selected':''}>${esc(opt)}</option>`; });
+  if (val && !options.includes(val)) h += `<option value="${esc(val)}" selected>${esc(val)} (custom)</option>`;
+  h += '</select>';
+  return h;
+}
+
+// Auto-lock F&B-only fields to UNAPPLICABLE for non-food categories
+function autoLockFnb(gid) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const cat = (poi.Category || '').trim();
+  const isFnb = FNB_CATEGORIES.has(cat) || cat.toLowerCase().includes('food') || cat.toLowerCase().includes('restaurant') || cat.toLowerCase().includes('cafe');
+  if (!isFnb) {
+    FNB_ONLY_FIELDS.forEach(field => {
+      const curVal = (poi[field] || '').trim();
+      if (curVal !== 'UNAPPLICABLE' && curVal !== '' && DROPDOWN_FIELDS.has(field)) {
+        poi[field] = 'UNAPPLICABLE';
+        if (!edits[gid]) edits[gid] = {};
+        edits[gid][field] = 'UNAPPLICABLE';
+      }
+    });
+    saveEditsToStorage();
+    // Re-render if detail panel is open
+    if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
+  }
+}
+
+function renderDropdown(val, gid, field, hasEdit, onchangeFn) {
+  const changed = hasEdit ? 'background:#e8f5e9;' : '';
+  let h = `<select data-field="${field}" data-gid="${gid}" onchange="${onchangeFn}(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${changed}">`;
+  DROPDOWN_OPTIONS.forEach(opt => {
+    h += `<option value="${opt}"${val===opt?' selected':''}>${opt}</option>`;
+  });
+  // If current value doesn't match any option, add it
+  if (val && !DROPDOWN_OPTIONS.includes(val)) {
+    h += `<option value="${esc(val)}" selected>${esc(val)}</option>`;
+  }
+  h += '</select>';
+  return h;
+}
+
+const DETAIL_SECTIONS = [
+  { title: 'IDENTITY', fields: ['GlobalID','Name_AR','Name_EN','Legal_Name','Category','Subcategory','Category_Level_3','Company_Status'] },
+  { title: 'LOCATION', fields: ['Latitude','Longitude','Google_Map_URL','District_AR','District_EN','Building_Number','Floor_Number','Entrance_Location'] },
+  { title: 'CONTACT', fields: ['Phone_Number','Email','Website','Social_Media','Menu_Barcode_URL','Language','Cuisine','Payment_Methods','Commercial_License'] },
+  { title: 'WORKING HOURS', fields: ['Working_Days','Working_Hours','Break_Time','Holidays'] },
+  { title: 'MEDIA', fields: ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Num_Menu_Photos','Num_Additional_Photos'] },
+  { title: 'AMENITIES & SERVICES', fields: ['Amenities','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'] },
+  { title: 'QA & REVIEW', fields: ['Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'] },
+];
+
+// ===== DB MODE =====
+let dbMode = false; // true if connected to API/PostgreSQL
+
+// ===== INIT =====
+async function init() {
+  const saved = localStorage.getItem('poi_review_edits');
+  if (saved) try { edits = JSON.parse(saved); } catch(e) {}
+  const sel = document.getElementById('flagSelect');
+  const bulkSel = document.getElementById('bulkFlagSelect');
+  REVIEW_FLAGS.forEach(f => {
+    const o = document.createElement('option'); o.value = f; o.textContent = f; sel.appendChild(o);
+    const o2 = document.createElement('option'); o2.value = f; o2.textContent = f; bulkSel.appendChild(o2);
+  });
+
+  // Try API first (PostgreSQL), fallback to static JSON
+  try {
+    const r = await fetch('/api/pois');
+    if (r.ok) {
+      allPois = await r.json();
+      dbMode = true;
+      console.log('Connected to PostgreSQL via API');
+    }
+  } catch(e) {
+    console.log('API not available, trying static JSON...');
+  }
+
+  if (!allPois.length) {
+    try {
+      const r = await fetch('poi_final_data.json');
+      if (r.ok) allPois = await r.json();
+    } catch(e) {}
+  }
+
+  if (!allPois.length) {
+    document.getElementById('tableContainer').innerHTML = '<div class="loading"><p>No data found. Click <b>Import / Update CSV</b> to load data, or start <b>poi_api_server.py</b> for PostgreSQL.</p></div>';
+    return;
+  }
+  applyEditsToData();
+  buildUI();
+  if (dbMode) {
+    document.getElementById('headerInfo').textContent += ' | DB: Connected';
+    toast('Connected to PostgreSQL database');
+  }
+}
+
+// Save single field to DB
+async function saveToDb(gid, field, value) {
+  if (!dbMode) return;
+  try {
+    await fetch('/api/pois/' + encodeURIComponent(gid), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value })
+    });
+  } catch(e) { console.warn('DB save failed:', e); }
+}
+
+// Save multiple fields to DB
+async function saveFieldsToDb(gid, fields) {
+  if (!dbMode) return;
+  try {
+    await fetch('/api/pois/' + encodeURIComponent(gid), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    });
+  } catch(e) { console.warn('DB save failed:', e); }
+}
+
+function parseCSVLine(line) {
+  const result = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) { if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; } else if (ch === '"') inQ = false; else cur += ch; }
+    else { if (ch === '"') inQ = true; else if (ch === ',') { result.push(cur.trim()); cur = ''; } else cur += ch; }
+  }
+  result.push(cur.trim()); return result;
+}
+
+function applyEditsToData() {
+  for (const [gid, fields] of Object.entries(edits)) {
+    const poi = allPois.find(p => p.GlobalID === gid);
+    if (poi) Object.assign(poi, fields);
+  }
+}
+
+function buildUI() {
+  // Populate district dropdowns from data
+  const distEN = [...new Set(allPois.map(p => p.District_EN).filter(Boolean))].sort();
+  const distAR = [...new Set(allPois.map(p => p.District_AR).filter(Boolean))].sort();
+  FIELD_DROPDOWN_OPTIONS.District_EN = [...distEN, 'UNAVAILABLE'];
+  FIELD_DROPDOWN_OPTIONS.District_AR = [...distAR, 'UNAVAILABLE'];
+  validateAllPois();
+  buildStats(); buildCategoryFilter(); applyFilters();
+  document.getElementById('headerInfo').textContent = `${allPois.length} POIs | ${Object.keys(edits).length} edited`;
+  document.querySelectorAll('.data-tab').forEach(t => {
+    t.onclick = function() {
+      document.querySelectorAll('.data-tab').forEach(x => x.classList.remove('active'));
+      this.classList.add('active'); currentDataTab = this.dataset.tab; applyFilters();
+    };
+  });
+}
+
+function buildStats() {
+  const t = allPois.length, fl = allPois.filter(p => p.Review_Flag).length;
+  const rv = allPois.filter(p => p.Review_Status === 'Reviewed').length;
+  const avg = Math.round(allPois.reduce((s, p) => s + (parseInt(p.QA_Score)||0), 0) / t);
+  const qh = allPois.filter(p => parseInt(p.QA_Score)>=80).length;
+  const ql = allPois.filter(p => parseInt(p.QA_Score)<60).length;
+  const ed = Object.keys(edits).length;
+  const vStats = [];
+  if (validationResults.size > 0) {
+    let bl=0, mj=0, mn=0;
+    validationResults.forEach(errs => errs.forEach(e => { if(e.severity==='BLOCKER')bl++; else if(e.severity==='MAJOR')mj++; else mn++; }));
+    vStats.push({l:'Errors (POIs)',v:validationResults.size,c:'alert'});
+    vStats.push({l:'Blockers',v:bl,c:bl?'alert':''});
+    vStats.push({l:'Major',v:mj,c:mj?'warn':''});
+  }
+  document.getElementById('statsBar').innerHTML = [
+    {l:'Total POIs',v:t},{l:'Flagged',v:fl,c:fl?'alert':''},{l:'Reviewed',v:rv,c:'success'},
+    {l:'Pending',v:t-rv,c:t-rv?'warn':''},{l:'Avg QA',v:avg,c:'success'},
+    {l:'QA >= 80',v:qh,c:'success'},{l:'QA < 60',v:ql,c:ql?'alert':''},{l:'Edited',v:ed,c:ed?'warn':''},
+    ...vStats,
+    ...(dupGroups.length ? [{l:'Dup Groups',v:dupGroups.length,c:'warn'},{l:'Removed',v:removedPois.length,c:removedPois.length?'alert':''}] : [])
+  ].map(c=>`<div class="stat-card ${c.c||''}"><div class="label">${c.l}</div><div class="value">${c.v}</div></div>`).join('');
+}
+
+function runValidation() {
+  const { totalBlockers, totalMajor, totalMinor, poisWithErrors } = validateAllPois();
+  buildStats();
+  applyFilters();
+  // Re-render excel view if active
+  if (document.getElementById('excelView').classList.contains('active')) renderExcelTable();
+  // Re-render detail if open
+  if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
+  toast(`Validated: ${poisWithErrors} POIs with errors (${totalBlockers} blockers, ${totalMajor} major, ${totalMinor} minor)`);
+}
+
+function buildCategoryFilter() {
+  const cats = [...new Set(allPois.map(p=>p.Category).filter(Boolean))].sort();
+  const sel = document.getElementById('filterCategory');
+  sel.innerHTML = '<option value="">All Categories</option>';
+  cats.forEach(c => { const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+}
+
+// ===== VIEWS =====
+function switchView(view) {
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+  if (view === 'excel') {
+    document.querySelectorAll('.view-tab')[1].classList.add('active');
+    document.getElementById('excelView').classList.add('active');
+    renderExcelTable();
+  } else if (view === 'duplicates') {
+    document.querySelectorAll('.view-tab')[2].classList.add('active');
+    document.getElementById('duplicatesView').classList.add('active');
+  } else if (view === 'map') {
+    document.querySelectorAll('.view-tab')[3].classList.add('active');
+    document.getElementById('mapView').classList.add('active');
+    initMap();
+  } else if (view === 'arcgis') {
+    document.querySelectorAll('.view-tab')[4].classList.add('active');
+    document.getElementById('arcgisView').classList.add('active');
+    initArcGISMedia();
+  } else {
+    document.querySelectorAll('.view-tab')[0].classList.add('active');
+    document.getElementById('cardView').classList.add('active');
+  }
+}
+
+// ===== FILTERING =====
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const cat = document.getElementById('filterCategory').value;
+  const qa = document.getElementById('filterSeverity').value;
+  const status = document.getElementById('filterStatus').value;
+  filteredPois = allPois.filter(p => {
+    if (currentDataTab === 'flagged' && !p.Review_Flag) return false;
+    if (currentDataTab === 'lowqa' && (parseInt(p.QA_Score)||0) >= 60) return false;
+    if (currentDataTab === 'reviewed' && p.Review_Status !== 'Reviewed') return false;
+    if (currentDataTab === 'errors' && !validationResults.has(p.GlobalID)) return false;
+    if (search) { const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase(); if (!s.includes(search)) return false; }
+    if (cat && p.Category !== cat) return false;
+    const qs = parseInt(p.QA_Score)||0;
+    if (qa==='high'&&qs<80) return false; if (qa==='mid'&&(qs<60||qs>=80)) return false; if (qa==='low'&&qs>=60) return false;
+    if (status && p.Review_Status !== status) return false;
+    return true;
+  });
+  currentPage = 0; renderTable();
+}
+
+// ===== CARD TABLE =====
+function renderTable() {
+  const start = currentPage * PAGE_SIZE;
+  const rows = filteredPois.slice(start, start + PAGE_SIZE);
+  const tp = Math.ceil(filteredPois.length / PAGE_SIZE);
+  document.getElementById('filterCount').textContent = `${filteredPois.length} results`;
+
+  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Phone</th><th>Ext</th><th>Int</th><th>QA</th><th>Status</th><th>Flag</th><th>Valid</th></tr></thead><tbody>`;
+  rows.forEach((p, i) => {
+    const idx = start + i;
+    const qs = parseInt(p.QA_Score)||0;
+    const qc = qs>=80?'qa-high':qs>=60?'qa-mid':'qa-low';
+    const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Flag?'status-flagged':'status-pending';
+    const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Flag?'flagged':'';
+    const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
+    const chk = selectedPois.has(p.GlobalID)?'checked':'';
+    h += `<tr class="${rc}"${ed}>
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${chk} onchange="toggleSelect('${p.GlobalID}',this)"></td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer">${idx+1}</td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Name_EN||'')}</td>
+      <td class="ar-text" onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Name_AR||'')}</td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Category||'')}</td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
+      <td>${esc(trunc(p.Phone_Number,15))}</td>
+      <td>${photoLink(p.Exterior_Photo_URL)}</td><td>${photoLink(p.Interior_Photo_URL)}</td>
+      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Pending')}</td>
+      <td title="${esc(p.Review_Flag||'')}">${esc(trunc(p.Review_Flag,20))}</td>
+      <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('tableContainer').innerHTML = h;
+  let pg = '';
+  if (tp > 1) pg = `<button onclick="goPage(0)" ${currentPage===0?'disabled':''}>First</button><button onclick="goPage(${currentPage-1})" ${currentPage===0?'disabled':''}>Prev</button><span>Page ${currentPage+1}/${tp}</span><button onclick="goPage(${currentPage+1})" ${currentPage>=tp-1?'disabled':''}>Next</button><button onclick="goPage(${tp-1})" ${currentPage>=tp-1?'disabled':''}>Last</button>`;
+  document.getElementById('pagination').innerHTML = pg;
+  updateBulkBar();
+}
+
+// ===== BULK SELECTION =====
+function toggleSelect(gid, el) {
+  if (el.checked) selectedPois.add(gid); else selectedPois.delete(gid);
+  updateBulkBar();
+}
+
+function togglePageCheckbox(el) {
+  const start = currentPage * PAGE_SIZE;
+  const rows = filteredPois.slice(start, start + PAGE_SIZE);
+  rows.forEach(p => { if (el.checked) selectedPois.add(p.GlobalID); else selectedPois.delete(p.GlobalID); });
+  renderTable();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  if (selectedPois.size > 0) {
+    bar.style.display = 'flex';
+    document.getElementById('bulkCount').textContent = selectedPois.size + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function bulkSelectPage() {
+  const start = currentPage * PAGE_SIZE;
+  filteredPois.slice(start, start + PAGE_SIZE).forEach(p => selectedPois.add(p.GlobalID));
+  renderTable();
+}
+
+function bulkSelectAll() {
+  filteredPois.forEach(p => selectedPois.add(p.GlobalID));
+  renderTable();
+  toast('Selected all ' + selectedPois.size + ' filtered POIs');
+}
+
+function bulkClear() {
+  selectedPois.clear();
+  renderTable();
+}
+
+function bulkApprove() {
+  if (!selectedPois.size) return;
+  const count = selectedPois.size;
+  selectedPois.forEach(gid => {
+    const poi = allPois.find(p => p.GlobalID === gid);
+    if (poi) {
+      poi.Review_Status = 'Reviewed'; poi.Review_Flag = '';
+      if (!edits[gid]) edits[gid] = {};
+      edits[gid].Review_Status = 'Reviewed'; edits[gid].Review_Flag = '';
+    }
+  });
+  saveEditsToStorage(); selectedPois.clear();
+  renderTable(); buildStats();
+  toast('Approved ' + count + ' POIs');
+}
+
+function bulkFlag() {
+  const flag = document.getElementById('bulkFlagSelect').value;
+  if (!flag) { toast('Select a flag first'); return; }
+  if (!selectedPois.size) return;
+  const count = selectedPois.size;
+  selectedPois.forEach(gid => {
+    const poi = allPois.find(p => p.GlobalID === gid);
+    if (poi) {
+      poi.Review_Status = 'Flagged'; poi.Review_Flag = flag;
+      if (!edits[gid]) edits[gid] = {};
+      edits[gid].Review_Status = 'Flagged'; edits[gid].Review_Flag = flag;
+    }
+  });
+  saveEditsToStorage(); selectedPois.clear();
+  renderTable(); buildStats();
+  toast('Flagged ' + count + ' POIs: ' + trunc(flag, 30));
+}
+
+function goPage(p) { if (p<0) return; currentPage=p; renderTable(); document.getElementById('tableContainer').scrollTop=0; }
+function photoLink(url) {
+  if (!url||url==='UNAVAILABLE'||url==='-') return '<span style="color:#bbb">-</span>';
+  const u = url.split(',').map(s=>s.trim()).filter(Boolean);
+  return `<a class="photo-link" href="${esc(u[0])}" target="_blank" onclick="event.stopPropagation()">View${u.length>1?' ('+u.length+')':''}</a>`;
+}
+
+// ===== EXCEL TABLE VIEW =====
+function renderExcelTable() {
+  const search = (document.getElementById('excelSearch').value||'').toLowerCase();
+  const colGroup = document.getElementById('excelColFilter').value;
+  const ps = parseInt(document.getElementById('excelPageSize').value);
+  const cols = colGroup === 'all' ? ALL_FIELDS : (COL_GROUPS[colGroup] || COL_GROUPS.key);
+
+  let data = allPois;
+  if (search) data = data.filter(p => ALL_FIELDS.some(f => (p[f]||'').toLowerCase().includes(search)));
+
+  // Sort
+  if (excelSortCol) {
+    data = [...data].sort((a, b) => {
+      let va = a[excelSortCol]||'', vb = b[excelSortCol]||'';
+      const na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return excelSortAsc ? na-nb : nb-na;
+      return excelSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }
+
+  const totalPages = Math.ceil(data.length / ps);
+  if (excelPage >= totalPages) excelPage = Math.max(0, totalPages - 1);
+  const pageData = data.slice(excelPage * ps, (excelPage + 1) * ps);
+
+  document.getElementById('excelPageInfo').textContent = `${excelPage+1}/${totalPages||1}`;
+  document.getElementById('excelInfo').textContent = `${data.length} rows | ${Object.keys(edits).length} edited`;
+
+  let h = '<table class="excel-table"><thead><tr><th class="row-num-header">#</th>';
+  cols.forEach(col => {
+    const sc = excelSortCol===col ? (excelSortAsc?'sorted-asc':'sorted-desc') : '';
+    h += `<th class="${sc}" onclick="excelSort('${col}')">${col.replace(/_/g,' ')}</th>`;
+  });
+  h += '</tr></thead><tbody>';
+
+  pageData.forEach((p, i) => {
+    const rowNum = excelPage * ps + i + 1;
+    const isEdited = edits[p.GlobalID] ? ' excel-edited' : '';
+    h += `<tr class="${isEdited}"><td class="row-num" onclick="openDetailByGid('${p.GlobalID}')" title="Click to open detail">${rowNum}</td>`;
+    cols.forEach(col => {
+      const val = p[col] || '';
+      const isRO = READONLY_FIELDS.has(col);
+      const isAr = col === 'Name_AR' || col === 'District_AR';
+      const hasEdit = edits[p.GlobalID] && edits[p.GlobalID][col] !== undefined;
+      const changed = hasEdit ? ' changed' : '';
+
+      const vColor = getValidationColor(p.GlobalID, col);
+      const vTip = getValidationTooltip(p.GlobalID, col);
+      const cellBg = vColor ? `background:${vColor};` : '';
+      const cellTitle = vTip ? ` title="${esc(vTip)}"` : '';
+
+      if (isRO) {
+        if (col === 'GlobalID') {
+          h += `<td style="${cellBg}"${cellTitle}><span style="font-size:10px;color:#888;padding:4px 6px;display:block;cursor:pointer;" onclick="openDetailByGid('${p.GlobalID}')" title="Click to view">${esc(trunc(val,12))}</span></td>`;
+        } else if (val && val.startsWith('http')) {
+          h += `<td style="${cellBg}"${cellTitle}><a href="${esc(val)}" target="_blank" style="padding:4px 6px;display:block;font-size:11px;color:#1565c0;">Link</a></td>`;
+        } else {
+          h += `<td style="${cellBg}"${cellTitle}><span style="padding:4px 6px;display:block;color:#888;">${esc(val)}</span></td>`;
+        }
+      } else if (col === 'Category') {
+        h += `<td style="${cellBg}"${cellTitle}>${renderCategoryDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
+      } else if (col === 'Subcategory') {
+        h += `<td style="${cellBg}"${cellTitle}>${renderSubcategoryDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
+      } else if (col === 'Category_Level_3') {
+        h += `<td style="${cellBg}"${cellTitle}>${renderLevel3Dropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
+      } else if (col === 'Floor_Number') {
+        h += `<td style="${cellBg}"${cellTitle}>${renderFloorDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
+      } else if (col === 'Company_Status') {
+        h += `<td style="${cellBg}"${cellTitle}>${renderCompanyStatusDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
+      } else if (FIELD_DROPDOWN_OPTIONS[col]) {
+        h += `<td style="${cellBg}"${cellTitle}>${renderFieldDropdown(val, p.GlobalID, col, FIELD_DROPDOWN_OPTIONS[col], hasEdit, 'excelEdit')}</td>`;
+      } else if (DROPDOWN_FIELDS.has(col)) {
+        h += `<td style="${cellBg}"${cellTitle}>${renderDropdown(val, p.GlobalID, col, hasEdit, 'excelEdit')}</td>`;
+      } else {
+        h += `<td style="${cellBg}"${cellTitle}><input class="excel-cell${changed}${isAr?' ar':''}" value="${esc(val)}" data-gid="${p.GlobalID}" data-field="${col}" onchange="excelEdit(this)"${isAr?' dir="rtl"':''}></td>`;
+      }
+    });
+    h += '</tr>';
+  });
+
+  h += '</tbody></table>';
+  document.getElementById('excelContainer').innerHTML = h;
+}
+
+function excelSort(col) {
+  if (excelSortCol === col) excelSortAsc = !excelSortAsc;
+  else { excelSortCol = col; excelSortAsc = true; }
+  renderExcelTable();
+}
+
+function excelEdit(el) {
+  const gid = el.dataset.gid, field = el.dataset.field, val = el.value;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid][field] = val;
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (poi) {
+    poi[field] = val;
+    const errs = validatePoi(poi);
+    if (errs.length > 0) validationResults.set(gid, errs);
+    else validationResults.delete(gid);
+  }
+  el.classList.add('changed');
+  saveEditsToStorage();
+  saveToDb(gid, field, val);
+}
+
+function openDetailByGid(gid) {
+  const idx = filteredPois.findIndex(p => p.GlobalID === gid);
+  if (idx >= 0) openDetail(idx);
+  else {
+    // Find in allPois, set filteredPois temporarily
+    const ai = allPois.findIndex(p => p.GlobalID === gid);
+    if (ai >= 0) { filteredPois = allPois; openDetail(ai); }
+  }
+}
+
+// ===== DETAIL PANEL =====
+function openDetail(idx) {
+  currentPoiIdx = idx;
+  const poi = filteredPois[idx];
+  if (!poi) return;
+  document.getElementById('detailTitle').textContent = poi.Name_EN || poi.Name_AR || 'Unnamed';
+  document.getElementById('detailSubtitle').textContent = `${poi.Category||''} | ${poi.District_EN||''} | QA: ${poi.QA_Score||'?'}`;
+  document.getElementById('detailCounter').textContent = `${idx+1}/${filteredPois.length}`;
+  document.getElementById('flagSelect').value = poi.Review_Flag || '';
+  document.getElementById('noteInput').value = poi.Review_Notes || '';
+  renderDetailBody();
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('overlay').classList.add('active');
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('overlay').classList.remove('active');
+}
+
+function navPoi(dir) {
+  const n = currentPoiIdx + dir;
+  if (n >= 0 && n < filteredPois.length) openDetail(n);
+}
+
+function setDetailView(btn, mode) {
+  detailViewMode = mode;
+  document.querySelectorAll('.detail-view-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDetailBody();
+}
+
+function renderDetailBody() {
+  const poi = filteredPois[currentPoiIdx];
+  if (!poi) return;
+  const body = document.getElementById('detailBody');
+  let mapHtml = renderMiniMap(poi);
+  if (detailViewMode === 'excel') body.innerHTML = mapHtml + renderDetailExcel(poi);
+  else if (detailViewMode === 'photos') body.innerHTML = mapHtml + renderDetailPhotos(poi);
+  else body.innerHTML = mapHtml + renderDetailCards(poi);
+}
+
+function renderMiniMap(poi) {
+  const lat = parseFloat(poi.Latitude);
+  const lon = parseFloat(poi.Longitude);
+  if (isNaN(lat) || isNaN(lon)) return '<div style="padding:10px 20px;color:#bbb;font-size:12px;">No coordinates available</div>';
+  return `<div style="padding:10px 20px 6px; display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
+    <iframe width="280" height="160" frameborder="0" scrolling="no" style="border:1px solid #c5cae9; border-radius:6px;"
+      src="https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.003},${lat-0.002},${lon+0.003},${lat+0.002}&layer=mapnik&marker=${lat},${lon}"></iframe>
+    <div style="font-size:11px; color:#555; display:flex; flex-direction:column; gap:4px;">
+      <span><b>Lat:</b> ${lat}</span>
+      <span><b>Lon:</b> ${lon}</span>
+      <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=18/${lat}/${lon}" target="_blank" style="color:#1565c0;">Open OSM</a>
+      <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" style="color:#1565c0;">Open Google Maps</a>
+    </div>
+  </div>`;
+}
+
+// DETAIL: Excel Table (Field | Value) - ALL 72 fields editable
+function renderDetailExcel(poi) {
+  // Validation error summary at top
+  const errs = validationResults.get(poi.GlobalID) || [];
+  let h = '';
+  if (errs.length > 0) {
+    const blockers = errs.filter(e => e.severity === 'BLOCKER');
+    const majors = errs.filter(e => e.severity === 'MAJOR');
+    const minors = errs.filter(e => e.severity === 'MINOR');
+    h += `<div style="margin:10px 12px;padding:10px 14px;border-radius:6px;background:#fff3e0;border:1px solid #ffe0b2;font-size:12px;">`;
+    h += `<div style="font-weight:700;color:#e65100;margin-bottom:6px;">Validation: ${errs.length} issue${errs.length>1?'s':''}</div>`;
+    if (blockers.length) {
+      h += `<div style="color:#c62828;margin-bottom:4px;"><b>BLOCKER (${blockers.length}):</b></div>`;
+      blockers.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason} → <i>${e.suggested_fix}</i></div>`);
+    }
+    if (majors.length) {
+      h += `<div style="color:#e65100;margin-bottom:4px;"><b>MAJOR (${majors.length}):</b></div>`;
+      majors.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason} → <i>${e.suggested_fix}</i></div>`);
+    }
+    if (minors.length) {
+      h += `<div style="color:#9e9d24;margin-bottom:4px;"><b>MINOR (${minors.length}):</b></div>`;
+      minors.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason}</div>`);
+    }
+    h += `</div>`;
+  } else {
+    h += `<div style="margin:10px 12px;padding:8px 14px;border-radius:6px;background:#e8f5e9;border:1px solid #c8e6c9;font-size:12px;color:#2e7d32;">All validations passed</div>`;
+  }
+
+  h += '<table class="detail-excel"><thead><tr><th style="width:30px">#</th><th>Field</th><th>Value</th></tr></thead><tbody>';
+  let n = 0;
+
+  DETAIL_SECTIONS.forEach(section => {
+    h += `<tr class="section-row"><td colspan="3">${section.title}</td></tr>`;
+    section.fields.forEach(field => {
+      n++;
+      const val = poi[field] || '';
+      const isRO = READONLY_FIELDS.has(field);
+      const isAr = field === 'Name_AR' || field === 'District_AR';
+      const hasEdit = edits[poi.GlobalID] && edits[poi.GlobalID][field] !== undefined;
+      const label = field.replace(/_/g, ' ');
+
+      const vColor = getValidationColor(poi.GlobalID, field);
+      const vTip = getValidationTooltip(poi.GlobalID, field);
+      const vStyle = vColor ? ` style="background:${vColor};"` : '';
+      const vBadge = vTip ? ` <span style="color:#c62828;font-size:9px;" title="${esc(vTip)}">⚠</span>` : '';
+
+      h += `<tr><td style="text-align:center;color:#888;font-size:10px;">${n}</td>`;
+      h += `<td class="field-name">${label}${hasEdit?' <span style="color:#4caf50;font-size:9px;">edited</span>':''}${vBadge}</td>`;
+
+      if (isRO) {
+        if (val && val.startsWith('http')) {
+          h += `<td class="field-value"${vStyle}><a href="${esc(val)}" target="_blank">${esc(trunc(val,80))}</a></td>`;
+        } else {
+          h += `<td class="field-value"${vStyle}><span class="readonly">${esc(val)||'<span style="color:#ccc">empty</span>'}</span></td>`;
+        }
+      } else if (field === 'Category') {
+        h += `<td class="field-value"${vStyle}>${renderCategoryDropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
+      } else if (field === 'Subcategory') {
+        h += `<td class="field-value"${vStyle}>${renderSubcategoryDropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
+      } else if (field === 'Category_Level_3') {
+        h += `<td class="field-value"${vStyle}>${renderLevel3Dropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
+      } else if (field === 'Floor_Number') {
+        h += `<td class="field-value"${vStyle}>${renderFloorDropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
+      } else if (field === 'Company_Status') {
+        h += `<td class="field-value"${vStyle}>${renderCompanyStatusDropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
+      } else if (FIELD_DROPDOWN_OPTIONS[field]) {
+        h += `<td class="field-value"${vStyle}>${renderFieldDropdown(val, poi.GlobalID, field, FIELD_DROPDOWN_OPTIONS[field], hasEdit, 'detailEdit')}</td>`;
+      } else if (field === 'Amenities' || field.includes('URL')) {
+        h += `<td class="field-value"${vStyle}><textarea rows="${val.length > 100 ? 3 : 1}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl"':''}>${esc(val)}</textarea></td>`;
+      } else if (field === 'Review_Flag') {
+        h += `<td class="field-value"${vStyle}><select data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${hasEdit?'background:#e8f5e9':''}">`;
+        h += `<option value="">-- None --</option>`;
+        REVIEW_FLAGS.forEach(f => h += `<option value="${esc(f)}"${val===f?' selected':''}>${esc(f)}</option>`);
+        h += `</select></td>`;
+      } else if (field === 'Review_Status') {
+        h += `<td class="field-value"${vStyle}><select data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${hasEdit?'background:#e8f5e9':''}">`;
+        ['Pending','Reviewed','Flagged'].forEach(s => h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`);
+        h += `</select></td>`;
+      } else if (DROPDOWN_FIELDS.has(field)) {
+        h += `<td class="field-value"${vStyle}>${renderDropdown(val, poi.GlobalID, field, hasEdit, 'detailEdit')}</td>`;
+      } else {
+        h += `<td class="field-value"${vStyle}><input value="${esc(val)}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl"':''}></td>`;
+      }
+      h += '</tr>';
+    });
+  });
+
+  h += '</tbody></table>';
+
+  // Map link
+  if (poi.Latitude && poi.Longitude && poi.Latitude !== 'UNAVAILABLE') {
+    h += `<div style="padding:10px 12px;background:#e3f2fd;font-size:12px;"><a href="https://www.google.com/maps?q=${poi.Latitude},${poi.Longitude}" target="_blank" style="color:#1565c0;">Open in Google Maps (${poi.Latitude}, ${poi.Longitude})</a></div>`;
+  }
+  return h;
+}
+
+function detailEdit(el) {
+  const gid = el.dataset.gid, field = el.dataset.field, val = el.value;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid][field] = val;
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (poi) {
+    poi[field] = val;
+    const errs = validatePoi(poi);
+    if (errs.length > 0) validationResults.set(gid, errs);
+    else validationResults.delete(gid);
+  }
+  el.classList.add('changed');
+  saveEditsToStorage();
+  saveToDb(gid, field, val);
+  if (field === 'Review_Flag') document.getElementById('flagSelect').value = val;
+  if (field === 'Review_Notes') document.getElementById('noteInput').value = val;
+}
+
+// DETAIL: Photos
+// HEIC conversion cache
+const heicCache = {};
+
+async function convertHeic(url, imgEl) {
+  if (heicCache[url]) { imgEl.src = heicCache[url]; return; }
+  const container = imgEl.parentElement;
+  container.innerHTML = '<div style="height:130px;display:flex;align-items:center;justify-content:center;color:#1a237e;font-size:11px;">Converting HEIC...</div>';
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const jpeg = await heic2any({ blob, toType: 'image/jpeg', quality: 0.7 });
+    const result = Array.isArray(jpeg) ? jpeg[0] : jpeg;
+    const blobUrl = URL.createObjectURL(result);
+    heicCache[url] = blobUrl;
+    container.innerHTML = `<img src="${blobUrl}" style="width:100%;height:180px;object-fit:cover;cursor:pointer;" onclick="openLightbox('${blobUrl}')">`;
+  } catch(e) {
+    container.innerHTML = `<div style="height:130px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;color:#c62828;font-size:11px;">HEIC failed<br><a href="${url}" target="_blank" style="color:#1565c0;">Download</a></div>`;
+  }
+}
+
+function isHeicUrl(url) {
+  // ArcGIS attachment URLs are often HEIC, detect by trying to load and checking
+  // We'll use onerror to trigger HEIC conversion attempt
+  return false; // We handle via onerror fallback
+}
+
+function renderDetailPhotos(poi) {
+  const fields = [
+    {k:'Exterior_Photo_URL',l:'Exterior'},{k:'Interior_Photo_URL',l:'Interior'},
+    {k:'Menu_Photo_URL',l:'Menu'},{k:'Video_URL',l:'Video'}
+  ];
+  let totalPhotos = 0;
+  let h = '<div class="detail-section"><h3>Media</h3><div class="photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));">';
+  fields.forEach(({k,l}) => {
+    const v = poi[k]||'';
+    if (!v||v==='UNAVAILABLE') { h += `<div class="photo-card"><div class="no-photo">${l}: N/A</div><div class="photo-label">${l}</div></div>`; return; }
+    const urls = v.split(',').map(u=>u.trim()).filter(Boolean);
+    totalPhotos += urls.length;
+    urls.forEach((url,i) => {
+      const num = urls.length > 1 ? ` ${i+1}/${urls.length}` : '';
+      const uid = 'ph-' + Math.random().toString(36).substr(2,6);
+      if (k==='Video_URL') {
+        h += `<div class="photo-card">
+          <video controls preload="metadata" style="width:100%;height:180px;background:#000;" src="${esc(url)}"></video>
+          <div class="photo-label">${l}${num} <a href="${esc(url)}" target="_blank" style="float:right;font-size:9px;">Open</a></div>
+        </div>`;
+      } else {
+        // Use a container div so we can swap content for HEIC
+        h += `<div class="photo-card">
+          <div id="${uid}" style="width:100%;height:180px;overflow:hidden;background:#f5f5f5;display:flex;align-items:center;justify-content:center;">
+            <img src="${esc(url)}" loading="lazy" style="width:100%;height:180px;object-fit:cover;cursor:pointer;"
+              onclick="openLightbox(this.src)"
+              onerror="tryHeicConvert('${uid}','${esc(url)}',this)">
+          </div>
+          <div class="photo-label">${l}${num} <a href="${esc(url)}" target="_blank" style="float:right;font-size:9px;">Open</a></div>
+        </div>`;
+      }
+    });
+  });
+  h += '</div></div>';
+  h += `<div class="detail-section"><h3>Stats</h3><p style="font-size:12px;">Total Photos Shown: ${totalPhotos} | Menu Photos: ${poi.Num_Menu_Photos||'0'} | Additional: ${poi.Num_Additional_Photos||'0'}</p></div>`;
+  return h;
+}
+
+function tryHeicConvert(containerId, url, imgEl) {
+  // Image failed to load - likely HEIC format, try converting
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (heicCache[url]) {
+    container.innerHTML = `<img src="${heicCache[url]}" style="width:100%;height:180px;object-fit:cover;cursor:pointer;" onclick="openLightbox('${heicCache[url]}')">`;
+    return;
+  }
+  container.innerHTML = '<div style="height:180px;display:flex;align-items:center;justify-content:center;color:#1a237e;font-size:11px;flex-direction:column;gap:4px;"><div class="spinner" style="width:24px;height:24px;border-width:2px;"></div>Converting HEIC...</div>';
+  fetch(url).then(r => r.blob()).then(blob => {
+    return heic2any({ blob, toType: 'image/jpeg', quality: 0.75 });
+  }).then(jpeg => {
+    const result = Array.isArray(jpeg) ? jpeg[0] : jpeg;
+    const blobUrl = URL.createObjectURL(result);
+    heicCache[url] = blobUrl;
+    container.innerHTML = `<img src="${blobUrl}" style="width:100%;height:180px;object-fit:cover;cursor:pointer;" onclick="openLightbox('${blobUrl}')">`;
+  }).catch(e => {
+    container.innerHTML = `<div style="height:180px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:#888;font-size:11px;">
+      Cannot preview<br><a href="${url}" target="_blank" style="color:#1565c0;font-size:12px;">Download Original</a></div>`;
+  });
+}
+
+// DETAIL: Card View
+function renderDetailCards(poi) {
+  let h = '';
+  DETAIL_SECTIONS.forEach(section => {
+    h += `<div class="detail-section"><h3>${section.title}</h3><div class="attr-grid">`;
+    section.fields.forEach(field => {
+      const val = poi[field]||'';
+      const isRO = READONLY_FIELDS.has(field);
+      const isAr = field==='Name_AR'||field==='District_AR';
+      const label = field.replace(/_/g,' ');
+      const isFull = val.length > 50 || field.includes('URL') || field==='Working_Hours' || field==='Amenities';
+      h += `<div class="attr-item${isFull?' full':''}"><div class="attr-label">${label}</div>`;
+      if (val==='UNAVAILABLE'||val==='UNAPPLICABLE'||!val) h += `<div class="attr-value unavailable">${val||'empty'}</div>`;
+      else if (val.startsWith('http')) h += `<div class="attr-value"><a href="${esc(val)}" target="_blank">${esc(trunc(val,60))}</a></div>`;
+      else h += `<div class="attr-value"${isAr?' style="direction:rtl;text-align:right;font-size:14px;"':''}>${esc(val)}</div>`;
+      h += '</div>';
+    });
+    h += '</div></div>';
+  });
+  return h;
+}
+
+// ===== ACTIONS =====
+function flagPoi() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  const flag = document.getElementById('flagSelect').value;
+  const note = document.getElementById('noteInput').value;
+  poi.Review_Flag=flag; poi.Review_Notes=note; poi.Review_Status='Flagged';
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
+  const fields = {Review_Flag:flag,Review_Notes:note,Review_Status:'Flagged'};
+  Object.assign(edits[poi.GlobalID], fields);
+  saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
+  renderTable(); buildStats(); renderDetailBody();
+  toast('Flagged: ' + trunc(poi.Name_EN,30));
+}
+
+function approvePoi() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  const note = document.getElementById('noteInput').value;
+  poi.Review_Status='Reviewed'; poi.Review_Notes=note; poi.Review_Flag='';
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
+  const fields = {Review_Status:'Reviewed',Review_Notes:note,Review_Flag:''};
+  Object.assign(edits[poi.GlobalID], fields);
+  saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
+  renderTable(); buildStats();
+  if (currentPoiIdx+1 < filteredPois.length) openDetail(currentPoiIdx+1);
+  toast('Approved: ' + trunc(poi.Name_EN,30));
+}
+
+function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
+
+function saveEditsToStorage() {
+  localStorage.setItem('poi_review_edits', JSON.stringify(edits));
+  document.getElementById('headerInfo').textContent = `${allPois.length} POIs | ${Object.keys(edits).length} edited`;
+}
+
+function clearEdits() {
+  if (!confirm('Clear all edits? This cannot be undone.')) return;
+  edits = {}; localStorage.removeItem('poi_review_edits');
+  toast('All edits cleared. Reload to restore original data.');
+}
+
+// ===== EXPORT =====
+function exportCSV() {
+  if (!allPois.length) return;
+  // Check for blockers
+  validateAllPois();
+  let blockerCount = 0;
+  validationResults.forEach(errs => { blockerCount += errs.filter(e => e.severity === 'BLOCKER').length; });
+  if (blockerCount > 0) {
+    if (!confirm(`WARNING: ${blockerCount} BLOCKER errors found across ${validationResults.size} POIs.\n\nExport anyway?`)) return;
+  }
+  const headers = ALL_FIELDS.filter(f => allPois[0].hasOwnProperty(f));
+  let csv = headers.map(ce).join(',') + '\n';
+  allPois.forEach(p => { csv += headers.map(h => ce(p[h]||'')).join(',') + '\n'; });
+  download(csv, 'POI_FINAL_Reviewed.csv');
+  toast('Exported ' + allPois.length + ' POIs');
+}
+
+function exportEdits() {
+  const entries = Object.entries(edits);
+  if (!entries.length) { toast('No edits'); return; }
+  let csv = 'GlobalID,Name_EN,Field,New_Value\n';
+  entries.forEach(([gid, fields]) => {
+    const poi = allPois.find(p => p.GlobalID === gid);
+    for (const [f, v] of Object.entries(fields)) csv += [gid, poi?poi.Name_EN:'', f, v].map(ce).join(',') + '\n';
+  });
+  download(csv, 'POI_Edits_Only.csv');
+  toast('Exported ' + entries.length + ' edited POIs');
+}
+
+function download(csv, fn) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'}));
+  a.download = fn; a.click();
+}
+
+// ===== UTILS =====
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
+function ce(v) { if (v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+function trunc(s,n) { return s&&s.length>n ? s.substring(0,n)+'...' : (s||''); }
+function openLightbox(url) { document.getElementById('lightboxImg').src=url; document.getElementById('lightbox').classList.add('active'); }
+function toast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+
+// ===== DUPLICATE DETECTION & MERGE =====
+let dupGroups = []; // array of { members: [indices], goldenIdx: number, merged: boolean, distance, matchRules }
+let removedPois = []; // POIs removed by merge
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // meters
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function normalizeName(s) {
+  if (!s) return '';
+  return s.replace(/[^\w\s\u0600-\u06FF]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function nameSimilarity(a, b) {
+  if (!a || !b) return 0;
+  a = normalizeName(a); b = normalizeName(b);
+  if (a === b) return 100;
+  // Longest common subsequence ratio
+  const m = a.length, n = b.length;
+  if (m === 0 || n === 0) return 0;
+  // Use simple bigram overlap for performance on 1200+ POIs
+  const bigrams = s => { const bg = new Set(); for (let i = 0; i < s.length - 1; i++) bg.add(s.substr(i,2)); return bg; };
+  const bg1 = bigrams(a), bg2 = bigrams(b);
+  let inter = 0;
+  bg1.forEach(b => { if (bg2.has(b)) inter++; });
+  return (2 * inter / (bg1.size + bg2.size)) * 100;
+}
+
+function normalizePhone(p) {
+  if (!p || p === 'UNAVAILABLE') return '';
+  return p.replace(/\D/g, '').replace(/^966/, '').replace(/^0/, '').slice(0, 9);
+}
+
+function detectDuplicates() {
+  const distThreshold = parseInt(document.getElementById('dupDistThreshold')?.value || 50);
+  const nameThreshold = parseInt(document.getElementById('dupNameThreshold')?.value || 85);
+
+  dupGroups = [];
+  const n = allPois.length;
+  const used = new Set();
+
+  // Pre-compute
+  const lats = allPois.map(p => parseFloat(p.Latitude) || 0);
+  const lons = allPois.map(p => parseFloat(p.Longitude) || 0);
+  const names = allPois.map(p => normalizeName(p.Name_EN || ''));
+  const namesAr = allPois.map(p => normalizeName(p.Name_AR || ''));
+  const phones = allPois.map(p => normalizePhone(p.Phone_Number));
+  const buildings = allPois.map(p => `${p.Building_Number||''}|${p.Floor_Number||''}|${p.Entrance_Location||''}`);
+
+  // Spatial binning (~0.001 deg ≈ 111m)
+  const bins = {};
+  for (let i = 0; i < n; i++) {
+    const bLat = Math.floor(lats[i] / 0.0005);
+    const bLon = Math.floor(lons[i] / 0.0005);
+    const key = `${bLat},${bLon}`;
+    if (!bins[key]) bins[key] = [];
+    bins[key].push(i);
+  }
+
+  for (let i = 0; i < n; i++) {
+    if (used.has(i)) continue;
+    const bLat = Math.floor(lats[i] / 0.0005);
+    const bLon = Math.floor(lons[i] / 0.0005);
+
+    // Check neighboring bins
+    const candidates = [];
+    for (let dl = -1; dl <= 1; dl++) {
+      for (let dm = -1; dm <= 1; dm++) {
+        const k = `${bLat+dl},${bLon+dm}`;
+        if (bins[k]) candidates.push(...bins[k]);
+      }
+    }
+
+    const group = [i];
+    const matchDetails = [];
+
+    for (const j of candidates) {
+      if (j <= i || used.has(j)) continue;
+      if (lats[i] === 0 && lons[i] === 0) continue;
+      if (lats[j] === 0 && lons[j] === 0) continue;
+
+      const dist = haversineM(lats[i], lons[i], lats[j], lons[j]);
+      if (dist > distThreshold) continue;
+
+      let rules = 0;
+      const reasons = [];
+
+      // Rule 1: Exact name match + close
+      if (names[i] && names[i] === names[j] && dist < 30) { rules++; reasons.push('Exact EN name + <30m'); }
+      // Rule 1b: Exact AR name
+      if (namesAr[i] && namesAr[i] === namesAr[j] && dist < 30) { rules++; reasons.push('Exact AR name + <30m'); }
+      // Rule 2: Phone match + close
+      if (phones[i] && phones[i] === phones[j] && dist < distThreshold) { rules++; reasons.push('Same phone'); }
+      // Rule 3: Fuzzy name + same category
+      const sim = nameSimilarity(allPois[i].Name_EN, allPois[j].Name_EN);
+      if (sim >= nameThreshold && allPois[i].Category === allPois[j].Category && dist < 40) { rules++; reasons.push(`Name ${Math.round(sim)}% + same cat`); }
+      // Rule 4: Same building
+      if (buildings[i] === buildings[j] && allPois[i].Building_Number && allPois[i].Building_Number !== 'UNAVAILABLE') { rules++; reasons.push('Same building'); }
+
+      if (rules >= 2) {
+        group.push(j);
+        used.add(j);
+        matchDetails.push({ idx: j, dist: Math.round(dist), rules, reasons });
+      }
+    }
+
+    if (group.length > 1) {
+      used.add(i);
+      // Golden record = most complete
+      let bestIdx = 0, bestScore = 0;
+      group.forEach((idx, gi) => {
+        let score = 0;
+        ALL_FIELDS.forEach(f => { const v = allPois[idx][f]; if (v && v !== 'UNAVAILABLE' && v !== '' && v !== 'NaN') score++; });
+        if (score > bestScore) { bestScore = score; bestIdx = gi; }
+      });
+
+      dupGroups.push({
+        members: group,
+        goldenIdx: group[bestIdx],
+        merged: false,
+        matchDetails
+      });
+    }
+  }
+
+  return dupGroups.length;
+}
+
+function runDuplicateDetection() {
+  toast('Scanning for duplicates...');
+  setTimeout(() => {
+    const count = detectDuplicates();
+    renderDuplicatesView();
+    buildStats();
+    const badge = document.getElementById('dupBadge');
+    if (count > 0) { badge.textContent = count; badge.style.display = 'inline'; }
+    else { badge.style.display = 'none'; }
+    switchView('duplicates');
+    toast(`Found ${count} duplicate groups (${dupGroups.reduce((s,g) => s + g.members.length, 0)} POIs)`);
+  }, 50);
+}
+
+function renderDuplicatesView() {
+  const container = document.getElementById('dupContainer');
+  if (!dupGroups.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#4caf50;font-size:14px;font-weight:600;">No duplicates found!</div>';
+    document.getElementById('dupSummary').textContent = '';
+    return;
+  }
+
+  const totalDups = dupGroups.reduce((s,g) => s + g.members.length - 1, 0);
+  const merged = dupGroups.filter(g => g.merged).length;
+  document.getElementById('dupSummary').textContent = `${dupGroups.length} groups | ${totalDups} duplicates | ${merged} merged`;
+
+  // Key fields to compare
+  const compareFields = ['Name_AR','Name_EN','Category','Phone_Number','District_EN','Latitude','Longitude','Working_Hours','Building_Number','Floor_Number','Exterior_Photo_URL','Interior_Photo_URL','Website','Commercial_License','QA_Score'];
+
+  let h = '';
+  dupGroups.forEach((group, gi) => {
+    const golden = allPois[group.goldenIdx];
+    const memberCount = group.members.length;
+    const isOpen = !group.merged ? ' open' : '';
+    const mergedClass = group.merged ? ' merged' : '';
+
+    h += `<div class="dup-group${mergedClass}${isOpen}" id="dupGroup${gi}">`;
+    h += `<div class="dup-group-header" onclick="toggleDupGroup(${gi})">`;
+    h += `<span class="group-label">Group ${gi+1}</span>`;
+    h += `<span class="group-info">${memberCount} POIs | Golden: ${esc(golden.Name_EN||golden.Name_AR||'?')}</span>`;
+    if (group.merged) h += `<span style="color:#4caf50;font-weight:700;font-size:11px;">MERGED</span>`;
+    h += `<div class="group-actions" onclick="event.stopPropagation()">`;
+    if (!group.merged) {
+      h += `<button class="btn btn-success btn-sm" onclick="mergeGroup(${gi})">Merge</button>`;
+      h += `<button class="btn btn-sm" style="background:#888;color:#fff;" onclick="dismissGroup(${gi})">Dismiss</button>`;
+    } else {
+      h += `<button class="btn btn-sm" style="background:#e65100;color:#fff;" onclick="undoMerge(${gi})">Undo</button>`;
+    }
+    h += `</div></div>`;
+
+    // Body: member list + comparison table
+    h += `<div class="dup-group-body">`;
+
+    // Row header
+    h += `<div class="dup-row dup-row-header"><div></div><div>Name EN</div><div>Name AR</div><div>Category</div><div>Phone</div><div>Dist</div><div>QA</div><div>Action</div></div>`;
+
+    group.members.forEach((poiIdx, mi) => {
+      const p = allPois[poiIdx];
+      const isGolden = poiIdx === group.goldenIdx;
+      const detail = group.matchDetails?.find(d => d.idx === poiIdx);
+      const dist = detail ? detail.dist + 'm' : (mi === 0 ? '-' : '?');
+
+      h += `<div class="dup-row${isGolden?' golden':''}">`;
+      h += `<div style="text-align:center;">${isGolden?'<span style="color:#4caf50;font-weight:700;" title="Golden Record">★</span>':'<span style="color:#999;">${mi+1}</span>'}</div>`;
+      h += `<div title="${esc(p.Name_EN||'')}" style="cursor:pointer;" onclick="openDetailByGid('${p.GlobalID}')">${esc(trunc(p.Name_EN||'',25))}</div>`;
+      h += `<div class="ar-text" title="${esc(p.Name_AR||'')}">${esc(trunc(p.Name_AR||'',25))}</div>`;
+      h += `<div>${esc(p.Category||'')}</div>`;
+      h += `<div>${esc(trunc(p.Phone_Number||'',15))}</div>`;
+      h += `<div>${dist}</div>`;
+      h += `<div>${p.QA_Score||'?'}</div>`;
+      h += `<div>`;
+      if (!group.merged && !isGolden) {
+        h += `<button class="btn btn-sm btn-primary" onclick="setGolden(${gi},${poiIdx})" title="Set as golden">★</button>`;
+      }
+      h += ` <button class="btn btn-sm" style="background:#e8eaf6;color:#1a237e;font-size:10px;" onclick="openDetailByGid('${p.GlobalID}')">View</button>`;
+      h += `</div></div>`;
+    });
+
+    // Comparison table - show fields that differ
+    h += `<div class="dup-compare"><table><thead><tr><th>Field</th>`;
+    group.members.forEach((poiIdx, mi) => {
+      const isGolden = poiIdx === group.goldenIdx;
+      h += `<th${isGolden?' style="background:#c8e6c9;"':''}>${isGolden?'★ ':''}POI ${mi+1}</th>`;
+    });
+    h += `</tr></thead><tbody>`;
+
+    compareFields.forEach(field => {
+      const vals = group.members.map(idx => allPois[idx][field] || '');
+      const allSame = vals.every(v => v === vals[0]);
+      if (allSame && vals[0] === '') return; // skip all empty
+      h += `<tr><td style="font-weight:600;white-space:nowrap;">${field.replace(/_/g,' ')}</td>`;
+      vals.forEach((v, vi) => {
+        const isGolden = group.members[vi] === group.goldenIdx;
+        const isDiff = !allSame && v !== vals[0];
+        const cls = isGolden ? 'golden-val' : (isDiff ? 'diff' : '');
+        const display = v.length > 60 ? trunc(v, 60) : v;
+        h += `<td class="${cls}" title="${esc(v)}">${esc(display)||'<span style="color:#ccc">empty</span>'}</td>`;
+      });
+      h += `</tr>`;
+    });
+
+    // Match reasons
+    if (group.matchDetails?.length) {
+      h += `<tr><td style="font-weight:600;">Match Reasons</td>`;
+      group.members.forEach((poiIdx, mi) => {
+        const detail = group.matchDetails.find(d => d.idx === poiIdx);
+        h += `<td style="font-size:10px;color:#666;">${detail ? detail.reasons.join(', ') : (mi===0?'Base record':'')}</td>`;
+      });
+      h += `</tr>`;
+    }
+
+    h += `</tbody></table></div>`;
+    h += `</div></div>`;
+  });
+
+  container.innerHTML = h;
+}
+
+function toggleDupGroup(gi) {
+  const el = document.getElementById('dupGroup' + gi);
+  if (el) el.classList.toggle('open');
+}
+
+function setGolden(gi, poiIdx) {
+  dupGroups[gi].goldenIdx = poiIdx;
+  renderDuplicatesView();
+  toast('Golden record updated');
+}
+
+function mergeGroup(gi) {
+  const group = dupGroups[gi];
+  if (group.merged) return;
+
+  const golden = allPois[group.goldenIdx];
+  const mergeableFields = ['Phone_Number','Website','Working_Hours','Working_Days','Social_Media','Commercial_License','Email'];
+  const mediaFields = ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL'];
+
+  // Merge: fill empty golden fields from duplicates, merge media URLs
+  group.members.forEach(idx => {
+    if (idx === group.goldenIdx) return;
+    const dup = allPois[idx];
+
+    // Fill empty fields
+    mergeableFields.forEach(f => {
+      const gv = (golden[f] || '').trim();
+      const dv = (dup[f] || '').trim();
+      if ((!gv || gv === 'UNAVAILABLE') && dv && dv !== 'UNAVAILABLE') {
+        golden[f] = dv;
+        if (!edits[golden.GlobalID]) edits[golden.GlobalID] = {};
+        edits[golden.GlobalID][f] = dv;
+      }
+    });
+
+    // Merge media URLs (union)
+    mediaFields.forEach(f => {
+      const gUrls = new Set((golden[f] || '').split(',').map(s => s.trim()).filter(s => s && s !== 'UNAVAILABLE'));
+      const dUrls = (dup[f] || '').split(',').map(s => s.trim()).filter(s => s && s !== 'UNAVAILABLE');
+      dUrls.forEach(u => gUrls.add(u));
+      if (gUrls.size > 0) {
+        const merged = [...gUrls].join(', ');
+        golden[f] = merged;
+        if (!edits[golden.GlobalID]) edits[golden.GlobalID] = {};
+        edits[golden.GlobalID][f] = merged;
+      }
+    });
+
+    // Mark duplicate as removed
+    dup._removed = true;
+    dup._removedBy = golden.GlobalID;
+    removedPois.push({...dup, _mergedInto: golden.GlobalID});
+  });
+
+  // Remove duplicates from allPois (keep golden)
+  const removeGids = new Set(group.members.filter(idx => idx !== group.goldenIdx).map(idx => allPois[idx].GlobalID));
+  allPois = allPois.filter(p => !removeGids.has(p.GlobalID));
+
+  group.merged = true;
+  saveEditsToStorage();
+  buildStats();
+  renderDuplicatesView();
+  toast(`Merged group ${gi+1}: kept "${trunc(golden.Name_EN,30)}", removed ${removeGids.size} duplicates`);
+}
+
+function mergeAllDuplicates() {
+  const unmerged = dupGroups.filter(g => !g.merged);
+  if (!unmerged.length) { toast('No unmerged groups'); return; }
+  if (!confirm(`Auto-merge ${unmerged.length} duplicate groups?\nThis will keep the golden record and merge fields from duplicates.`)) return;
+
+  // We need to merge in order, re-indexing after each
+  // Simpler: collect all to remove, then remove at once
+  const toRemoveGids = new Set();
+  const mergeableFields = ['Phone_Number','Website','Working_Hours','Working_Days','Social_Media','Commercial_License','Email'];
+  const mediaFields = ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL'];
+
+  unmerged.forEach(group => {
+    const golden = allPois[group.goldenIdx];
+    if (!golden) return;
+
+    group.members.forEach(idx => {
+      if (idx === group.goldenIdx) return;
+      const dup = allPois[idx];
+      if (!dup) return;
+
+      mergeableFields.forEach(f => {
+        const gv = (golden[f] || '').trim();
+        const dv = (dup[f] || '').trim();
+        if ((!gv || gv === 'UNAVAILABLE') && dv && dv !== 'UNAVAILABLE') {
+          golden[f] = dv;
+          if (!edits[golden.GlobalID]) edits[golden.GlobalID] = {};
+          edits[golden.GlobalID][f] = dv;
+        }
+      });
+
+      mediaFields.forEach(f => {
+        const gUrls = new Set((golden[f] || '').split(',').map(s => s.trim()).filter(s => s && s !== 'UNAVAILABLE'));
+        const dUrls = (dup[f] || '').split(',').map(s => s.trim()).filter(s => s && s !== 'UNAVAILABLE');
+        dUrls.forEach(u => gUrls.add(u));
+        if (gUrls.size > 0) {
+          const merged = [...gUrls].join(', ');
+          golden[f] = merged;
+          if (!edits[golden.GlobalID]) edits[golden.GlobalID] = {};
+          edits[golden.GlobalID][f] = merged;
+        }
+      });
+
+      removedPois.push({...dup, _mergedInto: golden.GlobalID});
+      toRemoveGids.add(dup.GlobalID);
+    });
+
+    group.merged = true;
+  });
+
+  allPois = allPois.filter(p => !toRemoveGids.has(p.GlobalID));
+  saveEditsToStorage();
+  buildStats();
+  applyFilters();
+  renderDuplicatesView();
+  toast(`Merged ${unmerged.length} groups, removed ${toRemoveGids.size} duplicates. ${allPois.length} POIs remaining.`);
+}
+
+function dismissGroup(gi) {
+  dupGroups.splice(gi, 1);
+  renderDuplicatesView();
+  const badge = document.getElementById('dupBadge');
+  if (dupGroups.length > 0) badge.textContent = dupGroups.length;
+  else badge.style.display = 'none';
+  toast('Group dismissed');
+}
+
+function undoMerge(gi) {
+  toast('Undo not available after merge (data already modified). Reload original data to start fresh.');
+}
+
+function exportDuplicatesCSV() {
+  if (!removedPois.length) { toast('No removed duplicates to export'); return; }
+  const headers = [...ALL_FIELDS, '_mergedInto'];
+  let csv = headers.map(ce).join(',') + '\n';
+  removedPois.forEach(p => { csv += headers.map(h => ce(p[h]||'')).join(',') + '\n'; });
+  download(csv, 'POI_Duplicates_Removed.csv');
+  toast('Exported ' + removedPois.length + ' removed duplicates');
+}
+
+// ===== CSV IMPORT (update existing data) =====
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  if (file.name.endsWith('.json')) {
+    reader.onload = ev => {
+      const imported = JSON.parse(ev.target.result);
+      if (allPois.length > 0 && imported.length > 0 && imported[0].GlobalID) {
+        mergeImportedData(imported);
+      } else {
+        allPois = imported; applyEditsToData(); buildUI(); toast('JSON loaded');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  } else {
+    reader.onload = ev => {
+      const lines = ev.target.result.split('\n');
+      const headers = parseCSVLine(lines[0]);
+      const imported = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const vals = parseCSVLine(lines[i]);
+        const obj = {};
+        headers.forEach((h, j) => obj[h.replace(/^\uFEFF/, '').trim()] = vals[j] || '');
+        imported.push(obj);
+      }
+      if (allPois.length > 0 && imported.length > 0) {
+        mergeImportedData(imported);
+      } else {
+        allPois = imported; applyEditsToData(); buildUI();
+        toast('CSV loaded: ' + allPois.length + ' POIs');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+}
+
+// Column name mapping: imported CSV header → internal field name
+const IMPORT_COL_MAP = {
+  'GlobalID':'GlobalID','Name (AR)':'Name_AR','Name (EN)':'Name_EN','Legal Name':'Legal_Name',
+  'exterior photo URL':'Exterior_Photo_URL','interior photo URL':'Interior_Photo_URL',
+  'menu photo URL':'Menu_Photo_URL','video':'Video_URL',
+  'license photo URL':'License_Photo_URL','additional photo URLs':'Additional_Photo_URLs',
+  'Category':'Category','Secondary Category':'Subcategory','Category Level 3':'Category_Level_3',
+  'Company Status':'Company_Status','Latitude':'Latitude','Longitude':'Longitude',
+  'Google Map URL':'Google_Map_URL','Building Number':'Building_Number','Floor Number':'Floor_Number',
+  'Entrance Location':'Entrance_Location','Phone Number':'Phone_Number','Email':'Email',
+  'Website':'Website','Social Media':'Social_Media','Working Days':'Working_Days',
+  'Working Hours for Each Day':'Working_Hours','Break Time for Each Day':'Break_Time',
+  'Holidays':'Holidays','Menu Barcode URL':'Menu_Barcode_URL','Language':'Language',
+  'Cuisine':'Cuisine','Accepted Payment Methods':'Payment_Methods',
+  'Commercial License Number':'Commercial_License','Menu':'Menu','Drive Thru':'Drive_Thru',
+  'Dine In':'Dine_In','Only Delivery':'Only_Delivery','Reservation':'Reservation',
+  'Require Ticket':'Require_Ticket','Order from Car':'Order_from_Car',
+  'Pickup Point Exists':'Pickup_Point','WiFi':'WiFi','Music':'Music',
+  'Valet Parking':'Valet_Parking','Has Parking Lot':'Has_Parking_Lot',
+  'Is Wheelchair Accessible':'Wheelchair_Accessible','Has Family Seating':'Family_Seating',
+  'Has a Waiting Area':'Waiting_Area','Has Separate Rooms for Dining':'Private_Dining',
+  'Has Smoking Area':'Smoking_Area','Children Area':'Children_Area','Shisha':'Shisha',
+  'Live Sport Broadcasting':'Live_Sports','Is Landmark':'Is_Landmark','Is Trending':'Is_Trending',
+  'Large Groups Can Be Seated':'Large_Groups','Has Women-Only Prayer Room':'Women_Prayer_Room',
+  'Provides Iftar Tent':'Iftar_Tent','Offers Iftar Menu':'Iftar_Menu',
+  'Is Open During Suhoor':'Open_Suhoor','Is Free Entry':'Free_Entry',
+  'Number of Menu Photos':'Num_Menu_Photos','Number of Additional Photos':'Num_Additional_Photos',
+  'District (AR)':'District_AR','District (EN)':'District_EN',
+  'Amenities':'Amenities','Confidence':'Confidence','Source':'Source','All_Sources':'All_Sources',
+  'Importance_Score':'Importance_Score','QA_Score':'QA_Score',
+  'Review_Flag':'Review_Flag','Review_Notes':'Review_Notes','Review_Status':'Review_Status',
+};
+
+function mapImportedRow(row) {
+  // Convert imported row keys to internal field names
+  const mapped = {};
+  for (const [csvCol, val] of Object.entries(row)) {
+    const clean = csvCol.replace(/^\uFEFF/,'').replace(/\r/g,'').trim();
+    const internal = IMPORT_COL_MAP[clean] || IMPORT_COL_MAP[clean.replace(/_/g,' ')] || null;
+    // Also try: if the key already matches an internal name directly
+    const finalKey = internal || (ALL_FIELDS.includes(clean) ? clean : null);
+    if (finalKey) mapped[finalKey] = val;
+  }
+  return mapped;
+}
+
+function mergeImportedData(imported) {
+  // Map column names first
+  const mappedRows = imported.map(mapImportedRow);
+
+  // Match by GlobalID only
+  const existingMap = new Map();
+  allPois.forEach((p, i) => {
+    if (p.GlobalID) existingMap.set(p.GlobalID, i);
+  });
+
+  let updated = 0, skipped = 0, fields_updated = 0;
+
+  mappedRows.forEach(row => {
+    const gid = row.GlobalID;
+    if (!gid) { skipped++; return; }
+    const existIdx = existingMap.get(gid);
+    if (existIdx === undefined) { skipped++; return; }
+
+    // Update existing POI: overwrite with imported values
+    const existing = allPois[existIdx];
+    for (const [f, rawVal] of Object.entries(row)) {
+      if (f === 'GlobalID') continue; // never overwrite ID
+      const newVal = (rawVal ?? '').trim();
+      const oldVal = (existing[f] ?? '').trim();
+      if (newVal !== oldVal) {
+        existing[f] = newVal;
+        if (!edits[existing.GlobalID]) edits[existing.GlobalID] = {};
+        edits[existing.GlobalID][f] = newVal;
+        fields_updated++;
+      }
+    }
+    updated++;
+  });
+
+  saveEditsToStorage();
+  validateAllPois();
+  buildUI();
+  toast(`Import: ${updated} POIs updated (${fields_updated} fields changed), ${skipped} skipped (no matching ID)`);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') { closeDetail(); document.getElementById('lightbox').classList.remove('active'); }
+  if (document.getElementById('detailPanel').classList.contains('open') && !e.target.matches('input,textarea,select')) {
+    if (e.key==='ArrowUp') { e.preventDefault(); navPoi(-1); }
+    if (e.key==='ArrowDown') { e.preventDefault(); navPoi(1); }
+  }
+});
+
+// ===== MAP VIEW =====
+let poiMap = null;
+let mapMarkers = null;
+let mapInitialized = false;
+
+const CAT_COLORS = {
+  'Restaurants':'#e53935','Food and Beverages':'#ff7043','Coffee Shops':'#795548',
+  'Grocery':'#43a047','Shopping':'#8e24aa','Shopping & Distribution':'#7b1fa2',
+  'Mosques':'#00897b','Education':'#1e88e5','Hospitals':'#d32f2f',
+  'Hotels and Accommodations':'#f9a825','Banks':'#546e7a','Beauty and Spa':'#ec407a',
+  'Automotive Services':'#455a64','Services & Industry':'#78909c',
+  'Corporate':'#3949ab','Sports':'#00acc1','Entertainment':'#ff6f00',
+  'Pharmacies':'#66bb6a','Home Goods':'#8d6e63','Fuel Stations':'#fdd835',
+  'Public Services':'#5c6bc0','Government Services':'#7e57c2',
+  'Cultural Sites':'#ab47bc','Nature':'#2e7d32','Public Parks':'#4caf50',
+  'Transportation':'#607d8b','Real Estate':'#ff8a65','Life & Convenience':'#26a69a',
+  'Health & Medical':'#ef5350','Accommodation':'#ffa726',
+};
+
+function getMarkerColor(cat) { return CAT_COLORS[cat] || '#1976d2'; }
+
+function initMap() {
+  if (mapInitialized) { updateMapMarkers(); return; }
+  mapInitialized = true;
+
+  // Populate category filter
+  const catFilter = document.getElementById('mapCategoryFilter');
+  const cats = [...new Set(allPois.map(p => p.Category).filter(Boolean))].sort();
+  cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catFilter.appendChild(o); });
+
+  // Create map centered on Riyadh
+  poiMap = L.map('mapContainer').setView([24.7136, 46.6753], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(poiMap);
+
+  mapMarkers = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
+  poiMap.addLayer(mapMarkers);
+
+  updateMapMarkers();
+}
+
+function updateMapMarkers() {
+  if (!poiMap || !mapMarkers) return;
+  mapMarkers.clearLayers();
+
+  const catFilter = document.getElementById('mapCategoryFilter').value;
+  const qaFilter = document.getElementById('mapQaFilter').value;
+
+  let count = 0;
+  allPois.forEach(poi => {
+    const lat = parseFloat(poi.Latitude);
+    const lng = parseFloat(poi.Longitude);
+    if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+    if (catFilter && poi.Category !== catFilter) return;
+    const qa = parseInt(poi.QA_Score) || 0;
+    if (qaFilter === '100' && qa !== 100) return;
+    if (qaFilter === '90' && qa < 90) return;
+    if (qaFilter === '80' && qa < 80) return;
+    if (qaFilter === 'low' && qa >= 80) return;
+
+    const color = getMarkerColor(poi.Category);
+    const icon = L.divIcon({
+      className: 'poi-map-marker',
+      html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+
+    const marker = L.marker([lat, lng], { icon });
+    const nameEn = poi.Name_EN || 'Unnamed';
+    const nameAr = poi.Name_AR || '';
+    const cat = poi.Category || '';
+    const sub = poi.Subcategory || '';
+    const status = poi.Company_Status || '';
+    const qaScore = poi.QA_Score || '?';
+
+    marker.bindPopup(`
+      <div style="min-width:200px;font-family:Segoe UI,sans-serif;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(nameEn)}</div>
+        <div style="font-size:13px;color:#555;direction:rtl;text-align:right;margin-bottom:6px;">${esc(nameAr)}</div>
+        <div style="font-size:11px;color:#666;line-height:1.6;">
+          <b>Category:</b> ${esc(cat)}${sub ? ' &gt; ' + esc(sub) : ''}<br>
+          <b>Status:</b> ${esc(status)}<br>
+          <b>QA Score:</b> <span style="font-weight:700;color:${qa >= 90 ? '#2e7d32' : qa >= 70 ? '#f57f17' : '#c62828'}">${qaScore}</span><br>
+          <b>District:</b> ${esc(poi.District_EN || 'N/A')}<br>
+          ${poi.Phone_Number && poi.Phone_Number !== 'UNAVAILABLE' ? '<b>Phone:</b> ' + esc(poi.Phone_Number) + '<br>' : ''}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:4px;">
+          <button onclick="openDetail(allPois.findIndex(p=>p.GlobalID==='${poi.GlobalID}'))" style="padding:4px 10px;font-size:11px;background:#1976d2;color:#fff;border:none;border-radius:3px;cursor:pointer;">Details</button>
+          ${poi.Google_Map_URL && poi.Google_Map_URL !== 'UNAVAILABLE' ? '<a href="' + esc(poi.Google_Map_URL) + '" target="_blank" style="padding:4px 10px;font-size:11px;background:#43a047;color:#fff;border:none;border-radius:3px;cursor:pointer;text-decoration:none;">Google Maps</a>' : ''}
+        </div>
+      </div>
+    `);
+    mapMarkers.addLayer(marker);
+    count++;
+  });
+
+  document.getElementById('mapCount').textContent = `${count} POIs on map`;
+}
+
+function resetMapView() {
+  if (poiMap) poiMap.setView([24.7136, 46.6753], 12);
+}
+
+// ===== ARCGIS MEDIA VIEW (Dual Mode) =====
+let arcPois = [];
+let arcDecisions = {};
+let arcInitialized = false;
+let arcToken = '';
+let arcCurrentMode = 'arcgis';
+const MEDIA_TYPES = ['exterior','interior','menu','video','license','additional'];
+const MEDIA_DB_FIELDS = {exterior:'Exterior_Photo_URL',interior:'Interior_Photo_URL',menu:'Menu_Photo_URL',video:'Video_URL',license:'License_Photo_URL',additional:'Additional_Photo_URLs'};
+const MEDIA_COLORS = {exterior:'#f59e0b',interior:'#8b5cf6',menu:'#f97316',video:'#ec4899',license:'#14b8a6',additional:'#78909c'};
+let arcCatalogue = []; // full ArcGIS attachment catalogue
+let arcSelectedGid = null;
+
+async function initArcGISMedia() {
+  if (arcInitialized) return;
+  arcInitialized = true;
+  const statusEl = document.getElementById('arcStatus');
+  statusEl.textContent = 'Loading...';
+
+  // Fetch ArcGIS token
+  try {
+    const tokenResp = await fetch('/api/arcgis-token');
+    const tokenData = await tokenResp.json();
+    arcToken = tokenData.token || '';
+  } catch(e) {}
+
+  // Load full catalogue JSON
+  try {
+    const resp = await fetch('arcgis_full_catalogue.json');
+    arcCatalogue = await resp.json();
+    const suggestions = arcCatalogue.filter(c => c.missing_types.length > 0).length;
+    const withArc = arcCatalogue.filter(c => c.arc_total > 0).length;
+    document.getElementById('arcgisBadge').textContent = suggestions;
+    document.getElementById('arcgisBadge').style.display = 'inline';
+    statusEl.innerHTML = arcToken
+      ? `<span style="color:#2e7d32;">Ready — ${arcCatalogue.length} POIs, ${withArc} with ArcGIS media</span>`
+      : `<span style="color:#f59e0b;">Token failed — images may not load</span>`;
+  } catch(e) {
+    arcCatalogue = [];
+    statusEl.innerHTML = '<span style="color:#d32f2f;">Failed to load catalogue</span>';
+  }
+
+  arcApplyFilter();
+}
+
+function arcImg(url) {
+  if (!url || !url.includes('arcgis.com')) return url;
+  return '/api/arcgis-image?url=' + encodeURIComponent(url);
+}
+function arcVid(url) {
+  if (!url || !url.includes('arcgis.com')) return url;
+  return url + (url.includes('?')?'&':'?') + 'token=' + (arcToken||'');
+}
+
+// ── POI List Rendering ──
+function arcApplyFilter() {
+  const filter = document.getElementById('arcViewFilter').value;
+  const search = (document.getElementById('arcPoiSearch').value||'').toLowerCase().trim();
+  let list = [];
+
+  if (search.length >= 2) {
+    // Search across ALL POIs (both catalogue + DB-only)
+    const catGids = new Set(arcCatalogue.map(c => c.GlobalID));
+    // From catalogue
+    list = arcCatalogue.filter(c =>
+      (c.Name_EN||'').toLowerCase().includes(search) || (c.Name_AR||'').includes(search)
+    );
+    // Add DB-only POIs not in catalogue
+    for (const p of allPois) {
+      if (!catGids.has(p.GlobalID) &&
+          ((p.Name_EN||'').toLowerCase().includes(search) || (p.Name_AR||'').includes(search))) {
+        list.push({
+          GlobalID: p.GlobalID, Name_EN: p.Name_EN, Name_AR: p.Name_AR,
+          Category: p.Category, arc_total: 0, missing_types: [],
+          has_suggestions: false, db_media: {}, arc_attachments: {}
+        });
+      }
+    }
+  } else {
+    // Filter catalogue
+    if (filter === 'suggestions') list = arcCatalogue.filter(c => c.missing_types.length > 0);
+    else if (filter === 'has_arc') list = arcCatalogue.filter(c => c.arc_total > 0);
+    else if (filter === 'no_media') {
+      // POIs with no media in DB
+      list = arcCatalogue.filter(c => {
+        const dbPoi = allPois.find(p => p.GlobalID === c.GlobalID);
+        if (!dbPoi) return false;
+        return !['Exterior_Photo_URL','Interior_Photo_URL','Video_URL','License_Photo_URL'].some(f => {
+          const v = (dbPoi[f]||'').trim();
+          return v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE';
+        });
+      });
+    } else {
+      list = arcCatalogue;
+    }
+  }
+
+  document.getElementById('arcCounter').textContent = `${list.length} POIs`;
+  renderArcPoiList(list);
+}
+
+function arcSearchPoi() {
+  arcApplyFilter();
+}
+
+function renderArcPoiList(list) {
+  const container = document.getElementById('arcPoiList');
+  if (!list.length) {
+    container.innerHTML = '<div style="padding:30px;text-align:center;color:#999;font-size:13px;">No POIs found</div>';
+    return;
+  }
+
+  container.innerHTML = list.map(c => {
+    const gid = c.GlobalID;
+    const dbPoi = allPois.find(p => p.GlobalID === gid);
+    // Count current DB media
+    let dbCount = 0;
+    if (dbPoi) {
+      for (const f of ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL']) {
+        const v = (dbPoi[f]||'').trim();
+        if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE') dbCount++;
+      }
+    }
+    const hasSuggestions = c.missing_types && c.missing_types.length > 0;
+    const isSelected = arcSelectedGid === gid;
+
+    return `<div onclick="arcSelectPoi('${gid}')" style="padding:10px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;background:${isSelected?'#e3f2fd':'#fff'};transition:background 0.15s;" onmouseover="if(!this.style.background.includes('e3f2fd'))this.style.background='#f8f9fa'" onmouseout="if('${gid}'!==arcSelectedGid)this.style.background='#fff'">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.Name_EN||'?'}</div>
+          <div style="font-size:11px;color:#888;direction:rtl;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.Name_AR||''}</div>
+          <div style="font-size:10px;color:#999;margin-top:2px;">${c.Category||''}</div>
+        </div>
+        <div style="text-align:right;min-width:70px;margin-left:8px;">
+          <div style="font-size:11px;color:${dbCount>=3?'#22c55e':dbCount>=1?'#f59e0b':'#ef4444'};font-weight:600;">${dbCount}/5 DB</div>
+          ${c.arc_total > 0 ? `<div style="font-size:10px;color:#1976d2;">${c.arc_total} ArcGIS</div>` : '<div style="font-size:10px;color:#ccc;">No ArcGIS</div>'}
+          ${hasSuggestions ? `<div style="margin-top:2px;">${c.missing_types.map(t=>`<span style="display:inline-block;padding:1px 4px;border-radius:6px;font-size:8px;font-weight:600;background:${MEDIA_COLORS[t]||'#999'};color:#fff;margin:1px;">${t}</span>`).join('')}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── POI Detail (Right Panel) ──
+function arcSelectPoi(gid) {
+  arcSelectedGid = gid;
+  // Re-highlight list
+  document.querySelectorAll('#arcPoiList > div').forEach(el => {
+    el.style.background = el.getAttribute('onclick')?.includes(gid) ? '#e3f2fd' : '#fff';
+  });
+
+  const catEntry = arcCatalogue.find(c => c.GlobalID === gid);
+  const dbPoi = allPois.find(p => p.GlobalID === gid);
+  if (!dbPoi) {
+    document.getElementById('arcPoiDetail').innerHTML = '<div style="padding:40px;text-align:center;color:#999;">POI not found in DB</div>';
+    return;
+  }
+
+  const detail = document.getElementById('arcPoiDetail');
+  let html = '';
+
+  // Header
+  html += `<div style="margin-bottom:16px;">
+    <h2 style="font-size:18px;margin:0;color:#333;">${dbPoi.Name_EN||'?'}</h2>
+    <div style="font-size:14px;color:#888;direction:rtl;margin-top:2px;">${dbPoi.Name_AR||''}</div>
+    <div style="font-size:12px;color:#666;margin-top:4px;">${dbPoi.Category||''} ${catEntry ? `| ${catEntry.arc_total} ArcGIS attachments` : '| No ArcGIS match'}</div>
+  </div>`;
+
+  // Media fields - each row shows: DB current + ArcGIS suggestions
+  const mediaTypes = ['exterior','interior','menu','video','license'];
+
+  for (const mt of mediaTypes) {
+    const dbField = MEDIA_DB_FIELDS[mt];
+    const dbVal = (dbPoi[dbField]||'').trim();
+    const dbHas = dbVal && dbVal !== 'UNAVAILABLE' && dbVal !== 'UNAPPLICABLE';
+    const isVid = mt === 'video';
+
+    // Get ArcGIS suggestions
+    const arcItems = catEntry ? (catEntry.arc_attachments[mt] || []) : [];
+    // Also include 'other' unclassified attachments as potential suggestions
+    const otherItems = catEntry ? (catEntry.arc_attachments.other || []) : [];
+    const isMissing = catEntry && catEntry.missing_types.includes(mt);
+
+    html += `<div style="background:#fff;border-radius:8px;border:1px solid ${isMissing?'#22c55e33':'#eee'};padding:12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:600;text-transform:uppercase;color:${MEDIA_COLORS[mt]};">${mt}
+          ${dbHas ? '<span style="color:#22c55e;font-size:11px;"> &#10003; In DB</span>' : '<span style="color:#ef4444;font-size:11px;"> &#x2717; Missing</span>'}
+          ${isMissing ? '<span style="background:#22c55e;color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;margin-left:6px;">SUGGESTION AVAILABLE</span>' : ''}
+        </div>
+      </div>`;
+
+    // Current DB media
+    html += '<div style="display:flex;flex-wrap:wrap;gap:10px;">';
+    if (dbHas) {
+      const previewUrl = dbVal.startsWith('http') ? (dbVal.includes('arcgis.com') ? (isVid ? arcVid(dbVal) : arcImg(dbVal)) : dbVal) : '';
+      html += `<div style="min-width:160px;">
+        <div style="font-size:10px;color:#1976d2;margin-bottom:3px;font-weight:600;">Current in DB</div>`;
+      if (previewUrl) {
+        html += isVid
+          ? `<video style="width:200px;border-radius:6px;border:2px solid #1976d2;" controls preload="none"><source src="${previewUrl}"></video>`
+          : `<img src="${previewUrl}" style="width:200px;height:140px;object-fit:cover;border-radius:6px;border:2px solid #1976d2;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.outerHTML='<div style=\\'padding:8px;color:#999;font-size:11px;background:#f5f5f5;border-radius:6px;width:200px;text-align:center\\'>URL exists but cannot preview</div>'">`;
+      }
+      html += `<div style="margin-top:4px;display:flex;gap:4px;">
+        <button onclick="clearMediaField('${gid}','${dbField}')" style="font-size:10px;padding:2px 8px;background:#ef4444;color:#fff;border:none;border-radius:3px;cursor:pointer;">Clear</button>
+        <button onclick="promptMediaUrl('${gid}','${dbField}','${mt}')" style="font-size:10px;padding:2px 8px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer;">Change URL</button>
+      </div></div>`;
+    } else {
+      html += `<div style="width:200px;height:140px;background:#f5f5f5;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #ddd;">
+        <div style="font-size:28px;color:#ddd;">&#x2717;</div>
+        <div style="font-size:11px;color:#999;margin-top:4px;">No ${mt} in DB</div>
+        <button onclick="promptMediaUrl('${gid}','${dbField}','${mt}')" style="margin-top:6px;font-size:10px;padding:2px 8px;background:#1976d2;color:#fff;border:none;border-radius:3px;cursor:pointer;">Add URL</button>
+      </div>`;
+    }
+
+    // ArcGIS suggestions
+    if (arcItems.length > 0) {
+      for (const item of arcItems) {
+        const tUrl = isVid ? arcVid(item.url) : arcImg(item.url);
+        html += `<div style="min-width:160px;">
+          <div style="font-size:10px;color:#22c55e;margin-bottom:3px;font-weight:600;">ArcGIS: ${item.name||mt} <span style="color:#999;">${item.size_kb}KB</span></div>`;
+        html += isVid
+          ? `<video style="width:200px;border-radius:6px;border:2px solid #22c55e;" controls preload="none"><source src="${tUrl}"></video>`
+          : `<img src="${tUrl}" style="width:200px;height:140px;object-fit:cover;border-radius:6px;border:2px solid #22c55e;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`;
+        html += `<div style="margin-top:4px;display:flex;gap:4px;">
+          ${assignBtn(gid, dbField, item.url, 'Use as ' + mt.toUpperCase())}
+          ${reassignBtn(gid, item.url)}
+        </div></div>`;
+      }
+    }
+    html += '</div></div>';
+  }
+
+  // Unclassified / Other ArcGIS attachments
+  const otherItems = catEntry ? (catEntry.arc_attachments.other || []) : [];
+  if (otherItems.length > 0) {
+    html += `<div style="background:#fff;border-radius:8px;border:1px solid #eee;padding:12px;margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:600;color:#78909c;margin-bottom:8px;">UNCLASSIFIED ArcGIS Attachments (${otherItems.length})</div>
+      <div style="font-size:11px;color:#888;margin-bottom:8px;">These attachments weren't auto-classified. Review and assign to the correct type:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">`;
+    for (const item of otherItems) {
+      const isVid = (item.contentType||'').includes('video') || (item.name||'').match(/\.(mp4|mov)$/i);
+      const tUrl = isVid ? arcVid(item.url) : arcImg(item.url);
+      html += `<div style="min-width:160px;max-width:220px;">
+        <div style="font-size:10px;color:#78909c;margin-bottom:3px;">${item.name||'?'} <span style="color:#999;">${item.size_kb}KB</span></div>`;
+      html += isVid
+        ? `<video style="width:100%;border-radius:6px;border:1px solid #ccc;" controls preload="none"><source src="${tUrl}"></video>`
+        : `<img src="${tUrl}" style="width:100%;height:120px;object-fit:cover;border-radius:6px;border:1px solid #ccc;cursor:pointer;" loading="lazy" onclick="window.open(this.src,'_blank')" onerror="this.style.display='none'">`;
+      html += `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;">`;
+      for (const mt of mediaTypes) {
+        html += assignBtn(gid, MEDIA_DB_FIELDS[mt], item.url, mt);
+      }
+      html += `</div></div>`;
+    }
+    html += '</div></div>';
+  }
+
+  // Quick actions
+  if (catEntry && catEntry.missing_types.length > 0) {
+    html += `<div style="background:#e8f5e9;border-radius:8px;padding:12px;margin-top:8px;text-align:center;">
+      <div style="font-size:12px;color:#2e7d32;margin-bottom:8px;font-weight:600;">Quick: Auto-assign all suggested media for this POI</div>
+      <button onclick="arcAutoAssign('${gid}')" style="padding:8px 24px;background:#22c55e;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">Auto-Assign All Suggestions</button>
+    </div>`;
+  }
+
+  detail.innerHTML = html;
+}
+
+async function arcAutoAssign(gid) {
+  const catEntry = arcCatalogue.find(c => c.GlobalID === gid);
+  if (!catEntry) return;
+  const statusEl = document.getElementById('arcStatus');
+  statusEl.innerHTML = '<span style="color:#1976d2;">Auto-assigning...</span>';
+
+  const updates = {};
+  for (const mt of catEntry.missing_types) {
+    const items = catEntry.arc_attachments[mt] || [];
+    if (items.length > 0) {
+      updates[MEDIA_DB_FIELDS[mt]] = items[0].url;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  try {
+    const resp = await fetch('/api/pois/' + encodeURIComponent(gid), {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(updates)
+    });
+    const r = await resp.json();
+    if (r.ok || r.updated) {
+      const poi = allPois.find(p => p.GlobalID === gid);
+      if (poi) Object.assign(poi, updates);
+      statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:600;">&#10003; Auto-assigned ${Object.keys(updates).length} media fields!</span>`;
+      setTimeout(() => arcSelectPoi(gid), 300);
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#d32f2f;">Failed: ${e.message}</span>`;
+  }
+}
+
+// ── Media Assignment (safe URL handling) ──
+// Store pending URLs safely to avoid onclick escaping issues
+let _pendingAssign = {};
+
+async function assignMedia(gid, field, url) {
+  const statusEl = document.getElementById('arcStatus');
+  try {
+    statusEl.innerHTML = `<span style="color:#1976d2;">Saving...</span>`;
+    const resp = await fetch('/api/pois/' + encodeURIComponent(gid), {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({[field]: url})
+    });
+    const r = await resp.json();
+    if (r.ok || r.updated) {
+      const poi = allPois.find(p=>p.GlobalID===gid);
+      const name = poi ? (poi.Name_EN || gid.substring(0,8)) : gid.substring(0,8);
+      const typeName = Object.entries(MEDIA_DB_FIELDS).find(([k,v])=>v===field)?.[0] || field;
+      statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:600;">&#10003; Assigned ${typeName} for ${name}</span>`;
+      if (poi) poi[field] = url;
+      // Refresh current view to show updated state
+      setTimeout(() => {
+        if (arcCurrentMode === 'arcgis') renderArcGISMode();
+        else renderDBMediaMode();
+      }, 500);
+    } else {
+      statusEl.innerHTML = `<span style="color:#d32f2f;">Failed: ${JSON.stringify(r)}</span>`;
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#d32f2f;">Assign failed: ${e.message}</span>`;
+  }
+}
+
+function _safeAssign(key) {
+  const d = _pendingAssign[key];
+  if (!d) return;
+  assignMedia(d.gid, d.field, d.url);
+  delete _pendingAssign[key];
+}
+
+function _safeOpenAssign(key) {
+  const d = _pendingAssign[key];
+  if (!d) return;
+  openMediaAssign(d.gid, d.url);
+}
+
+// Create safe onclick button for media assignment
+function assignBtn(gid, field, url, label) {
+  const key = 'a_' + Math.random().toString(36).substr(2,8);
+  _pendingAssign[key] = {gid, field, url};
+  return `<button onclick="_safeAssign('${key}')" style="font-size:10px;padding:1px 6px;background:#1976d2;color:#fff;border:none;border-radius:3px;cursor:pointer;">${label}</button>`;
+}
+
+function reassignBtn(gid, url) {
+  const key = 'r_' + Math.random().toString(36).substr(2,8);
+  _pendingAssign[key] = {gid, url};
+  return `<button onclick="_safeOpenAssign('${key}')" style="font-size:10px;padding:1px 6px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer;">Reassign...</button>`;
+}
+
+function openMediaAssign(gid, url, targetGid) {
+  // targetGid = optional different POI to assign to (cross-POI)
+  const assignToGid = targetGid || gid;
+  document.getElementById('mediaAssignOverlay').style.display = 'block';
+  document.getElementById('mediaAssignModal').style.display = 'block';
+  const isVid = url.endsWith('.mp4') || url.endsWith('.mov') || url.includes('video');
+  const tUrl = isVid ? arcVid(url) : arcImg(url);
+
+  // Show preview
+  document.getElementById('mediaAssignPreview').innerHTML = isVid
+    ? `<video style="max-width:100%;max-height:200px;border-radius:8px;" controls><source src="${tUrl}"></video>`
+    : `<img src="${tUrl}" style="max-width:100%;max-height:200px;border-radius:8px;">`;
+
+  // Show current POI info + field status
+  const poi = allPois.find(p=>p.GlobalID===assignToGid);
+  const poiLabel = poi ? `<b>${poi.Name_EN||'?'}</b> <span style="color:#888;font-size:12px;">${poi.Name_AR||''}</span>` : assignToGid;
+
+  let html = `<div style="margin-bottom:12px;padding:8px;background:#f5f5f5;border-radius:6px;">
+    <div style="font-size:12px;color:#666;">Assign to:</div>
+    <div style="font-size:14px;">${poiLabel}</div>
+  </div>`;
+
+  // Show assign buttons with current status for each field
+  html += MEDIA_TYPES.map(mt => {
+    const field = MEDIA_DB_FIELDS[mt];
+    const currentVal = poi ? (poi[field]||'').trim() : '';
+    const hasCurrent = currentVal && currentVal !== 'UNAVAILABLE' && currentVal !== 'UNAPPLICABLE';
+    const statusHtml = hasCurrent
+      ? `<span style="font-size:10px;color:#f59e0b;margin-left:8px;">&#9888; Will replace existing</span>`
+      : `<span style="font-size:10px;color:#22c55e;margin-left:8px;">Empty — ready to assign</span>`;
+
+    const key = 'ma_' + Math.random().toString(36).substr(2,8);
+    _pendingAssign[key] = {gid: assignToGid, field, url};
+
+    return `<button onclick="_safeAssign('${key}');closeMediaAssign();" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px;margin:4px 0;background:${MEDIA_COLORS[mt]};color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-align:left;">
+      <span>Assign as ${mt.toUpperCase()}</span>
+      ${statusHtml}
+    </button>`;
+  }).join('');
+
+  // Cross-POI: search for different POI
+  html += `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #ddd;">
+    <div style="font-size:12px;color:#666;margin-bottom:6px;font-weight:600;">Or assign to a different POI:</div>
+    <input type="text" id="crossPoiSearch" placeholder="Search POI by name..." oninput="filterCrossPoiList()" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-bottom:6px;">
+    <div id="crossPoiList" style="max-height:200px;overflow-y:auto;"></div>
+  </div>`;
+
+  document.getElementById('mediaAssignOptions').innerHTML = html;
+
+  // Store url for cross-POI assignment
+  document.getElementById('mediaAssignModal').dataset.pendingUrl = url;
+}
+
+function filterCrossPoiList() {
+  const q = (document.getElementById('crossPoiSearch').value||'').toLowerCase().trim();
+  const container = document.getElementById('crossPoiList');
+  if (!q || q.length < 2) { container.innerHTML = '<div style="color:#999;font-size:11px;padding:4px;">Type at least 2 characters...</div>'; return; }
+
+  const url = document.getElementById('mediaAssignModal').dataset.pendingUrl;
+  const matches = allPois.filter(p =>
+    (p.Name_EN||'').toLowerCase().includes(q) || (p.Name_AR||'').includes(q)
+  ).slice(0, 20);
+
+  if (!matches.length) { container.innerHTML = '<div style="color:#999;font-size:11px;padding:4px;">No matches found</div>'; return; }
+
+  container.innerHTML = matches.map(p => {
+    const gid = p.GlobalID;
+    const mc = MEDIA_TYPES.filter(mt => {
+      const v = (p[MEDIA_DB_FIELDS[mt]]||'').trim();
+      return v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE';
+    }).length;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;" onmouseover="this.style.background='#e3f2fd'" onmouseout="this.style.background=''" onclick="closeMediaAssign();openMediaAssign('${gid}','${url.replace(/'/g,"\\'")}','${gid}')">
+      <div>
+        <b>${p.Name_EN||'?'}</b> <span style="color:#888;font-size:11px;">${p.Category||''}</span>
+      </div>
+      <span style="font-size:10px;color:${mc>=3?'#22c55e':mc>=1?'#f59e0b':'#ef4444'};">${mc}/6 media</span>
+    </div>`;
+  }).join('');
+}
+
+function closeMediaAssign() {
+  document.getElementById('mediaAssignOverlay').style.display = 'none';
+  document.getElementById('mediaAssignModal').style.display = 'none';
+  _pendingAssign = {}; // cleanup
+}
+
+async function promptMediaUrl(gid, field, mediaType) {
+  const url = prompt(`Enter URL for ${mediaType}:`);
+  if (!url) return;
+  await assignMedia(gid, field, url);
+}
+
+async function clearMediaField(gid, field) {
+  if (!confirm('Clear this media field?')) return;
+  await assignMedia(gid, field, 'UNAVAILABLE');
+}
+
+init();
+</script>
+</body>
+</html>

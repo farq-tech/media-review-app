@@ -1,4 +1,5 @@
 # Exclude from Vercel deployment
+backend/
 .venv/
 __pycache__/
 *.pyc
@@ -6,6 +7,7 @@ __pycache__/
 .claude/
 *.xlsx
 *.pdf
-POI_Surveyed_Final.xlsx
-POI_Final_Clean.csv
-POI_Duplicates_Removed.csv
+scripts/
+POI_NI_FINAL.csv
+poi_qa_pipeline.py
+POI_QA_PIPELINE_README.md

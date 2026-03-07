@@ -1,5 +1,15 @@
 {
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://poi-api-sagg.onrender.com/api/:path*" }
+  ],
   "headers": [
-    { "source": "/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }] }
+    {
+      "source": "/arcgis_full_catalogue.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    }
   ]
 }
