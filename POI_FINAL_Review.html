@@ -553,7 +553,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <span id="arcCounter" style="font-size:12px; color:#666; margin-left:auto;"></span>
   </div>
   <!-- Unassigned Media Grid -->
-  <div id="arcMediaGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 180px); align-content:start;"></div>
+  <div id="arcMediaGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 180px); align-content:start;">
+    <div id="arcLoader" style="grid-column:1/-1;text-align:center;padding:80px 20px;">
+      <div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a237e;border-radius:50%;margin:0 auto 16px;animation:spin 0.8s linear infinite;"></div>
+      <div style="color:#666;font-size:14px;">Loading media catalogue...</div>
+    </div>
+  </div>
 </div>
 
 <!-- AUDIT LOG VIEW -->
@@ -2962,12 +2967,13 @@ const MEDIA_COLORS = {exterior:'#f59e0b',interior:'#8b5cf6',menu:'#f97316',video
 let arcCatalogue = []; // full ArcGIS attachment catalogue
 let arcAllMedia = []; // flattened list of all media items
 let arcAssignedUrls = new Set(); // URLs already in DB
+let arcUrlBase = ''; // common URL prefix for ArcGIS attachment URLs
 
 async function initArcGISMedia() {
   if (arcInitialized) return;
   arcInitialized = true;
   const statusEl = document.getElementById('arcStatus');
-  statusEl.textContent = 'Loading...';
+  statusEl.textContent = 'Loading catalogue...';
 
   // Fetch ArcGIS token
   try {
@@ -2976,10 +2982,23 @@ async function initArcGISMedia() {
     arcToken = tokenData.token || '';
   } catch(e) {}
 
-  // Load full catalogue JSON
+  // Load lite catalogue (75% smaller)
   try {
-    const resp = await fetch('arcgis_full_catalogue.json');
-    arcCatalogue = await resp.json();
+    const resp = await fetch('arc_catalogue_lite.json');
+    const lite = await resp.json();
+    arcUrlBase = lite._urlBase || '';
+    arcCatalogue = lite.pois.map(p => {
+      const atts = {};
+      for (const [type, items] of Object.entries(p.a || {})) {
+        atts[type] = items.map(it => ({
+          url: arcUrlBase + it.u,
+          name: it.n || '',
+          contentType: it.t || '',
+          size_kb: it.s || 0
+        }));
+      }
+      return { GlobalID: p.g, arc_attachments: atts };
+    });
   } catch(e) {
     arcCatalogue = [];
     statusEl.innerHTML = '<span style="color:#d32f2f;">Failed to load catalogue</span>';
@@ -3006,9 +3025,16 @@ function buildMediaIndex() {
     }
   }
 
+  // Build GID→POI lookup for name/category resolution
+  const poiByGid = {};
+  for (const p of allPois) poiByGid[p.GlobalID] = p;
+
   // Flatten all catalogue attachments into one list
   for (const cat of arcCatalogue) {
     const atts = cat.arc_attachments || {};
+    const dbPoi = poiByGid[cat.GlobalID];
+    const sourceName = dbPoi ? (dbPoi.Name_EN || dbPoi.Name_AR || '?') : '?';
+    const sourceCategory = dbPoi ? (dbPoi.Category || '') : '';
     for (const [type, items] of Object.entries(atts)) {
       if (!Array.isArray(items)) continue;
       for (const item of items) {
@@ -3016,8 +3042,9 @@ function buildMediaIndex() {
           ...item,
           type: type,
           sourceGid: cat.GlobalID,
-          sourceName: cat.Name_EN || cat.Name_AR || '?',
-          sourceCategory: cat.Category || ''
+          sourceName: sourceName,
+          sourceCategory: sourceCategory,
+          hasDbPoi: !!dbPoi
         });
       }
     }
@@ -3035,20 +3062,29 @@ function buildMediaIndex() {
 }
 
 let _arcLazyObserver = null;
+let _arcFilteredItems = []; // current filtered list
+let _arcRenderedCount = 0;  // how many cards rendered so far
+const ARC_PAGE_SIZE = 24;   // cards per batch
+let _arcSearchTimer = null; // debounce timer
+
 function renderUnassignedMedia() {
+  // Debounce search input (300ms)
+  if (_arcSearchTimer) clearTimeout(_arcSearchTimer);
+  _arcSearchTimer = setTimeout(_doRenderUnassigned, 150);
+}
+
+function _doRenderUnassigned() {
   const typeFilter = document.getElementById('arcTypeFilter').value;
   const search = (document.getElementById('arcSourceSearch').value||'').toLowerCase().trim();
   const grid = document.getElementById('arcMediaGrid');
 
   // Filter to unassigned only
   let items = arcAllMedia.filter(m => !arcAssignedUrls.has(m.url));
-
-  // Apply type filter
   if (typeFilter !== 'all') items = items.filter(m => m.type === typeFilter);
-
-  // Apply source name search
   if (search.length >= 2) items = items.filter(m => m.sourceName.toLowerCase().includes(search));
 
+  _arcFilteredItems = items;
+  _arcRenderedCount = 0;
   document.getElementById('arcCounter').textContent = `${items.length} unassigned media`;
 
   if (!items.length) {
@@ -3056,56 +3092,87 @@ function renderUnassignedMedia() {
     return;
   }
 
-  // Show up to 100 items
-  const show = items.slice(0, 100);
-  const remaining = items.length - show.length;
-
   // Clean up previous observer
   if (_arcLazyObserver) _arcLazyObserver.disconnect();
+  grid.innerHTML = '';
+  _arcAppendCards(grid);
+}
 
-  grid.innerHTML = show.map(m => {
-    const isVid = m.type === 'video' || (m.contentType||'').includes('video') || (m.name||'').match(/\.(mp4|mov)$/i);
-    const color = MEDIA_COLORS[m.type] || '#78909c';
-    const key = 'um_' + Math.random().toString(36).substr(2,8);
-    _pendingAssign[key] = {gid: m.sourceGid, url: m.url};
-
-    // Use data-src for lazy loading — images load only when scrolled into view
-    return `<div class="arc-media-card" style="background:#fff;border-radius:8px;overflow:hidden;border:1px solid #eee;box-shadow:0 1px 3px rgba(0,0,0,0.06);cursor:pointer;min-height:220px;" onclick="_safeOpenAssign('${key}')">
-      <div class="arc-thumb" data-src="${m.url}" data-vid="${isVid?1:0}" style="width:100%;height:160px;background:#e8e8e8;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:24px;">&#128247;</div>
-      <div style="padding:8px 10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:9px;font-weight:700;background:${color};color:#fff;">${m.type.toUpperCase()}</span>
-          <span style="font-size:10px;color:#999;">${m.size_kb}KB</span>
-        </div>
-        <div style="font-size:11px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.sourceName}">${m.sourceName}</div>
-        <div style="font-size:10px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.name||''}</div>
+function _arcMakeCard(m) {
+  const isVid = m.type === 'video' || (m.contentType||'').includes('video') || (m.name||'').match(/\.(mp4|mov)$/i);
+  const color = MEDIA_COLORS[m.type] || '#78909c';
+  const key = 'um_' + Math.random().toString(36).substr(2,8);
+  _pendingAssign[key] = {gid: m.sourceGid, url: m.url, hasDbPoi: m.hasDbPoi};
+  return `<div class="arc-media-card" style="background:#fff;border-radius:8px;overflow:hidden;border:1px solid #eee;box-shadow:0 1px 3px rgba(0,0,0,0.06);cursor:pointer;min-height:220px;" onclick="_safeOpenAssign('${key}')">
+    <div class="arc-thumb" data-src="${m.url}" data-vid="${isVid?1:0}" style="width:100%;height:160px;background:#e8e8e8;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:24px;">&#128247;</div>
+    <div style="padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="display:inline-block;padding:2px 8px;border-radius:8px;font-size:9px;font-weight:700;background:${color};color:#fff;">${m.type.toUpperCase()}</span>
+        <span style="font-size:10px;color:#999;">${m.size_kb}KB</span>
       </div>
-    </div>`;
-  }).join('') + (remaining > 0 ? `<div style="grid-column:1/-1;text-align:center;padding:20px;color:#999;font-size:13px;">+ ${remaining} more items. Use filters to narrow down.</div>` : '');
+      <div style="font-size:11px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${m.sourceName}">${m.sourceName}${m.hasDbPoi?'':' <span style="color:#e53935;font-size:9px;">[NOT IN DB]</span>'}</div>
+      <div style="font-size:10px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.name||''}</div>
+    </div>
+  </div>`;
+}
 
-  // Lazy load images with Intersection Observer
-  _arcLazyObserver = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      const el = entry.target;
-      const src = el.dataset.src;
-      const isVid = el.dataset.vid === '1';
-      if (!src) continue;
-      _arcLazyObserver.unobserve(el);
-      const tUrl = isVid ? arcVid(src) : arcImg(src);
-      if (isVid) {
-        el.innerHTML = `<video style="width:100%;height:160px;object-fit:cover;background:#000;" controls preload="none"><source src="${tUrl}"></video>`;
-      } else {
-        const img = new Image();
-        img.style.cssText = 'width:100%;height:160px;object-fit:cover;';
-        img.onload = () => { el.innerHTML = ''; el.appendChild(img); };
-        img.onerror = () => { el.innerHTML = '<div style="width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;color:#ccc;font-size:11px;">Failed to load</div>'; };
-        img.src = tUrl;
+function _arcAppendCards(grid) {
+  const batch = _arcFilteredItems.slice(_arcRenderedCount, _arcRenderedCount + ARC_PAGE_SIZE);
+  if (!batch.length) return;
+
+  // Remove sentinel if present
+  const sentinel = document.getElementById('arcSentinel');
+  if (sentinel) sentinel.remove();
+
+  const frag = document.createRange().createContextualFragment(batch.map(m => _arcMakeCard(m)).join(''));
+  grid.appendChild(frag);
+  _arcRenderedCount += batch.length;
+
+  // Observe new thumbnails for lazy image loading
+  if (!_arcLazyObserver) {
+    _arcLazyObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        const src = el.dataset.src;
+        const isVid = el.dataset.vid === '1';
+        if (!src) continue;
+        _arcLazyObserver.unobserve(el);
+        _arcLoadThumb(el, src, isVid);
       }
-    }
-  }, { root: grid, rootMargin: '200px' });
+    }, { root: grid, rootMargin: '100px' });
+  }
+  grid.querySelectorAll('.arc-thumb:not([data-loaded])').forEach(el => { el.dataset.loaded='1'; _arcLazyObserver.observe(el); });
 
-  grid.querySelectorAll('.arc-thumb').forEach(el => _arcLazyObserver.observe(el));
+  // Add "Load More" sentinel at end
+  const remaining = _arcFilteredItems.length - _arcRenderedCount;
+  if (remaining > 0) {
+    const s = document.createElement('div');
+    s.id = 'arcSentinel';
+    s.style.cssText = 'grid-column:1/-1;text-align:center;padding:16px;';
+    s.innerHTML = `<button onclick="_arcAppendCards(document.getElementById('arcMediaGrid'))" style="padding:8px 24px;border:1px solid #1a237e;background:#fff;color:#1a237e;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">Load More (${remaining} remaining)</button>`;
+    grid.appendChild(s);
+  }
+}
+
+// Throttle concurrent image loads to max 4 at a time
+let _arcLoadingCount = 0;
+const _arcLoadQueue = [];
+function _arcLoadThumb(el, src, isVid) {
+  if (_arcLoadingCount >= 4) { _arcLoadQueue.push({el,src,isVid}); return; }
+  _arcLoadingCount++;
+  const done = () => { _arcLoadingCount--; if (_arcLoadQueue.length) { const n = _arcLoadQueue.shift(); _arcLoadThumb(n.el, n.src, n.isVid); } };
+  const tUrl = isVid ? arcVid(src) : arcImg(src);
+  if (isVid) {
+    el.innerHTML = `<video style="width:100%;height:160px;object-fit:cover;background:#000;" controls preload="none"><source src="${tUrl}"></video>`;
+    done();
+  } else {
+    const img = new Image();
+    img.style.cssText = 'width:100%;height:160px;object-fit:cover;';
+    img.onload = () => { el.innerHTML = ''; el.appendChild(img); done(); };
+    img.onerror = () => { el.innerHTML = '<div style="width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;color:#ccc;font-size:11px;">Failed</div>'; done(); };
+    img.src = tUrl;
+  }
 }
 
 function arcImg(url) {
@@ -3129,11 +3196,15 @@ async function arcAutoAssign(gid) {
   const statusEl = document.getElementById('arcStatus');
   statusEl.innerHTML = '<span style="color:#1976d2;">Auto-assigning...</span>';
 
+  // Derive missing types at runtime from DB POI
+  const poi = allPois.find(p => p.GlobalID === gid);
   const updates = {};
-  for (const mt of catEntry.missing_types) {
+  for (const [mt, dbField] of Object.entries(MEDIA_DB_FIELDS)) {
+    const cur = poi ? (poi[dbField] || '').trim() : '';
+    if (cur && cur !== 'UNAVAILABLE' && cur !== 'UNAPPLICABLE') continue; // already assigned
     const items = catEntry.arc_attachments[mt] || [];
     if (items.length > 0) {
-      updates[MEDIA_DB_FIELDS[mt]] = items[0].url;
+      updates[dbField] = items[0].url;
     }
   }
 
@@ -3149,7 +3220,8 @@ async function arcAutoAssign(gid) {
       const poi = allPois.find(p => p.GlobalID === gid);
       if (poi) Object.assign(poi, updates);
       statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:600;">&#10003; Auto-assigned ${Object.keys(updates).length} media fields!</span>`;
-      setTimeout(() => arcSelectPoi(gid), 300);
+      buildMediaIndex();
+      renderUnassignedMedia();
     }
   } catch(e) {
     statusEl.innerHTML = `<span style="color:#d32f2f;">Failed: ${e.message}</span>`;
@@ -3229,7 +3301,21 @@ function openMediaAssign(gid, url, targetGid) {
   const poi = allPois.find(p=>p.GlobalID===assignToGid);
   const poiLabel = poi ? `<b>${poi.Name_EN||'?'}</b> <span style="color:#888;font-size:12px;">${poi.Name_AR||''}</span>` : assignToGid;
 
-  let html = `<div style="margin-bottom:12px;padding:8px;background:#f5f5f5;border-radius:6px;">
+  // Extract objectid from URL for Survey123 import (format: .../objectid/attachments/attid)
+  const urlOidMatch = url.match(/\/(\d+)\/attachments\//);
+  const survey123Oid = urlOidMatch ? urlOidMatch[1] : null;
+
+  let html = '';
+  // If source POI not in DB, show "Create POI from Survey123" button
+  if (!poi && survey123Oid) {
+    html += `<div style="margin-bottom:12px;padding:12px;background:#fff3e0;border:1px solid #ff9800;border-radius:8px;">
+      <div style="font-size:13px;font-weight:600;color:#e65100;margin-bottom:6px;">&#9888; Source POI not in database</div>
+      <div style="font-size:12px;color:#666;margin-bottom:8px;">This media comes from Survey123 record #${survey123Oid}. Create a new POI from its data?</div>
+      <button onclick="createPoiFromSurvey123('${survey123Oid}','${url.replace(/'/g,"\\'")}')" style="padding:8px 16px;background:#e65100;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Create New POI from Survey123</button>
+    </div>`;
+  }
+
+  html += `<div style="margin-bottom:12px;padding:8px;background:#f5f5f5;border-radius:6px;">
     <div style="font-size:12px;color:#666;">Assign to:</div>
     <div style="font-size:14px;">${poiLabel}</div>
   </div>`;
@@ -3307,6 +3393,35 @@ async function promptMediaUrl(gid, field, mediaType) {
 async function clearMediaField(gid, field) {
   if (!confirm('Clear this media field?')) return;
   await assignMedia(gid, field, 'UNAVAILABLE');
+}
+
+async function createPoiFromSurvey123(objectid, mediaUrl) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Creating POI...';
+  try {
+    const resp = await fetch('/api/survey123-to-poi/' + objectid, { method: 'POST', headers: {'Content-Type': 'application/json'} });
+    const r = await resp.json();
+    if (resp.status === 409) {
+      // POI already exists — use it
+      toast('POI already exists: ' + (r.name||r.GlobalID));
+      closeMediaAssign();
+      openMediaAssign(r.GlobalID, mediaUrl, r.GlobalID);
+      return;
+    }
+    if (!resp.ok) { toast('Error: ' + (r.error||'Unknown'), 'error'); btn.disabled = false; btn.textContent = 'Retry'; return; }
+    // Success — add to allPois and reopen modal to assign media
+    toast('Created new POI: ' + (r.data.Name_EN || r.data.Name_AR || r.GlobalID));
+    allPois.push(r.data);
+    closeMediaAssign();
+    openMediaAssign(r.GlobalID, mediaUrl, r.GlobalID);
+    buildMediaIndex();
+    renderUnassignedMedia();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
 }
 
 // ===== INVOICE CALCULATOR =====

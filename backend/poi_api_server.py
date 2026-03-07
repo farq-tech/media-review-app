@@ -9,6 +9,8 @@ import os
 import sys
 import uuid
 import time
+import gzip
+import hashlib
 import threading
 import urllib.request
 import urllib.parse
@@ -282,7 +284,21 @@ def get_pois():
                 else:
                     d[k] = v if v is not None else ''
             result.append(d)
-        return jsonify(result)
+        # Gzip compress large JSON response (~2.7MB → ~250KB)
+        body = json.dumps(result, separators=(',', ':'))
+        etag = '"' + hashlib.md5(body.encode()).hexdigest() + '"'
+        if request.headers.get('If-None-Match') == etag:
+            return Response(status=304)
+        ae = request.headers.get('Accept-Encoding', '')
+        if 'gzip' in ae:
+            compressed = gzip.compress(body.encode(), compresslevel=6)
+            resp = Response(compressed, content_type='application/json')
+            resp.headers['Content-Encoding'] = 'gzip'
+        else:
+            resp = Response(body, content_type='application/json')
+        resp.headers['ETag'] = etag
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
@@ -619,6 +635,104 @@ def arcgis_search_features():
         })
 
     return jsonify({'results': results})
+
+# ===== API: Fetch Survey123 feature and create POI =====
+@api.route('/survey123-to-poi/<objectid>', methods=['POST'])
+def survey123_to_poi(objectid):
+    """Fetch a Survey123 feature by objectid and create a new POI in the DB."""
+    import requests as req
+    token = _get_agol_token()
+    if not token:
+        return jsonify({'error': 'ArcGIS token failed'}), 500
+
+    base = 'https://services5.arcgis.com/pYlVm2T6SvR7ytZv/arcgis/rest/services/survey123_1ed04c063d54418b893c165594e88840_results/FeatureServer/0'
+
+    # Query feature by objectid
+    try:
+        r = req.get(f'{base}/query', params={
+            'where': f'objectid={int(objectid)}',
+            'outFields': '*',
+            'returnGeometry': 'true',
+            'f': 'json',
+            'token': token
+        }, timeout=30)
+        data = r.json()
+        features = data.get('features', [])
+    except Exception as e:
+        return jsonify({'error': f'Query failed: {e}'}), 500
+
+    if not features:
+        return jsonify({'error': 'Feature not found in Survey123'}), 404
+
+    feat = features[0]
+    attrs = feat.get('attributes', {})
+    geom = feat.get('geometry', {})
+
+    # Map Survey123 fields to DB schema
+    poi_data = {}
+    for s123_field, db_field in SURVEY123_FIELD_MAP.items():
+        val = attrs.get(s123_field)
+        if val and str(val).strip():
+            poi_data[db_field] = str(val).strip()
+
+    # Extract geometry
+    if geom:
+        if geom.get('x') and not poi_data.get('Longitude'):
+            poi_data['Longitude'] = str(geom['x'])
+        if geom.get('y') and not poi_data.get('Latitude'):
+            poi_data['Latitude'] = str(geom['y'])
+
+    if not poi_data.get('Name_EN') and not poi_data.get('Name_AR'):
+        poi_data['Name_EN'] = f'Survey123 Import #{objectid}'
+
+    poi_data['Source'] = 'survey123_import'
+
+    # Check if POI already exists by name match
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    name_en = poi_data.get('Name_EN', '')
+    name_ar = poi_data.get('Name_AR', '')
+    if name_en:
+        cur.execute('SELECT "GlobalID" FROM final_delivery WHERE "Name_EN" = %s LIMIT 1', (name_en,))
+        existing = cur.fetchone()
+        if existing:
+            cur.close(); conn.close()
+            return jsonify({'error': 'POI already exists', 'GlobalID': existing['GlobalID'], 'name': name_en}), 409
+
+    # Generate new GlobalID and insert
+    gid = '{' + str(uuid.uuid4()).upper() + '}'
+    poi_data['GlobalID'] = gid
+
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'final_delivery' ORDER BY ordinal_position;")
+    all_cols = [r['column_name'] for r in cur.fetchall()]
+    skip = {'created_at', 'updated_at', 'delivery_date'}
+
+    cols = ['"GlobalID"']
+    vals = [gid]
+    placeholders = ['%s']
+
+    for col in all_cols:
+        if col in skip or col == 'GlobalID':
+            continue
+        if col in poi_data:
+            cols.append(f'"{col}"')
+            vals.append(poi_data[col])
+            placeholders.append('%s')
+
+    cols.append('"created_at"'); placeholders.append('NOW()')
+    cols.append('"updated_at"'); placeholders.append('NOW()')
+
+    sql = f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(placeholders)})'
+    try:
+        cur.execute(sql, vals)
+        conn.commit()
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        return jsonify({'error': str(e)}), 500
+
+    cur.close(); conn.close()
+    sync_to_arcgis('create', gid, poi_data)
+    return jsonify({'ok': True, 'GlobalID': gid, 'data': poi_data}), 201
 
 # ===== API: Create new POI =====
 @api.route('/pois', methods=['POST'])
