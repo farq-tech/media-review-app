@@ -3354,14 +3354,6 @@ function openMediaAssign(gid, url, targetGid) {
   const survey123Oid = urlOidMatch ? urlOidMatch[1] : null;
 
   let html = '';
-  // If source POI not in DB, show "Create POI from Survey123" button
-  if (!poi && survey123Oid) {
-    html += `<div style="margin-bottom:12px;padding:12px;background:#fff3e0;border:1px solid #ff9800;border-radius:8px;">
-      <div style="font-size:13px;font-weight:600;color:#e65100;margin-bottom:6px;">&#9888; Source POI not in database</div>
-      <div style="font-size:12px;color:#666;margin-bottom:8px;">This media comes from Survey123 record #${survey123Oid}. Create a new POI from its data?</div>
-      <button onclick="createPoiFromSurvey123('${survey123Oid}','${url.replace(/'/g,"\\'")}')" style="padding:8px 16px;background:#e65100;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Create New POI from Survey123</button>
-    </div>`;
-  }
 
   html += `<div style="margin-bottom:12px;padding:8px;background:#f5f5f5;border-radius:6px;">
     <div style="font-size:12px;color:#666;">Assign to:</div>
@@ -3392,6 +3384,16 @@ function openMediaAssign(gid, url, targetGid) {
     <input type="text" id="crossPoiSearch" placeholder="Search POI by name..." oninput="filterCrossPoiList()" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-bottom:6px;">
     <div id="crossPoiList" style="max-height:200px;overflow-y:auto;"></div>
   </div>`;
+
+  // "Add New POI from ArcGIS" button — always visible when survey123 objectid is available
+  if (survey123Oid) {
+    html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #ddd;">
+      <button id="createPoiBtn" onclick="createPoiFromSurvey123('${survey123Oid}','${url.replace(/'/g,"\\'")}')" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px 16px;background:linear-gradient(135deg,#e65100,#ff6d00);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(230,81,0,0.3);">
+        <span style="font-size:18px;">+</span> Add New POI from ArcGIS
+      </button>
+      <div style="font-size:10px;color:#999;text-align:center;margin-top:4px;">Fetches name, category, location, contacts from Survey123 record #${survey123Oid}</div>
+    </div>`;
+  }
 
   document.getElementById('mediaAssignOptions').innerHTML = html;
 
