@@ -170,6 +170,99 @@ def get_db():
     conn.set_client_encoding('UTF8')
     return conn
 
+# ===== Initialize audit log + reviewer tables =====
+def _init_audit_tables(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewers (
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'reviewer',
+            active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS poi_audit_log (
+            id SERIAL PRIMARY KEY,
+            global_id TEXT NOT NULL,
+            poi_name TEXT,
+            reviewer TEXT,
+            action TEXT DEFAULT 'update',
+            field_name TEXT,
+            old_value TEXT,
+            new_value TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_global_id ON poi_audit_log(global_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_reviewer ON poi_audit_log(reviewer);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON poi_audit_log(created_at DESC);")
+    conn.commit()
+    cur.close()
+
+_tables_initialized = False
+def ensure_tables():
+    global _tables_initialized
+    if _tables_initialized:
+        return
+    try:
+        conn = get_db()
+        _init_audit_tables(conn)
+        conn.close()
+        _tables_initialized = True
+    except Exception as e:
+        print(f'Table init error: {e}')
+
+import hashlib
+def _hash_pw(pw):
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+def _seed_reviewers():
+    """Seed initial reviewer accounts."""
+    conn = get_db()
+    cur = conn.cursor()
+    reviewers = [
+        ('waleed', 'Waleed', 'waleed123'),
+        ('fadhel', 'Fadhel', 'fadhel123'),
+        ('ruwaida', 'Ruwaida', 'ruwaida123'),
+        ('abdulrhman', 'Abdulrhman', 'abdulrhman123'),
+        ('naver', 'Naver', 'naver123'),
+        ('annivation', 'Annivation', 'annivation123'),
+    ]
+    for uname, dname, pw in reviewers:
+        cur.execute("SELECT id FROM reviewers WHERE username = %s", (uname,))
+        if not cur.fetchone():
+            cur.execute(
+                "INSERT INTO reviewers (username, display_name, password_hash) VALUES (%s, %s, %s)",
+                (uname, dname, _hash_pw(pw))
+            )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# ===== Audit logging helper =====
+def log_audit(conn, global_id, poi_name, reviewer, action, changes_dict, old_data=None):
+    """Log field-level changes to poi_audit_log."""
+    cur = conn.cursor()
+    for field, new_val in changes_dict.items():
+        if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
+            continue
+        old_val = ''
+        if old_data:
+            old_val = str(old_data.get(field, '') or '')
+        new_val_str = str(new_val or '')
+        if old_val == new_val_str:
+            continue
+        cur.execute(
+            """INSERT INTO poi_audit_log (global_id, poi_name, reviewer, action, field_name, old_value, new_value)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (global_id, poi_name or '', reviewer or 'unknown', action, field, old_val, new_val_str)
+        )
+    cur.close()
+
 # ===== API: Get all POIs =====
 @api.route('/pois', methods=['GET'])
 def get_pois():
@@ -215,9 +308,22 @@ def update_poi(globalid):
     if not data:
         return jsonify({'error': 'No data'}), 400
 
-    conn = get_db()
-    cur = conn.cursor()
+    reviewer = data.pop('_reviewer', None) or request.headers.get('X-Reviewer', 'unknown')
 
+    conn = get_db()
+    ensure_tables()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    # Fetch old values for audit
+    cur.execute('SELECT * FROM final_delivery WHERE "GlobalID" = %s;', (globalid,))
+    old_row = cur.fetchone()
+    cur.close()
+
+    if not old_row:
+        conn.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    cur = conn.cursor()
     sets = []
     vals = []
     for field, value in data.items():
@@ -237,12 +343,15 @@ def update_poi(globalid):
     sql = f'UPDATE final_delivery SET {", ".join(sets)} WHERE "GlobalID" = %s'
     cur.execute(sql, vals)
     updated = cur.rowcount
+
+    # Log audit
+    poi_name = old_row.get('Name_EN') or old_row.get('Name_AR') or ''
+    log_audit(conn, globalid, poi_name, reviewer, 'update', data, old_data=old_row)
+
     conn.commit()
     cur.close()
     conn.close()
 
-    if updated == 0:
-        return jsonify({'error': 'Not found'}), 404
     sync_to_arcgis('update', globalid, data)
     return jsonify({'ok': True, 'updated': updated, 'globalid': globalid})
 
@@ -981,13 +1090,126 @@ def validate_poi():
         }
     })
 
+# ===== API: Reviewer Login =====
+@api.route('/login', methods=['POST'])
+def reviewer_login():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    username = (data.get('username') or '').strip().lower()
+    password = data.get('password') or ''
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+
+    conn = get_db()
+    ensure_tables()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM reviewers WHERE username = %s AND active = TRUE", (username,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not user or user['password_hash'] != _hash_pw(password):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    return jsonify({
+        'ok': True,
+        'username': user['username'],
+        'display_name': user['display_name'],
+        'role': user['role']
+    })
+
+# ===== API: List reviewers =====
+@api.route('/reviewers', methods=['GET'])
+def list_reviewers():
+    conn = get_db()
+    ensure_tables()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT id, username, display_name, role, active, created_at::text FROM reviewers ORDER BY id;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
+# ===== API: Audit Log =====
+@api.route('/audit-log', methods=['GET'])
+def get_audit_log():
+    ensure_tables()
+    reviewer = request.args.get('reviewer', '')
+    global_id = request.args.get('global_id', '')
+    limit = min(int(request.args.get('limit', 200)), 1000)
+    offset = int(request.args.get('offset', 0))
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    where_clauses = []
+    params = []
+    if reviewer:
+        where_clauses.append("reviewer = %s")
+        params.append(reviewer)
+    if global_id:
+        where_clauses.append("global_id = %s")
+        params.append(global_id)
+
+    where_sql = ''
+    if where_clauses:
+        where_sql = 'WHERE ' + ' AND '.join(where_clauses)
+
+    cur.execute(f"""
+        SELECT id, global_id, poi_name, reviewer, action, field_name,
+               old_value, new_value, created_at::text
+        FROM poi_audit_log
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s;
+    """, params + [limit, offset])
+    rows = cur.fetchall()
+
+    # Get total count
+    cur.execute(f"SELECT COUNT(*) FROM poi_audit_log {where_sql};", params)
+    total = cur.fetchone()['count']
+
+    cur.close()
+    conn.close()
+    return jsonify({'logs': rows, 'total': total})
+
+# ===== API: Audit Log Stats (per reviewer) =====
+@api.route('/audit-log/stats', methods=['GET'])
+def audit_stats():
+    ensure_tables()
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT reviewer,
+               COUNT(DISTINCT global_id) as pois_edited,
+               COUNT(*) as total_changes,
+               MAX(created_at)::text as last_activity
+        FROM poi_audit_log
+        GROUP BY reviewer
+        ORDER BY total_changes DESC;
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
 # Register API blueprint
 app.register_blueprint(api)
 
-# Health check
+# Health check + init
 @app.route('/')
 def health():
     return jsonify({'status': 'ok', 'service': 'POI API Server'})
+
+# Initialize tables and seed reviewers on startup
+with app.app_context():
+    try:
+        ensure_tables()
+        _seed_reviewers()
+        print('Reviewer accounts seeded.')
+    except Exception as e:
+        print(f'Startup init: {e}')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))

@@ -326,13 +326,63 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .updates-dropdown .ud-item .ud-meta { color: #888; font-size: 11px; margin-top: 2px; }
 .updates-dropdown .ud-item .ud-fields { color: #1a237e; font-size: 11px; margin-top: 3px; }
 .updates-dropdown .ud-empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
+
+/* ============ LOGIN OVERLAY ============ */
+.login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #1a237e, #0d47a1); z-index: 500; display: flex; align-items: center; justify-content: center; }
+.login-box { background: #fff; border-radius: 12px; padding: 40px 36px; width: 360px; box-shadow: 0 12px 40px rgba(0,0,0,0.3); text-align: center; }
+.login-box h2 { font-size: 20px; color: #1a237e; margin-bottom: 6px; }
+.login-box .login-sub { font-size: 13px; color: #666; margin-bottom: 24px; }
+.login-box input { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+.login-box input:focus { border-color: #1a237e; outline: none; }
+.login-box .login-btn { width: 100%; padding: 12px; background: #1a237e; color: #fff; border: none; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 6px; }
+.login-box .login-btn:hover { background: #283593; }
+.login-box .login-error { color: #c62828; font-size: 13px; margin-top: 10px; display: none; }
+.login-box .login-skip { color: #999; font-size: 12px; margin-top: 14px; cursor: pointer; text-decoration: underline; }
+.login-box .login-skip:hover { color: #666; }
+
+/* ============ REVIEWER BADGE ============ */
+.reviewer-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-left: 8px; }
+.reviewer-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; }
+
+/* ============ AUDIT LOG ============ */
+.audit-container { padding: 16px 30px; }
+.audit-filters { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.audit-filters select, .audit-filters input { padding: 7px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+.audit-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.audit-table th { background: #1a237e; color: #fff; padding: 10px 12px; font-size: 11px; text-align: left; text-transform: uppercase; letter-spacing: 0.5px; }
+.audit-table td { padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #f0f0f0; }
+.audit-table tr:hover { background: #f5f7ff; }
+.audit-table .old-val { color: #c62828; text-decoration: line-through; }
+.audit-table .new-val { color: #2e7d32; font-weight: 600; }
+.audit-table .reviewer-col { color: #1a237e; font-weight: 600; }
+.audit-stats { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.audit-stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; min-width: 140px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.audit-stat-card .as-name { font-size: 14px; font-weight: 700; color: #1a237e; }
+.audit-stat-card .as-detail { font-size: 11px; color: #666; margin-top: 4px; }
+.audit-pagination { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+.audit-pagination button { padding: 6px 14px; border: 1px solid #ddd; background: #fff; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.audit-pagination button:hover { background: #f0f2ff; }
+.audit-pagination button.active { background: #1a237e; color: #fff; border-color: #1a237e; }
 </style>
 </head>
 <body>
 
+<!-- LOGIN OVERLAY -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>Reviewer Login</h2>
+    <p class="login-sub">Sign in to track your edits</p>
+    <input type="text" id="loginUser" placeholder="Username" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <p class="login-error" id="loginError"></p>
+    <p class="login-skip" onclick="skipLogin()">Continue as guest (read-only)</p>
+  </div>
+</div>
+
 <div class="header">
   <div>
-    <h1>POI FINAL REVIEW DASHBOARD</h1>
+    <h1>POI FINAL REVIEW DASHBOARD <span id="reviewerBadge" class="reviewer-badge" style="display:none;"><span class="dot"></span><span id="reviewerName"></span></span></h1>
     <p id="headerInfo">Loading...</p>
   </div>
   <div class="header-actions">
@@ -348,6 +398,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <button onclick="exportEdits()">Export Edits Only</button>
     <button onclick="clearEdits()">Clear Edits</button>
     <button onclick="document.getElementById('fileInput').click()">Import / Update CSV</button>
+    <button onclick="logoutReviewer()" id="logoutBtn" style="display:none;background:rgba(244,67,54,0.2);border-color:#f44336;">Logout</button>
   </div>
 </div>
 
@@ -357,6 +408,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 <div class="view-tabs" id="viewTabs">
   <div class="view-tab active" onclick="switchView('card')">Card View</div>
   <div class="view-tab" onclick="switchView('excel')">Excel Table View</div>
+  <div class="view-tab" onclick="switchView('audit')">Audit Log</div>
   <div class="view-tab" onclick="switchView('duplicates')">Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
   <div class="view-tab" onclick="switchView('map')">Map View</div>
   <div class="view-tab" onclick="switchView('arcgis')">ArcGIS Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
@@ -511,6 +563,27 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
         <div style="font-size:12px; margin-top:6px;">You'll see current DB media and ArcGIS suggestions side by side</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- AUDIT LOG VIEW -->
+<div id="auditView" class="view-content">
+  <div class="audit-container">
+    <div class="audit-stats" id="auditStats"></div>
+    <div class="audit-filters">
+      <select id="auditReviewerFilter" onchange="loadAuditLog()">
+        <option value="">All Reviewers</option>
+      </select>
+      <input type="text" id="auditPoiSearch" placeholder="Search POI name..." oninput="loadAuditLog()" style="width:200px;">
+      <span id="auditCount" style="margin-left:auto;font-size:12px;color:#666;"></span>
+    </div>
+    <table class="audit-table">
+      <thead><tr>
+        <th>Time</th><th>Reviewer</th><th>POI Name</th><th>Action</th><th>Field</th><th>Old Value</th><th>New Value</th>
+      </tr></thead>
+      <tbody id="auditTableBody"></tbody>
+    </table>
+    <div class="audit-pagination" id="auditPagination"></div>
   </div>
 </div>
 
@@ -1255,8 +1328,152 @@ const DETAIL_SECTIONS = [
 // ===== DB MODE =====
 let dbMode = false; // true if connected to API/PostgreSQL
 
+// ===== REVIEWER AUTH =====
+let currentReviewer = null;
+
+function checkLoginState() {
+  const saved = localStorage.getItem('poi_reviewer');
+  if (saved) {
+    try {
+      currentReviewer = JSON.parse(saved);
+      showReviewerBadge();
+      document.getElementById('loginOverlay').style.display = 'none';
+    } catch(e) {}
+  }
+}
+
+async function doLogin() {
+  const user = document.getElementById('loginUser').value.trim().toLowerCase();
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  if (!user || !pass) { errEl.textContent = 'Enter username and password'; errEl.style.display = 'block'; return; }
+  try {
+    const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:user, password:pass})});
+    const d = await r.json();
+    if (d.ok) {
+      currentReviewer = {username: d.username, display_name: d.display_name, role: d.role};
+      localStorage.setItem('poi_reviewer', JSON.stringify(currentReviewer));
+      showReviewerBadge();
+      document.getElementById('loginOverlay').style.display = 'none';
+      toast('Welcome, ' + d.display_name);
+    } else {
+      errEl.textContent = d.error || 'Login failed';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+}
+
+function skipLogin() {
+  currentReviewer = {username: 'guest', display_name: 'Guest', role: 'guest'};
+  document.getElementById('loginOverlay').style.display = 'none';
+}
+
+function showReviewerBadge() {
+  if (!currentReviewer) return;
+  document.getElementById('reviewerBadge').style.display = 'inline-flex';
+  document.getElementById('reviewerName').textContent = currentReviewer.display_name;
+  const lb = document.getElementById('logoutBtn');
+  if (lb) lb.style.display = currentReviewer.username !== 'guest' ? '' : 'none';
+}
+
+function logoutReviewer() {
+  currentReviewer = null;
+  localStorage.removeItem('poi_reviewer');
+  document.getElementById('reviewerBadge').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+}
+
+// ===== AUDIT LOG =====
+let auditPage = 0;
+const AUDIT_PAGE_SIZE = 100;
+
+async function loadAuditLog() {
+  if (!dbMode) return;
+  const reviewer = document.getElementById('auditReviewerFilter').value;
+  const search = (document.getElementById('auditPoiSearch').value || '').trim();
+  try {
+    let url = `/api/audit-log?limit=${AUDIT_PAGE_SIZE}&offset=${auditPage * AUDIT_PAGE_SIZE}`;
+    if (reviewer) url += `&reviewer=${encodeURIComponent(reviewer)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    const logs = data.logs || [];
+    const total = data.total || 0;
+
+    // Filter by POI name client-side
+    const filtered = search ? logs.filter(l => (l.poi_name || '').toLowerCase().includes(search.toLowerCase())) : logs;
+
+    document.getElementById('auditCount').textContent = `${total} total changes`;
+
+    const tbody = document.getElementById('auditTableBody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">No audit logs yet. Changes will appear here once reviewers start editing POIs.</td></tr>';
+    } else {
+      tbody.innerHTML = filtered.map(l => `<tr>
+        <td style="white-space:nowrap;">${(l.created_at||'').replace('T',' ').slice(0,19)}</td>
+        <td class="reviewer-col">${l.reviewer||'unknown'}</td>
+        <td><a href="#" onclick="event.preventDefault();viewUpdatePoi('${l.global_id}')" style="color:#1a237e;text-decoration:none;">${(l.poi_name||'').slice(0,35)}</a></td>
+        <td>${l.action||''}</td>
+        <td>${l.field_name||''}</td>
+        <td class="old-val" title="${(l.old_value||'').replace(/"/g,'&quot;')}">${(l.old_value||'').slice(0,40)}</td>
+        <td class="new-val" title="${(l.new_value||'').replace(/"/g,'&quot;')}">${(l.new_value||'').slice(0,40)}</td>
+      </tr>`).join('');
+    }
+
+    // Pagination
+    const totalPages = Math.ceil(total / AUDIT_PAGE_SIZE);
+    const pagDiv = document.getElementById('auditPagination');
+    if (totalPages > 1) {
+      let html = '';
+      for (let p = 0; p < Math.min(totalPages, 10); p++) {
+        html += `<button class="${p===auditPage?'active':''}" onclick="auditPage=${p};loadAuditLog()">${p+1}</button>`;
+      }
+      pagDiv.innerHTML = html;
+    } else {
+      pagDiv.innerHTML = '';
+    }
+
+    // Load stats
+    loadAuditStats();
+  } catch(e) {
+    console.warn('Audit log error:', e);
+  }
+}
+
+async function loadAuditStats() {
+  try {
+    const r = await fetch('/api/audit-log/stats');
+    const stats = await r.json();
+    const div = document.getElementById('auditStats');
+    if (!stats.length) {
+      div.innerHTML = '';
+      return;
+    }
+    div.innerHTML = stats.map(s => `<div class="audit-stat-card">
+      <div class="as-name">${s.reviewer || 'unknown'}</div>
+      <div class="as-detail">${s.pois_edited} POIs edited &middot; ${s.total_changes} changes</div>
+      <div class="as-detail">Last: ${(s.last_activity||'').replace('T',' ').slice(0,16)}</div>
+    </div>`).join('');
+
+    // Populate reviewer filter dropdown
+    const sel = document.getElementById('auditReviewerFilter');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Reviewers</option>';
+    stats.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.reviewer;
+      opt.textContent = `${s.reviewer} (${s.total_changes})`;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  } catch(e) {}
+}
+
 // ===== INIT =====
 async function init() {
+  checkLoginState();
   const saved = localStorage.getItem('poi_review_edits');
   if (saved) try { edits = JSON.parse(saved); } catch(e) {}
   const sel = document.getElementById('flagSelect');
@@ -1301,11 +1518,13 @@ async function init() {
 // Save single field to DB
 async function saveToDb(gid, field, value) {
   if (!dbMode) return;
+  const payload = { [field]: value };
+  if (currentReviewer) payload._reviewer = currentReviewer.username;
   try {
     await fetch('/api/pois/' + encodeURIComponent(gid), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: value })
+      body: JSON.stringify(payload)
     });
   } catch(e) { console.warn('DB save failed:', e); }
 }
@@ -1313,11 +1532,13 @@ async function saveToDb(gid, field, value) {
 // Save multiple fields to DB
 async function saveFieldsToDb(gid, fields) {
   if (!dbMode) return;
+  const payload = {...fields};
+  if (currentReviewer) payload._reviewer = currentReviewer.username;
   try {
     await fetch('/api/pois/' + encodeURIComponent(gid), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fields)
+      body: JSON.stringify(payload)
     });
   } catch(e) { console.warn('DB save failed:', e); }
 }
@@ -1399,32 +1620,20 @@ function buildCategoryFilter() {
 }
 
 // ===== VIEWS =====
+const VIEW_MAP = {card:0, excel:1, audit:2, duplicates:3, map:4, arcgis:5, invoice:6};
+const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', invoice:'invoiceView'};
 function switchView(view) {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
-  if (view === 'excel') {
-    document.querySelectorAll('.view-tab')[1].classList.add('active');
-    document.getElementById('excelView').classList.add('active');
-    renderExcelTable();
-  } else if (view === 'duplicates') {
-    document.querySelectorAll('.view-tab')[2].classList.add('active');
-    document.getElementById('duplicatesView').classList.add('active');
-  } else if (view === 'map') {
-    document.querySelectorAll('.view-tab')[3].classList.add('active');
-    document.getElementById('mapView').classList.add('active');
-    initMap();
-  } else if (view === 'arcgis') {
-    document.querySelectorAll('.view-tab')[4].classList.add('active');
-    document.getElementById('arcgisView').classList.add('active');
-    initArcGISMedia();
-  } else if (view === 'invoice') {
-    document.querySelectorAll('.view-tab')[5].classList.add('active');
-    document.getElementById('invoiceView').classList.add('active');
-    renderInvoice();
-  } else {
-    document.querySelectorAll('.view-tab')[0].classList.add('active');
-    document.getElementById('cardView').classList.add('active');
-  }
+  const idx = VIEW_MAP[view] ?? 0;
+  const id = VIEW_IDS[view] || 'cardView';
+  document.querySelectorAll('.view-tab')[idx].classList.add('active');
+  document.getElementById(id).classList.add('active');
+  if (view === 'excel') renderExcelTable();
+  else if (view === 'map') initMap();
+  else if (view === 'arcgis') initArcGISMedia();
+  else if (view === 'invoice') renderInvoice();
+  else if (view === 'audit') loadAuditLog();
 }
 
 // ===== FILTERING =====
