@@ -4253,7 +4253,7 @@ function renderReassignTable() {
     row.forEach((cell, ci) => {
       const v = (cell || '').trim();
       if (ci === mediaReassignGidCol && v) {
-        html += `<td style="cursor:pointer;color:#1565c0;text-decoration:underline;" title="Open POI detail" onclick="openDetailByGid('${v.replace(/'/g,\"&#39;\")}')">${esc(v)}</td>`;
+        html += `<td style="cursor:pointer;color:#1565c0;text-decoration:underline;" title="Open POI detail" onclick="openDetailByGid('${v.replace(/'/g,'&#39;')}')">${esc(v)}</td>`;
       } else {
         html += `<td>${esc(v)}</td>`;
       }
