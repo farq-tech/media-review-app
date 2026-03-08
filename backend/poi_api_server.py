@@ -390,11 +390,23 @@ def update_poi(globalid):
     cur = conn.cursor()
     sets = []
     vals = []
+    # Status lifecycle: if a Reviewed POI is edited (data fields, not just status),
+    # revert Review_Status to Draft. Skip revert if the edit IS a status transition.
+    status_fields = {'Review_Status', 'Review_Flag', 'Review_Notes'}
+    editing_data_fields = any(f not in status_fields for f in data.keys()
+                              if f not in ('GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer'))
+    old_status = (old_row.get('Review_Status') or '').strip()
+
     for field, value in data.items():
         if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
             continue
         sets.append(f'"{field}" = %s')
         vals.append(value)
+
+    # Auto-revert to Draft when data fields of a Reviewed POI are edited
+    if editing_data_fields and old_status == 'Reviewed' and 'Review_Status' not in data:
+        sets.append('"Review_Status" = %s')
+        vals.append('Draft')
 
     if not sets:
         cur.close()
@@ -489,6 +501,10 @@ def get_stats():
     total = cur.fetchone()[0]
     cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Reviewed',))
     reviewed = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Draft',))
+    draft_count = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Archived',))
+    archived = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM final_delivery WHERE \"Review_Flag\" IS NOT NULL AND \"Review_Flag\" != '';")
     flagged = cur.fetchone()[0]
     cur.execute("SELECT AVG(NULLIF(\"QA_Score\",'')::numeric) FROM final_delivery;")
@@ -496,7 +512,8 @@ def get_stats():
     cur.close()
     conn.close()
     return jsonify({
-        'total': total, 'reviewed': reviewed, 'flagged': flagged,
+        'total': total, 'reviewed': reviewed, 'draft': draft_count,
+        'archived': archived, 'flagged': flagged,
         'avg_qa': round(float(avg_qa or 0), 1)
     })
 
@@ -514,6 +531,33 @@ def delete_poi(globalid):
         return jsonify({'error': 'Not found'}), 404
     sync_to_arcgis('delete', globalid)
     return jsonify({'ok': True, 'deleted': deleted})
+
+# ===== API: Archive POI =====
+@api.route('/pois/<globalid>/archive', methods=['POST'])
+def archive_poi(globalid):
+    """Archive a reviewed POI — sets Review_Status to 'Archived'."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT "Review_Status", "Name_EN", "Name_AR" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    cur2 = conn.cursor()
+    body = request.get_json(silent=True) or {}
+    reviewer = body.get('reviewer', 'unknown')
+    cur2.execute(
+        '''UPDATE final_delivery SET "Review_Status" = 'Archived', "updated_at" = NOW()
+           WHERE "GlobalID" = %s''',
+        (globalid,)
+    )
+    poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
+    log_audit(conn, globalid, poi_name, reviewer, 'archive',
+              {'Review_Status': 'Archived'}, old_data={'Review_Status': row.get('Review_Status', '')})
+    conn.commit()
+    cur.close(); cur2.close(); conn.close()
+    return jsonify({'ok': True, 'status': 'Archived'})
 
 # ===== API: ArcGIS Token Proxy =====
 @api.route('/arcgis-token', methods=['GET'])
@@ -810,6 +854,12 @@ def create_poi():
             cols.append(f'"{col}"')
             vals.append(data[col])
             placeholders.append('%s')
+
+    # New POIs start as Draft unless explicitly set
+    if 'Review_Status' not in data:
+        cols.append('"Review_Status"')
+        vals.append('Draft')
+        placeholders.append('%s')
 
     cols.append('"created_at"')
     placeholders.append('NOW()')
@@ -1825,6 +1875,10 @@ def confirm_draft(globalid):
     # Tag source
     cols.append('"Source"')
     vals.append(f'draft:{draft.get("Source_CSV", "")}')
+    placeholders.append('%s')
+    # Confirmed drafts start as Draft status in production (need review)
+    cols.append('"Review_Status"')
+    vals.append('Draft')
     placeholders.append('%s')
     cols.append('"created_at"'); placeholders.append('NOW()')
     cols.append('"updated_at"'); placeholders.append('NOW()')

@@ -429,9 +429,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     </select>
     <select id="filterStatus" onchange="applyFilters()">
       <option value="">All Status</option>
-      <option value="Pending">Pending</option>
+      <option value="Draft">Draft</option>
       <option value="Reviewed">Reviewed</option>
       <option value="Flagged">Flagged</option>
+      <option value="Archived">Archived</option>
     </select>
     <span class="count" id="filterCount"></span>
   </div>
@@ -683,6 +684,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <button class="btn btn-success" onclick="approvePoi()">Approve</button>
     <button class="btn btn-primary" onclick="saveEdits()">Save</button>
     <button class="btn btn-primary" onclick="openPoiForm('edit')" style="margin-left:auto;background:#0d47a1;">Edit POI</button>
+    <button class="btn" onclick="archivePoi()" style="background:#757575;color:#fff;">Archive</button>
     <button class="btn btn-danger" onclick="deletePoi()">Delete POI</button>
   </div>
 </div>
@@ -2329,6 +2331,8 @@ function buildUI() {
 function buildStats() {
   const t = allPois.length, fl = allPois.filter(p => p.Review_Flag).length;
   const rv = allPois.filter(p => p.Review_Status === 'Reviewed').length;
+  const dr = allPois.filter(p => !p.Review_Status || p.Review_Status === 'Draft' || p.Review_Status === 'Flagged').length;
+  const ar = allPois.filter(p => p.Review_Status === 'Archived').length;
   const avg = Math.round(allPois.reduce((s, p) => s + (parseInt(p.QA_Score)||0), 0) / t);
   const qh = allPois.filter(p => parseInt(p.QA_Score)>=80).length;
   const ql = allPois.filter(p => parseInt(p.QA_Score)<60).length;
@@ -2342,8 +2346,9 @@ function buildStats() {
     vStats.push({l:'Major',v:mj,c:mj?'warn':''});
   }
   document.getElementById('statsBar').innerHTML = [
-    {l:'Total POIs',v:t},{l:'Flagged',v:fl,c:fl?'alert':''},{l:'Reviewed',v:rv,c:'success'},
-    {l:'Pending',v:t-rv,c:t-rv?'warn':''},{l:'Avg QA',v:avg,c:'success'},
+    {l:'Total POIs',v:t},{l:'Draft',v:dr,c:dr?'warn':''},{l:'Reviewed',v:rv,c:'success'},
+    {l:'Archived',v:ar,c:''},{l:'Flagged',v:fl,c:fl?'alert':''},
+    {l:'Avg QA',v:avg,c:'success'},
     {l:'QA >= 80',v:qh,c:'success'},{l:'QA < 60',v:ql,c:ql?'alert':''},{l:'Edited',v:ed,c:ed?'warn':''},
     ...vStats,
     ...(dupGroups.length ? [{l:'Dup Groups',v:dupGroups.length,c:'warn'},{l:'Removed',v:removedPois.length,c:removedPois.length?'alert':''}] : [])
@@ -2401,7 +2406,11 @@ function applyFilters() {
     if (cat && p.Category !== cat) return false;
     const qs = parseInt(p.QA_Score)||0;
     if (qa==='high'&&qs<80) return false; if (qa==='mid'&&(qs<60||qs>=80)) return false; if (qa==='low'&&qs>=60) return false;
-    if (status && p.Review_Status !== status) return false;
+    if (status) {
+      const pStatus = p.Review_Status || 'Draft';
+      if (status === 'Draft' && pStatus !== 'Draft' && pStatus !== '' && pStatus !== 'Flagged') return false;
+      else if (status !== 'Draft' && pStatus !== status) return false;
+    }
     return true;
   });
   currentPage = 0; renderTable();
@@ -2419,7 +2428,7 @@ function renderTable() {
     const idx = start + i;
     const qs = parseInt(p.QA_Score)||0;
     const qc = qs>=80?'qa-high':qs>=60?'qa-mid':'qa-low';
-    const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Flag?'status-flagged':'status-pending';
+    const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Archived'?'status-pending':p.Review_Flag?'status-flagged':'status-pending';
     const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Flag?'flagged':'';
     const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
     const chk = selectedPois.has(p.GlobalID)?'checked':'';
@@ -2432,7 +2441,7 @@ function renderTable() {
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
       <td>${esc(trunc(p.Phone_Number,15))}</td>
       <td>${photoLink(p.Exterior_Photo_URL)}</td><td>${photoLink(p.Interior_Photo_URL)}</td>
-      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Pending')}</td>
+      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Draft')}</td>
       <td title="${esc(p.Review_Flag||'')}">${esc(trunc(p.Review_Flag,20))}</td>
       <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td></tr>`;
   });
@@ -2775,7 +2784,7 @@ function renderDetailExcel(poi) {
         h += `</select></td>`;
       } else if (field === 'Review_Status') {
         h += `<td class="field-value"${vStyle}><select data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${hasEdit?'background:#e8f5e9':''}">`;
-        ['Pending','Reviewed','Flagged'].forEach(s => h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`);
+        ['Draft','Reviewed','Flagged','Archived'].forEach(s => h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`);
         h += `</select></td>`;
       } else if (DROPDOWN_FIELDS.has(field)) {
         h += `<td class="field-value"${vStyle}>${renderDropdown(val, poi.GlobalID, field, hasEdit, 'detailEdit')}</td>`;
@@ -2971,6 +2980,31 @@ async function deletePoi() {
   applyFilters();
   buildStats();
   toast('Deleted: ' + name);
+}
+
+async function archivePoi() {
+  const poi = filteredPois[currentPoiIdx];
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
+  if (!confirm(`Archive "${name}"?\n\nThis will mark it as Archived.`)) return;
+  if (dbMode) {
+    try {
+      const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: 'dashboard' })
+      });
+      const r = await resp.json();
+      if (!r.ok) { toast('Archive failed: ' + (r.error || 'Unknown error')); return; }
+    } catch(e) { toast('Archive failed: ' + e.message); return; }
+  }
+  poi.Review_Status = 'Archived';
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
+  edits[poi.GlobalID].Review_Status = 'Archived';
+  saveEditsToStorage();
+  renderTable(); buildStats();
+  if (currentPoiIdx + 1 < filteredPois.length) openDetail(currentPoiIdx + 1);
+  toast('Archived: ' + trunc(name, 30));
 }
 
 function saveEditsToStorage() {
