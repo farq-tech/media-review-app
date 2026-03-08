@@ -16,22 +16,38 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .header { background: linear-gradient(135deg, #1a237e, #0d47a1); color: #fff; padding: 16px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .header h1 { font-size: 20px; }
 .header p { opacity: 0.8; font-size: 13px; }
-.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.header-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .header-actions button { padding: 7px 14px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.15); color: #fff; border-radius: 5px; cursor: pointer; font-size: 12px; }
 .header-actions button:hover { background: rgba(255,255,255,0.25); }
+.header-group { display: flex; gap: 6px; align-items: center; padding-right: 10px; margin-right: 4px; border-right: 1px solid rgba(255,255,255,0.2); }
+.header-group:last-child { border-right: none; padding-right: 0; margin-right: 0; }
+.export-dropdown-wrap { position: relative; display: inline-block; }
+.export-dropdown { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); min-width: 180px; z-index: 100; overflow: hidden; }
+.export-dropdown.show { display: block; }
+.export-dropdown button { display: block; width: 100%; padding: 10px 16px; border: none; background: none; color: #333; text-align: left; font-size: 12px; cursor: pointer; }
+.export-dropdown button:hover { background: #e8eaf6; color: #1a237e; }
 
 .stats { display: flex; gap: 10px; padding: 14px 30px; flex-wrap: wrap; }
-.stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; min-width: 110px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.stat-card { background: #fff; border-radius: 8px; padding: 12px 16px; min-width: 110px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); cursor: pointer; transition: box-shadow 0.15s, transform 0.15s; user-select: none; }
+.stat-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.15); transform: translateY(-1px); }
+.stat-card:active { transform: translateY(0); }
 .stat-card .label { font-size: 10px; color: #666; text-transform: uppercase; }
 .stat-card .value { font-size: 24px; font-weight: 700; color: #1a237e; }
 .stat-card.alert .value { color: #c62828; }
 .stat-card.success .value { color: #2e7d32; }
 .stat-card.warn .value { color: #e65100; }
+.progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; margin: 0 30px 4px; position: relative; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #4caf50, #2e7d32); border-radius: 2px; transition: width 0.4s ease; }
+.progress-label { text-align: center; font-size: 11px; color: #888; margin-bottom: 4px; }
 
 /* View tabs */
-.view-tabs { display: flex; gap: 0; padding: 0 30px; border-bottom: 2px solid #ddd; background: #fff; }
-.view-tab { padding: 10px 20px; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; font-size: 13px; white-space: nowrap; }
-.view-tab:hover { color: #1a237e; }
+.view-tabs { display: flex; gap: 0; padding: 0 30px; border-bottom: 2px solid #ddd; background: #fff; align-items: stretch; }
+.tab-group { display: flex; align-items: stretch; position: relative; }
+.tab-group + .tab-group { margin-left: 2px; }
+.tab-group + .tab-group::before { content: ''; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 1px; background: #ddd; }
+.tab-group-label { position: absolute; top: 2px; left: 12px; font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #aaa; font-weight: 600; pointer-events: none; }
+.view-tab { padding: 14px 16px 8px; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; font-size: 12px; white-space: nowrap; }
+.view-tab:hover { color: #1a237e; background: #f5f6fa; }
 .view-tab.active { color: #1a237e; border-bottom-color: #1a237e; }
 .view-tab .badge { font-size: 10px; background: #e57373; color: #fff; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
 .view-tab .badge.done { background: #4caf50; }
@@ -200,6 +216,33 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 }
 .detail-actions select { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; max-width: 200px; }
 .detail-actions input { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; flex: 1; min-width: 120px; }
+.action-group { display: flex; gap: 6px; align-items: center; padding-right: 10px; border-right: 1px solid #ddd; }
+.action-group:last-child { border-right: none; padding-right: 0; }
+.action-group .btn-approve { padding: 8px 18px; font-size: 12px; }
+.overflow-menu-wrap { position: relative; }
+.overflow-menu-btn { background: #888; color: #fff; border: none; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 14px; font-weight: 700; line-height: 1; }
+.overflow-menu-btn:hover { background: #666; }
+.overflow-menu { display: none; position: absolute; bottom: 100%; right: 0; margin-bottom: 4px; background: #fff; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); min-width: 150px; z-index: 100; overflow: hidden; }
+.overflow-menu.show { display: block; }
+.overflow-menu button { display: block; width: 100%; padding: 10px 16px; border: none; background: none; text-align: left; font-size: 12px; cursor: pointer; }
+.overflow-menu button:hover { background: #f5f5f5; }
+.overflow-menu button.danger { color: #c62828; }
+.overflow-menu button.danger:hover { background: #ffebee; }
+
+/* Confirm dialog */
+.confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:3000; justify-content:center; align-items:center; }
+.confirm-overlay.show { display:flex; }
+.confirm-box { background:#fff; border-radius:12px; padding:24px; width:400px; max-width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.25); }
+.confirm-box h3 { font-size:16px; color:#333; margin-bottom:8px; }
+.confirm-box p { font-size:13px; color:#666; margin-bottom:16px; line-height:1.5; }
+.confirm-box input, .confirm-box select { width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; font-size:13px; margin-bottom:12px; }
+.confirm-box input:focus, .confirm-box select:focus { border-color:#1a237e; outline:none; }
+.confirm-btns { display:flex; gap:8px; justify-content:flex-end; }
+.confirm-btns button { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; }
+.confirm-btns .cancel { background:#f5f5f5; color:#666; }
+.confirm-btns .cancel:hover { background:#e0e0e0; }
+.confirm-btns .confirm { color:#fff; }
+.confirm-btns .confirm:hover { opacity:0.9; }
 .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; }
 .btn-primary { background: #1a237e; color: #fff; }
 .btn-primary:hover { background: #283593; }
@@ -365,6 +408,54 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .audit-pagination button { padding: 6px 14px; border: 1px solid #ddd; background: #fff; border-radius: 5px; cursor: pointer; font-size: 12px; }
 .audit-pagination button:hover { background: #f0f2ff; }
 .audit-pagination button.active { background: #1a237e; color: #fff; border-color: #1a237e; }
+
+/* ── Bulk Bar ── */
+.bulk-bar { display:none; padding:8px 30px; background:#fff3e0; border-bottom:1px solid #ffe0b2; align-items:center; gap:10px; flex-wrap:wrap; }
+.bulk-count { font-size:13px; font-weight:600; color:#e65100; }
+.bulk-bar select { padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:11px; max-width:200px; }
+
+/* ── View Toolbars ── */
+.view-toolbar { padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.view-toolbar .title { font-weight:700; font-size:14px; color:#1a237e; }
+.view-toolbar .subtitle { font-size:12px; color:#888; }
+.view-toolbar .count { font-size:12px; color:#666; }
+.view-toolbar select, .view-toolbar input { padding:5px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px; }
+.view-toolbar input { flex:1; min-width:180px; max-width:300px; }
+.view-toolbar .spacer { margin-left:auto; }
+.view-toolbar button { padding:5px 12px; border:1px solid #ddd; border-radius:4px; font-size:11px; cursor:pointer; background:#f5f5f5; }
+.view-toolbar button:hover { background:#e8eaf6; }
+
+/* ── Duplicates ── */
+.dup-config { display:flex; gap:6px; margin-left:auto; align-items:center; }
+.dup-config label { font-size:11px; color:#555; display:flex; align-items:center; gap:4px; }
+.dup-config input[type=number] { width:60px; padding:4px; border:1px solid #ddd; border-radius:4px; font-size:12px; }
+.dup-container { padding:0 30px 20px; max-height:75vh; overflow-y:auto; }
+.dup-placeholder { text-align:center; padding:40px; color:#888; font-size:13px; }
+
+/* ── Map ── */
+.map-container { height:calc(100vh - 170px); width:100%; }
+
+/* ── ArcGIS ── */
+.arc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 180px); align-content:start; }
+.arc-loader { grid-column:1/-1; text-align:center; padding:80px 20px; }
+
+/* ── Drafts ── */
+.drafts-toolbar { padding:12px 20px; background:#f3e5f5; border-bottom:1px solid #ce93d8; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.drafts-toolbar .import-btn { background:#9c27b0; color:#fff; border:none; padding:7px 16px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; }
+.drafts-toolbar .import-btn:hover { background:#7b1fa2; }
+.drafts-toolbar input { padding:5px 10px; border:1px solid #ddd; border-radius:5px; width:180px; font-size:12px; }
+.drafts-toolbar select { padding:5px 8px; border:1px solid #ddd; border-radius:5px; font-size:12px; }
+.drafts-toolbar .count { color:#666; font-size:11px; }
+.drafts-bulk { margin-left:auto; display:flex; gap:6px; }
+.drafts-bulk button { border:none; padding:6px 14px; border-radius:5px; cursor:pointer; font-size:11px; font-weight:600; color:#fff; }
+.drafts-stats { display:flex; gap:10px; padding:10px 20px; flex-wrap:wrap; }
+
+/* ── Invoice ── */
+.invoice-header { padding:16px 20px; background:#f8f9fa; border-bottom:1px solid #ddd; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.invoice-header h3 { margin:0; font-size:15px; color:#333; }
+.invoice-summary { display:flex; gap:12px; padding:16px 20px; flex-wrap:wrap; }
+.invoice-section { padding:0 20px; }
+.invoice-section h4 { font-size:13px; color:#555; margin:8px 0; }
 </style>
 </head>
 <body>
@@ -388,34 +479,57 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <p id="headerInfo">Loading...</p>
   </div>
   <div class="header-actions">
-    <button onclick="openPoiForm('add')" style="background:rgba(76,175,80,0.3);border-color:#4caf50;">+ Add POI</button>
-    <span class="notif-badge" style="position:relative;display:inline-block;">
-      <button onclick="toggleUpdatesDropdown()" id="updatesBtn">Updates</button>
-      <span class="badge-count" id="updatesBadge">0</span>
-      <div class="updates-dropdown" id="updatesDropdown"></div>
-    </span>
-    <button onclick="runValidation()" style="background:rgba(255,200,0,0.3);border-color:#ffca28;">Validate All</button>
-    <button onclick="runDuplicateDetection()" style="background:rgba(255,100,100,0.3);border-color:#ef5350;">Detect Duplicates</button>
-    <button onclick="exportCSV()">Export All CSV</button>
-    <button onclick="exportEdits()">Export Edits Only</button>
-    <button onclick="clearEdits()">Clear Edits</button>
-    <button onclick="document.getElementById('fileInput').click()">Import / Update CSV</button>
+    <div class="header-group">
+      <button onclick="openPoiForm('add')" style="background:rgba(76,175,80,0.3);border-color:#4caf50;">+ Add POI</button>
+      <button onclick="document.getElementById('fileInput').click()">Import CSV</button>
+    </div>
+    <div class="header-group">
+      <button onclick="runValidation()" style="background:rgba(255,200,0,0.3);border-color:#ffca28;">Validate All</button>
+      <button onclick="runDuplicateDetection()" style="background:rgba(255,100,100,0.3);border-color:#ef5350;">Detect Dups</button>
+    </div>
+    <div class="header-group">
+      <div class="export-dropdown-wrap">
+        <button onclick="toggleExportMenu()">Export ▾</button>
+        <div class="export-dropdown" id="exportMenu">
+          <button onclick="exportCSV(); toggleExportMenu()">Export All CSV</button>
+          <button onclick="exportEdits(); toggleExportMenu()">Export Edits Only</button>
+          <button onclick="clearEdits(); toggleExportMenu()" style="color:#c62828;">Clear All Edits</button>
+        </div>
+      </div>
+      <span class="notif-badge" style="position:relative;display:inline-block;">
+        <button onclick="toggleUpdatesDropdown()" id="updatesBtn">Updates</button>
+        <span class="badge-count" id="updatesBadge">0</span>
+        <div class="updates-dropdown" id="updatesDropdown"></div>
+      </span>
+    </div>
+    <button onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)" style="padding:7px 10px;font-size:14px;font-weight:700;">?</button>
     <button onclick="logoutReviewer()" id="logoutBtn" style="display:none;background:rgba(244,67,54,0.2);border-color:#f44336;">Logout</button>
   </div>
 </div>
 
 <div class="stats" id="statsBar"></div>
+<div class="progress-label" id="progressLabel"></div>
+<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
 
 <!-- Main View Tabs: Card View vs Excel View -->
 <div class="view-tabs" id="viewTabs">
-  <div class="view-tab active" onclick="switchView('card')">Card View</div>
-  <div class="view-tab" onclick="switchView('excel')">Excel Table View</div>
-  <div class="view-tab" onclick="switchView('audit')">Audit Log</div>
-  <div class="view-tab" onclick="switchView('duplicates')">Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
-  <div class="view-tab" onclick="switchView('map')">Map View</div>
-  <div class="view-tab" onclick="switchView('arcgis')">ArcGIS Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
-  <div class="view-tab" onclick="switchView('invoice')">Invoice <span class="badge" id="invoiceBadge" style="display:none;background:#f59e0b;">0</span></div>
-  <div class="view-tab" onclick="switchView('drafts')">Drafts <span class="badge" id="draftsBadge" style="display:none;background:#9c27b0;">0</span></div>
+  <div class="tab-group">
+    <span class="tab-group-label">REVIEW</span>
+    <div class="view-tab active" onclick="switchView('card')">List</div>
+    <div class="view-tab" onclick="switchView('excel')">Table</div>
+    <div class="view-tab" onclick="switchView('arcgis')">Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
+  </div>
+  <div class="tab-group">
+    <span class="tab-group-label">ANALYSIS</span>
+    <div class="view-tab" onclick="switchView('map')">Map</div>
+    <div class="view-tab" onclick="switchView('duplicates')">Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
+    <div class="view-tab" onclick="switchView('audit')">Audit</div>
+  </div>
+  <div class="tab-group">
+    <span class="tab-group-label">OPERATIONS</span>
+    <div class="view-tab" onclick="switchView('drafts')">Drafts <span class="badge" id="draftsBadge" style="display:none;background:#9c27b0;">0</span></div>
+    <div class="view-tab" onclick="switchView('invoice')">Invoice <span class="badge" id="invoiceBadge" style="display:none;background:#f59e0b;">0</span></div>
+  </div>
 </div>
 
 <!-- CARD VIEW -->
@@ -447,16 +561,16 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <div class="data-tab" data-tab="errors">With Errors</div>
   </div>
   <!-- Bulk Action Bar -->
-  <div id="bulkBar" style="display:none; padding:8px 30px; background:#fff3e0; border-bottom:1px solid #ffe0b2; align-items:center; gap:10px; flex-wrap:wrap;">
-    <span style="font-size:13px; font-weight:600; color:#e65100;" id="bulkCount">0 selected</span>
+  <div id="bulkBar" class="bulk-bar">
+    <span class="bulk-count" id="bulkCount">0 selected</span>
     <button class="btn btn-success btn-sm" onclick="bulkApprove()">Approve Selected</button>
-    <select id="bulkFlagSelect" style="padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:11px; max-width:200px;">
+    <select id="bulkFlagSelect" class="bulk-bar select">
       <option value="">-- Select Flag --</option>
     </select>
     <button class="btn btn-warn btn-sm" onclick="bulkFlag()">Flag Selected</button>
-    <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="bulkClear()">Clear Selection</button>
+    <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="bulkClear()">Clear</button>
     <button class="btn btn-sm" onclick="bulkSelectPage()">Select Page</button>
-    <button class="btn btn-sm" onclick="bulkSelectAll()">Select All Filtered</button>
+    <button class="btn btn-sm" onclick="bulkSelectAll()">Select All</button>
   </div>
   <div class="poi-container" id="tableContainer">
     <div class="loading"><div class="spinner"></div><br>Loading POI data...</div>
@@ -496,55 +610,47 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 
 <!-- DUPLICATES VIEW -->
 <div id="duplicatesView" class="view-content">
-  <div style="padding:16px 30px 0;">
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-      <span style="font-weight:700;font-size:14px;color:#1a237e;">Duplicate Groups</span>
-      <span id="dupSummary" style="font-size:12px;color:#666;"></span>
-      <div style="margin-left:auto;display:flex;gap:6px;">
-        <label style="font-size:11px;color:#555;display:flex;align-items:center;gap:4px;">
-          Distance (m): <input type="number" id="dupDistThreshold" value="50" min="10" max="200" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-        </label>
-        <label style="font-size:11px;color:#555;display:flex;align-items:center;gap:4px;">
-          Name similarity: <input type="number" id="dupNameThreshold" value="85" min="50" max="100" style="width:60px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:12px;">%
-        </label>
-        <button class="btn btn-primary btn-sm" onclick="runDuplicateDetection()">Re-scan</button>
-        <button class="btn btn-success btn-sm" onclick="mergeAllDuplicates()">Merge All (auto)</button>
-        <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="exportDuplicatesCSV()">Export Removed</button>
-      </div>
+  <div class="view-toolbar">
+    <span class="title">Duplicate Groups</span>
+    <span id="dupSummary" class="count"></span>
+    <div class="dup-config">
+      <label>Distance (m): <input type="number" id="dupDistThreshold" value="50" min="10" max="200"></label>
+      <label>Name similarity: <input type="number" id="dupNameThreshold" value="85" min="50" max="100">%</label>
+      <button class="btn btn-primary btn-sm" onclick="runDuplicateDetection()">Re-scan</button>
+      <button class="btn btn-success btn-sm" onclick="mergeAllDuplicates()">Merge All (auto)</button>
+      <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="exportDuplicatesCSV()">Export Removed</button>
     </div>
   </div>
-  <div id="dupContainer" style="padding:0 30px 20px; max-height:75vh; overflow-y:auto;">
-    <div style="text-align:center;padding:40px;color:#888;font-size:13px;">
-      Click <b>Detect Duplicates</b> to scan for potential duplicate POIs.
-    </div>
+  <div id="dupContainer" class="dup-container">
+    <div class="dup-placeholder">Click <b>Detect Duplicates</b> to scan for potential duplicate POIs.</div>
   </div>
 </div>
 
 <!-- MAP VIEW -->
 <div id="mapView" class="view-content">
-  <div style="padding:8px 16px; background:#fff; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <span style="font-weight:700; font-size:14px; color:#1a237e;">POI Map</span>
-    <select id="mapCategoryFilter" onchange="updateMapMarkers()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+  <div class="view-toolbar">
+    <span class="title">POI Map</span>
+    <select id="mapCategoryFilter" onchange="updateMapMarkers()">
       <option value="">All Categories</option>
     </select>
-    <select id="mapQaFilter" onchange="updateMapMarkers()" style="padding:5px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+    <select id="mapQaFilter" onchange="updateMapMarkers()">
       <option value="">All QA Scores</option>
       <option value="100">100 Only</option>
       <option value="90">90+</option>
       <option value="80">80+</option>
       <option value="low">&lt; 80</option>
     </select>
-    <span id="mapCount" style="font-size:12px; color:#666;"></span>
-    <button onclick="resetMapView()" style="margin-left:auto; padding:5px 12px; border:1px solid #ddd; border-radius:4px; font-size:11px; cursor:pointer; background:#f5f5f5;">Reset View</button>
+    <span id="mapCount" class="count"></span>
+    <span class="spacer"></span>
+    <button onclick="resetMapView()">Reset View</button>
   </div>
-  <div id="mapContainer" style="height:calc(100vh - 170px); width:100%;"></div>
+  <div id="mapContainer" class="map-container"></div>
 </div>
 
 <!-- ARCGIS MEDIA VIEW -->
 <div id="arcgisView" class="view-content">
-  <!-- Filter Bar -->
-  <div style="padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #ddd; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-    <select id="arcTypeFilter" onchange="renderUnassignedMedia()" style="padding:6px 10px; border:1px solid #ddd; border-radius:4px; font-size:12px;">
+  <div class="view-toolbar">
+    <select id="arcTypeFilter" onchange="renderUnassignedMedia()">
       <option value="all">All Types</option>
       <option value="exterior">Exterior</option>
       <option value="interior">Interior</option>
@@ -553,13 +659,13 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
       <option value="license">License</option>
       <option value="other">Other / Unclassified</option>
     </select>
-    <input type="text" id="arcSourceSearch" placeholder="Filter by POI source name..." oninput="renderUnassignedMedia()" style="flex:1; min-width:200px; padding:7px 12px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
-    <span id="arcStatus" style="font-size:12px; color:#666;"></span>
-    <span id="arcCounter" style="font-size:12px; color:#666; margin-left:auto;"></span>
+    <input type="text" id="arcSourceSearch" placeholder="Filter by POI source name..." oninput="renderUnassignedMedia()">
+    <span id="arcStatus" class="count"></span>
+    <span class="spacer"></span>
+    <span id="arcCounter" class="count"></span>
   </div>
-  <!-- Unassigned Media Grid -->
-  <div id="arcMediaGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 180px); align-content:start;">
-    <div id="arcLoader" style="grid-column:1/-1;text-align:center;padding:80px 20px;">
+  <div id="arcMediaGrid" class="arc-grid">
+    <div id="arcLoader" class="arc-loader">
       <div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a237e;border-radius:50%;margin:0 auto 16px;animation:spin 0.8s linear infinite;"></div>
       <div style="color:#666;font-size:14px;">Loading media catalogue...</div>
     </div>
@@ -589,60 +695,56 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 
 <!-- INVOICE VIEW -->
 <div id="invoiceView" class="view-content">
-  <div style="padding:16px 20px;background:#f8f9fa;border-bottom:1px solid #ddd;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-    <h3 style="margin:0;font-size:15px;color:#333;">POI Data Collection Invoice</h3>
-    <span style="font-size:12px;color:#888;">Client: Naver Innovation | Budget: 50,000 SAR</span>
-    <div style="margin-left:auto;display:flex;gap:8px;">
-      <select id="invoiceFilter" onchange="renderInvoice()" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
-        <option value="all">All Fields</option>
-        <option value="mandatory">Mandatory Only</option>
-      </select>
-      <button onclick="exportInvoicePDF()" style="padding:5px 14px;background:#1976d2;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Export PDF</button>
-    </div>
+  <div class="invoice-header">
+    <h3>POI Data Collection Invoice</h3>
+    <span class="subtitle">Client: Naver Innovation | Budget: 50,000 SAR</span>
+    <span class="spacer" style="margin-left:auto;"></span>
+    <select id="invoiceFilter" onchange="renderInvoice()" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+      <option value="all">All Fields</option>
+      <option value="mandatory">Mandatory Only</option>
+    </select>
+    <button onclick="exportInvoicePDF()" style="padding:5px 14px;background:#1976d2;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;">Export PDF</button>
   </div>
-  <!-- Summary Cards -->
-  <div id="invoiceSummary" style="display:flex;gap:12px;padding:16px 20px;flex-wrap:wrap;"></div>
-  <!-- Breakdown Table -->
-  <div style="padding:0 20px;">
-    <h4 style="font-size:13px;color:#555;margin:8px 0;">Field Group Breakdown</h4>
+  <div id="invoiceSummary" class="invoice-summary"></div>
+  <div class="invoice-section">
+    <h4>Field Group Breakdown</h4>
     <div id="invoiceBreakdown" style="border:1px solid #ddd;border-radius:8px;overflow:hidden;"></div>
   </div>
-  <!-- POI Detail Table -->
-  <div style="padding:12px 20px;">
-    <h4 style="font-size:13px;color:#555;margin:8px 0;">Per-POI Value <span id="invoicePoiCount" style="color:#999;font-weight:400;"></span></h4>
+  <div class="invoice-section" style="padding-top:12px;">
+    <h4>Per-POI Value <span id="invoicePoiCount" style="color:#999;font-weight:400;"></span></h4>
     <div id="invoicePoiTable" style="max-height:calc(100vh - 420px);overflow-y:auto;border:1px solid #ddd;border-radius:8px;"></div>
   </div>
 </div>
 
 <!-- DRAFTS VIEW -->
 <div id="draftsView" class="view-content">
-  <div style="padding:12px 20px;background:#f3e5f5;border-bottom:1px solid #ce93d8;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-    <button onclick="document.getElementById('draftFileInput').click()" style="background:#9c27b0;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Import CSV</button>
+  <div class="drafts-toolbar">
+    <button class="import-btn" onclick="document.getElementById('draftFileInput').click()">Import CSV</button>
     <input type="file" id="draftFileInput" accept=".csv" onchange="uploadDraftsCSV(this)" style="display:none;">
-    <input type="text" id="draftSearch" placeholder="Search name..." oninput="filterDrafts()" style="padding:5px 10px;border:1px solid #ddd;border-radius:5px;width:180px;font-size:12px;">
-    <select id="draftVerdictFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+    <input type="text" id="draftSearch" placeholder="Search name..." oninput="filterDrafts()">
+    <select id="draftVerdictFilter" onchange="filterDrafts()">
       <option value="">All Verdicts</option>
       <option value="LIKELY_NEW">LIKELY_NEW</option>
       <option value="LIKELY_DUP">LIKELY_DUP</option>
       <option value="REVIEW">REVIEW</option>
     </select>
-    <select id="draftStatusFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+    <select id="draftStatusFilter" onchange="filterDrafts()">
       <option value="">All Status</option>
       <option value="pending">Pending</option>
       <option value="confirmed">Confirmed</option>
       <option value="rejected">Rejected</option>
     </select>
-    <select id="draftCategoryFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+    <select id="draftCategoryFilter" onchange="filterDrafts()">
       <option value="">All Categories</option>
       <option value="__empty__">No Category</option>
     </select>
-    <span id="draftCount" style="color:#666;font-size:11px;">0 drafts</span>
-    <div style="margin-left:auto;display:flex;gap:6px;">
-      <button onclick="bulkConfirmDrafts()" style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">Confirm Selected</button>
-      <button onclick="bulkRejectDrafts()" style="background:#f44336;color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">Reject Selected</button>
+    <span class="count" id="draftCount">0 drafts</span>
+    <div class="drafts-bulk">
+      <button style="background:#4caf50;" onclick="bulkConfirmDrafts()">Confirm Selected</button>
+      <button style="background:#f44336;" onclick="bulkRejectDrafts()">Reject Selected</button>
     </div>
   </div>
-  <div id="draftStatsBar" style="display:flex;gap:10px;padding:10px 20px;flex-wrap:wrap;"></div>
+  <div id="draftStatsBar" class="drafts-stats"></div>
   <div id="draftTableContainer" style="padding:0 20px;overflow-x:auto;"></div>
   <div id="draftPagination" style="padding:8px 20px;text-align:center;"></div>
 </div>
@@ -681,15 +783,39 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
   </div>
   <div class="detail-body" id="detailBody"></div>
   <div class="detail-actions">
-    <select id="flagSelect"><option value="">-- Flag --</option></select>
-    <input type="text" id="noteInput" placeholder="Review note...">
-    <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
-    <button class="btn btn-success" onclick="approvePoi()">Approve</button>
-    <button class="btn btn-primary" onclick="saveEdits()">Save</button>
-    <button class="btn btn-primary" onclick="openPoiForm('edit')" style="margin-left:auto;background:#0d47a1;">Edit POI</button>
-    <button class="btn" onclick="archivePoi()" style="background:#757575;color:#fff;">Archive</button>
-    <button class="btn" onclick="rejectPoi()" style="background:#c62828;color:#fff;">Reject</button>
-    <button class="btn btn-danger" onclick="deletePoi()">Delete POI</button>
+    <div class="action-group">
+      <select id="flagSelect"><option value="">-- Flag --</option></select>
+      <input type="text" id="noteInput" placeholder="Review note...">
+      <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
+    </div>
+    <div class="action-group">
+      <button class="btn btn-primary" onclick="openPoiForm('edit')" style="background:#0d47a1;">Edit</button>
+      <button class="btn btn-primary" onclick="saveEdits()">Save</button>
+    </div>
+    <div class="action-group" style="border-right:none;">
+      <button class="btn btn-success btn-approve" onclick="approvePoi()">Approve</button>
+      <button class="btn" onclick="archivePoi()" style="background:#757575;color:#fff;">Archive</button>
+      <button class="btn" onclick="rejectPoi()" style="background:none;color:#c62828;border:1px solid #c62828;">Reject</button>
+      <div class="overflow-menu-wrap">
+        <button class="overflow-menu-btn" onclick="toggleOverflowMenu()">&#8943;</button>
+        <div class="overflow-menu" id="detailOverflow">
+          <button class="danger" onclick="deletePoi(); toggleOverflowMenu()">Delete POI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMsg"></p>
+    <input type="text" id="confirmInput" style="display:none" placeholder="Enter reason...">
+    <div class="confirm-btns">
+      <button class="cancel" onclick="resolveConfirm(null)">Cancel</button>
+      <button class="confirm" id="confirmBtn" onclick="resolveConfirm(true)">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -2351,15 +2477,24 @@ function buildStats() {
     vStats.push({l:'Blockers',v:bl,c:bl?'alert':''});
     vStats.push({l:'Major',v:mj,c:mj?'warn':''});
   }
-  document.getElementById('statsBar').innerHTML = [
-    {l:'Total POIs',v:t},{l:'Draft',v:dr,c:dr?'warn':''},{l:'Reviewed',v:rv,c:'success'},
-    {l:'Archived',v:ar,c:''},{l:'Rejected',v:rj,c:rj?'alert':''},
-    {l:'Flagged',v:fl,c:fl?'alert':''},
-    {l:'Avg QA',v:avg,c:'success'},
-    {l:'QA >= 80',v:qh,c:'success'},{l:'QA < 60',v:ql,c:ql?'alert':''},{l:'Edited',v:ed,c:ed?'warn':''},
+  const cards = [
+    {l:'Total POIs',v:t,f:''},
+    {l:'Draft',v:dr,c:dr?'warn':'',f:'Draft'},{l:'Reviewed',v:rv,c:'success',f:'Reviewed'},
+    {l:'Archived',v:ar,c:'',f:'Archived'},{l:'Rejected',v:rj,c:rj?'alert':'',f:'Rejected'},
+    {l:'Flagged',v:fl,c:fl?'alert':'',f:'Flagged'},
+    {l:'Avg QA',v:avg,c:'success'},{l:'QA >= 80',v:qh,c:'success',f:'qa-high'},{l:'QA < 60',v:ql,c:ql?'alert':'',f:'qa-low'},
+    {l:'Edited',v:ed,c:ed?'warn':''},
     ...vStats,
     ...(dupGroups.length ? [{l:'Dup Groups',v:dupGroups.length,c:'warn'},{l:'Removed',v:removedPois.length,c:removedPois.length?'alert':''}] : [])
-  ].map(c=>`<div class="stat-card ${c.c||''}"><div class="label">${c.l}</div><div class="value">${c.v}</div></div>`).join('');
+  ];
+  document.getElementById('statsBar').innerHTML = cards.map(c => {
+    const click = c.f ? ` onclick="filterFromStat('${c.f}')" title="Click to filter"` : '';
+    return `<div class="stat-card ${c.c||''}"${click}><div class="label">${c.l}</div><div class="value">${c.v}</div></div>`;
+  }).join('');
+  // Update progress bar
+  const pct = t ? Math.round(rv / t * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${pct}% Reviewed (${rv}/${t})`;
 }
 
 function runValidation() {
@@ -2399,6 +2534,26 @@ function switchView(view) {
 }
 
 // ===== FILTERING =====
+function filterFromStat(filterVal) {
+  // Switch to card view if not already
+  if (!document.getElementById('cardView').classList.contains('active')) switchView('card');
+  if (filterVal === 'qa-high') {
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterSeverity').value = 'high';
+  } else if (filterVal === 'qa-low') {
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterSeverity').value = 'low';
+  } else {
+    document.getElementById('filterSeverity').value = '';
+    document.getElementById('filterStatus').value = filterVal;
+  }
+  document.getElementById('searchInput').value = '';
+  // Reset data tab to "all"
+  document.querySelectorAll('.data-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.data-tab[data-tab="all"]')?.classList.add('active');
+  applyFilters();
+}
+
 function applyFilters() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const cat = document.getElementById('filterCategory').value;
@@ -2997,7 +3152,8 @@ async function deletePoi() {
   const poi = filteredPois[currentPoiIdx];
   if (!poi) return;
   const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
-  if (!confirm(`Delete "${name}" permanently?\n\nThis will remove it from the database and cannot be undone.`)) return;
+  const ok = await confirmAction('Delete POI', `Permanently delete "${name}"? This cannot be undone.`, 'Delete', '#c62828');
+  if (!ok) return;
   if (dbMode) {
     try {
       const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID), { method: 'DELETE' });
@@ -3019,7 +3175,7 @@ async function archivePoi() {
   const poi = filteredPois[currentPoiIdx];
   if (!poi) return;
   const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
-  const reason = prompt(`Archive "${name}"?\n\nReason: closed / inactive / out_of_scope / other\n\nEnter reason:`);
+  const reason = await confirmAction('Archive POI', `Archive "${name}"? Enter a reason (closed, inactive, out_of_scope, duplicate).`, 'Archive', '#757575', true, 'Reason: closed / inactive / out_of_scope / other');
   if (!reason) return;
   if (dbMode) {
     try {
@@ -3046,7 +3202,7 @@ async function rejectPoi() {
   const poi = filteredPois[currentPoiIdx];
   if (!poi) return;
   const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
-  const reason = prompt(`Reject "${name}"?\n\nReason codes:\n  DUP - Duplicate\n  IMG-NOT-POI - Image not matching POI\n  NAME-MISM - Name mismatch\n  NON-COM - Non-commercial\n  CAT-MISM - Category mismatch\n  MISS-FLD - Missing required fields\n  IMG-QUAL - Image quality issue\n  FAKE - Fake/fabricated entry\n  OTHER - Other reason\n\nEnter reason code or description:`);
+  const reason = await confirmAction('Reject POI', `Reject "${name}"? Codes: DUP, IMG-NOT-POI, NAME-MISM, NON-COM, CAT-MISM, MISS-FLD, IMG-QUAL, FAKE`, 'Reject', '#c62828', true, 'Reason code (e.g. DUP, FAKE, NAME-MISM)');
   if (!reason) return;
   if (dbMode) {
     try {
@@ -4886,6 +5042,60 @@ async function checkForUpdates() {
   } catch (e) { /* silent */ }
 }
 
+// ── Confirm Dialog ──
+let _confirmResolve = null;
+function confirmAction(title, message, confirmLabel = 'Confirm', confirmColor = '#1a237e', showInput = false, inputPlaceholder = '') {
+  return new Promise(resolve => {
+    _confirmResolve = resolve;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent = message;
+    const btn = document.getElementById('confirmBtn');
+    btn.textContent = confirmLabel;
+    btn.style.background = confirmColor;
+    const inp = document.getElementById('confirmInput');
+    inp.style.display = showInput ? 'block' : 'none';
+    inp.value = '';
+    inp.placeholder = inputPlaceholder || 'Enter reason...';
+    document.getElementById('confirmOverlay').classList.add('show');
+    if (showInput) setTimeout(() => inp.focus(), 100);
+  });
+}
+function resolveConfirm(val) {
+  document.getElementById('confirmOverlay').classList.remove('show');
+  if (_confirmResolve) {
+    if (val === null) _confirmResolve(null);
+    else {
+      const inp = document.getElementById('confirmInput');
+      _confirmResolve(inp.style.display === 'block' ? inp.value : true);
+    }
+    _confirmResolve = null;
+  }
+}
+
+function toggleExportMenu() {
+  const m = document.getElementById('exportMenu');
+  m.classList.toggle('show');
+  if (m.classList.contains('show')) {
+    setTimeout(() => document.addEventListener('click', closeExportMenu, { once: true }), 0);
+  }
+}
+function closeExportMenu(e) {
+  const m = document.getElementById('exportMenu');
+  if (m && !m.parentElement.contains(e?.target)) m.classList.remove('show');
+  else if (m) m.classList.remove('show');
+}
+
+function toggleOverflowMenu() {
+  const m = document.getElementById('detailOverflow');
+  m.classList.toggle('show');
+  if (m.classList.contains('show')) {
+    setTimeout(() => document.addEventListener('click', function closeOvf() {
+      m.classList.remove('show');
+      document.removeEventListener('click', closeOvf);
+    }), 0);
+  }
+}
+
 function toggleUpdatesDropdown() {
   const dd = document.getElementById('updatesDropdown');
   updatesDropdownOpen = !updatesDropdownOpen;
@@ -5428,6 +5638,78 @@ async function uploadDraftsCSV(input) {
   } catch (e) {
     toast('Upload failed: ' + e.message);
   }
+}
+
+// ── Keyboard Shortcuts ──
+document.addEventListener('keydown', function(e) {
+  // Skip when typing in inputs
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+  // Skip if confirm dialog is open
+  if (document.getElementById('confirmOverlay').classList.contains('show')) {
+    if (e.key === 'Escape') resolveConfirm(null);
+    return;
+  }
+  const detailOpen = document.getElementById('detailPanel').classList.contains('open');
+  switch(e.key) {
+    case 'Escape':
+      if (detailOpen) { closeDetail(); e.preventDefault(); }
+      break;
+    case 'ArrowRight':
+      if (detailOpen) { navPoi(1); e.preventDefault(); }
+      break;
+    case 'ArrowLeft':
+      if (detailOpen) { navPoi(-1); e.preventDefault(); }
+      break;
+    case 'a': case 'A':
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { approvePoi(); e.preventDefault(); }
+      break;
+    case 'f': case 'F':
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { document.getElementById('flagSelect').focus(); e.preventDefault(); }
+      break;
+    case 's': case 'S':
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { saveEdits(); e.preventDefault(); }
+      break;
+    case '?':
+      toggleShortcutHelp();
+      break;
+    case '1': if (!detailOpen) { setDataTab('all'); e.preventDefault(); } break;
+    case '2': if (!detailOpen) { setDataTab('flagged'); e.preventDefault(); } break;
+    case '3': if (!detailOpen) { setDataTab('lowqa'); e.preventDefault(); } break;
+    case '4': if (!detailOpen) { setDataTab('reviewed'); e.preventDefault(); } break;
+    case '5': if (!detailOpen) { setDataTab('errors'); e.preventDefault(); } break;
+  }
+});
+
+function setDataTab(tab) {
+  document.querySelectorAll('.data-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  applyFilters();
+}
+
+function toggleShortcutHelp() {
+  let el = document.getElementById('shortcutHelp');
+  if (el) { el.remove(); return; }
+  el = document.createElement('div');
+  el.id = 'shortcutHelp';
+  el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:24px;z-index:4000;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:360px;';
+  el.innerHTML = `<h3 style="margin:0 0 12px;font-size:15px;">Keyboard Shortcuts</h3>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">A</kbd></td><td>Approve POI</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">F</kbd></td><td>Focus flag dropdown</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">S</kbd></td><td>Save edits</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">&larr; &rarr;</kbd></td><td>Prev / Next POI</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">Esc</kbd></td><td>Close panel / dialog</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">1-5</kbd></td><td>Switch data tabs</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">?</kbd></td><td>Toggle this help</td></tr>
+    </table>
+    <button onclick="document.getElementById('shortcutHelp').remove()" style="margin-top:12px;padding:6px 16px;background:#1a237e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Close</button>`;
+  document.body.appendChild(el);
+  // Close on overlay click
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:3999;';
+  ov.id = 'shortcutHelpOverlay';
+  ov.onclick = () => { el.remove(); ov.remove(); };
+  document.body.appendChild(ov);
 }
 
 init();
