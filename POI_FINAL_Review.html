@@ -720,6 +720,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     <span id="arcStatus" class="count"></span>
     <span class="spacer"></span>
     <span id="arcCounter" class="count"></span>
+    <button class="btn btn-sm" style="margin-left:8px;" onclick="document.getElementById('reassignCsvInput').click()">Load Reassign CSV</button>
+    <input id="reassignCsvInput" type="file" accept=".csv" style="display:none" onchange="handleReassignCsvFile(this)">
   </div>
   <div id="arcMediaGrid" class="arc-grid">
     <div id="arcLoader" class="arc-loader">
@@ -727,6 +729,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       <div style="color:#666;font-size:14px;">Loading media catalogue...</div>
     </div>
   </div>
+  <div id="mediaReassignPanel" style="margin-top:12px; border-top:1px solid #eee; padding-top:10px; max-height:260px; overflow:auto; font-size:11px; display:none;"></div>
 </div>
 
 <!-- AUDIT LOG VIEW -->
@@ -2818,8 +2821,11 @@ function photoLink(url) {
 function renderExcelTable() {
   const search = (document.getElementById('excelSearch').value||'').toLowerCase();
   const colGroup = document.getElementById('excelColFilter').value;
-  const ps = parseInt(document.getElementById('excelPageSize').value);
+  let ps = parseInt(document.getElementById('excelPageSize').value);
   const cols = colGroup === 'all' ? ALL_FIELDS : (COL_GROUPS[colGroup] || COL_GROUPS.key);
+  const isFullMode = colGroup === 'all';
+  // Cap page size for all-columns mode to prevent browser freeze
+  if (isFullMode && ps > 25) ps = 25;
 
   let data = allPois;
   if (search) data = data.filter(p => ALL_FIELDS.some(f => (p[f]||'').toLowerCase().includes(search)));
@@ -2839,7 +2845,7 @@ function renderExcelTable() {
   const pageData = data.slice(excelPage * ps, (excelPage + 1) * ps);
 
   document.getElementById('excelPageInfo').textContent = `${excelPage+1}/${totalPages||1}`;
-  document.getElementById('excelInfo').textContent = `${data.length} rows | ${Object.keys(edits).length} edited`;
+  document.getElementById('excelInfo').textContent = `${data.length} rows | ${Object.keys(edits).length} edited` + (isFullMode ? ' | 25 rows max (all cols)' : '');
 
   let h = '<table class="excel-table"><thead><tr><th class="row-num-header">#</th>';
   cols.forEach(col => {
@@ -2852,26 +2858,34 @@ function renderExcelTable() {
     const rowNum = excelPage * ps + i + 1;
     const isEdited = edits[p.GlobalID] ? ' excel-edited' : '';
     h += `<tr class="${isEdited}"><td class="row-num" onclick="openDetailByGid('${p.GlobalID}')" title="Click to open detail">${rowNum}</td>`;
+    const poiEdits = edits[p.GlobalID];
     cols.forEach(col => {
       const val = p[col] || '';
       const isRO = READONLY_FIELDS.has(col);
       const isAr = col === 'Name_AR' || col === 'District_AR';
-      const hasEdit = edits[p.GlobalID] && edits[p.GlobalID][col] !== undefined;
+      const hasEdit = poiEdits && poiEdits[col] !== undefined;
       const changed = hasEdit ? ' changed' : '';
 
-      const vColor = getValidationColor(p.GlobalID, col);
-      const vTip = getValidationTooltip(p.GlobalID, col);
-      const cellBg = vColor ? `background:${vColor};` : '';
-      const cellTitle = vTip ? ` title="${esc(vTip)}"` : '';
+      // Skip heavy validation lookups in all-columns mode for speed
+      let cellBg = '', cellTitle = '';
+      if (!isFullMode) {
+        const vColor = getValidationColor(p.GlobalID, col);
+        const vTip = getValidationTooltip(p.GlobalID, col);
+        cellBg = vColor ? `background:${vColor};` : '';
+        cellTitle = vTip ? ` title="${esc(vTip)}"` : '';
+      }
 
       if (isRO) {
         if (col === 'GlobalID') {
           h += `<td style="${cellBg}"${cellTitle}><span style="font-size:10px;color:#888;padding:4px 6px;display:block;cursor:pointer;" onclick="openDetailByGid('${p.GlobalID}')" title="Click to view">${esc(trunc(val,12))}</span></td>`;
-        } else if (val && val.startsWith('http')) {
+        } else if (val && typeof val === 'string' && val.startsWith('http')) {
           h += `<td style="${cellBg}"${cellTitle}><a href="${esc(val)}" target="_blank" style="padding:4px 6px;display:block;font-size:11px;color:#1565c0;">Link</a></td>`;
         } else {
-          h += `<td style="${cellBg}"${cellTitle}><span style="padding:4px 6px;display:block;color:#888;">${esc(val)}</span></td>`;
+          h += `<td style="${cellBg}"${cellTitle}><span style="padding:4px 6px;display:block;color:#888;">${esc(trunc(String(val),50))}</span></td>`;
         }
+      } else if (isFullMode) {
+        // In all-columns mode, render plain text cells (click to edit via detail panel)
+        h += `<td style="${cellBg}" class="${changed}" onclick="openDetailByGid('${p.GlobalID}')" title="Click to edit in detail panel"><span style="padding:4px 6px;display:block;font-size:11px;${isAr?'direction:rtl;':''}">${esc(trunc(String(val),40))}</span></td>`;
       } else if (col === 'Category') {
         h += `<td style="${cellBg}"${cellTitle}>${renderCategoryDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
       } else if (col === 'Subcategory') {
@@ -4195,6 +4209,64 @@ let arcCatalogue = []; // full ArcGIS attachment catalogue
 let arcAllMedia = []; // flattened list of all media items
 let arcAssignedUrls = new Set(); // URLs already in DB
 let arcUrlBase = ''; // common URL prefix for ArcGIS attachment URLs
+let mediaReassignRows = [];
+let mediaReassignCols = [];
+let mediaReassignGidCol = -1;
+
+function handleReassignCsvFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const panel = document.getElementById('mediaReassignPanel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div class="view-state"><div class="icon">⏳</div><div class="title">Loading CSV...</div><div class="desc">' + esc(file.name) + '</div></div>';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const text = e.target.result || '';
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+      if (!lines.length) { panel.innerHTML = '<div class="view-state"><div class="icon">⚠</div><div class="title">Empty CSV</div></div>'; return; }
+      mediaReassignCols = lines[0].split(',').map(h => h.trim());
+      mediaReassignRows = lines.slice(1).map(l => l.split(','));
+      const gidCandidates = ['GlobalID','GLOBALID','globalid','GID','Poi_GlobalID','POI_ID','poi_id'];
+      mediaReassignGidCol = mediaReassignCols.findIndex(h => gidCandidates.includes(h));
+      renderReassignTable();
+    } catch (err) {
+      panel.innerHTML = '<div class="view-state"><div class="icon">⚠</div><div class="title">Failed to parse CSV</div><div class="desc">' + esc(err.message || '') + '</div></div>';
+    }
+  };
+  reader.readAsText(file);
+}
+
+function renderReassignTable() {
+  const panel = document.getElementById('mediaReassignPanel');
+  if (!mediaReassignRows.length) { panel.style.display='none'; return; }
+  const maxRows = 200;
+  let html = '<div style="margin-bottom:4px;color:#555;">PHOTO_VIDEO_REASSIGN preview: ' + mediaReassignRows.length + ' rows</div>';
+  html += '<div style="overflow:auto;"><table class="audit-table" style="font-size:11px;"><thead><tr>';
+  mediaReassignCols.forEach((c, idx) => {
+    const isGid = idx === mediaReassignGidCol;
+    html += `<th${isGid?' style="background:#e3f2fd;"':''}>${esc(c)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  mediaReassignRows.slice(0, maxRows).forEach((row, ri) => {
+    html += '<tr>';
+    row.forEach((cell, ci) => {
+      const v = (cell || '').trim();
+      if (ci === mediaReassignGidCol && v) {
+        html += `<td style="cursor:pointer;color:#1565c0;text-decoration:underline;" title="Open POI detail" onclick="openDetailByGid('${v.replace(/'/g,\"&#39;\")}')">${esc(v)}</td>`;
+      } else {
+        html += `<td>${esc(v)}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  if (mediaReassignRows.length > maxRows) {
+    html += `<tr><td colspan="${mediaReassignCols.length}" style="font-size:10px;color:#999;">Showing first ${maxRows} rows...</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  panel.style.display = 'block';
+  panel.innerHTML = html;
+}
 
 async function initArcGISMedia() {
   if (arcInitialized) return;
