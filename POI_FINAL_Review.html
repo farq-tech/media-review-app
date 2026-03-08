@@ -167,7 +167,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .detail-view-toggle button:hover { color: #1a237e; }
 .detail-view-toggle button.active { color: #1a237e; border-bottom-color: #1a237e; }
 
-.detail-body { flex: 1; overflow-y: auto; padding: 0; }
+.detail-body { flex: 1; overflow-y: auto; padding: 0; min-height: 0; }
+.detail-actions { position: sticky; bottom: 0; z-index: 20; }
 
 /* Detail Excel Table (Field | Value) */
 .detail-excel { width: 100%; border-collapse: collapse; }
@@ -188,7 +189,15 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .detail-excel .field-value a { color: #1565c0; padding: 5px 8px; display: inline-block; }
 .detail-excel tr:nth-child(even) td { background: #fafbff; }
 .detail-excel tr:hover td { background: #e8eaf6; }
-.detail-excel .section-row td { background: #1a237e; color: #fff; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 12px; }
+.detail-excel .section-row td { background: #1a237e; color: #fff; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 12px; cursor: pointer; user-select: none; }
+.detail-excel .section-row td:hover { background: #283593; }
+.detail-excel .section-row .section-toggle { float: right; font-size: 10px; opacity: 0.7; }
+.detail-excel .section-row .issue-count { float: right; margin-right: 8px; background: rgba(255,255,255,0.2); padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 400; }
+.detail-excel .section-row .issue-count.has-issues { background: #ff8a65; color: #fff; }
+.detail-excel tr.section-collapsed { display: none; }
+.field-blocker { background: #ffebee !important; }
+.field-warning { background: #fff8e1 !important; }
+.field-edited { background: #e8f5e9 !important; }
 
 /* Card view in detail */
 .detail-section { padding: 14px 20px; border-bottom: 1px solid #eee; }
@@ -260,8 +269,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .lightbox { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 200; display: none; align-items: center; justify-content: center; cursor: pointer; }
 .lightbox.active { display: flex; }
 .lightbox img { max-width: 95vw; max-height: 95vh; object-fit: contain; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 22px; border-radius: 6px; font-size: 13px; z-index: 999; display: none; }
-.toast.show { display: block; animation: slideUp 0.3s; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 22px; border-radius: 6px; font-size: 13px; z-index: 999; display: none; max-width: 500px; }
+.toast.show { display: flex; align-items: center; gap: 12px; animation: slideUp 0.3s; }
+.toast .undo-btn { background: none; border: 1px solid rgba(255,255,255,0.5); color: #90caf9; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.toast .undo-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
 @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 .loading { text-align: center; padding: 60px; color: #888; }
@@ -456,6 +467,51 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .invoice-summary { display:flex; gap:12px; padding:16px 20px; flex-wrap:wrap; }
 .invoice-section { padding:0 20px; }
 .invoice-section h4 { font-size:13px; color:#555; margin:8px 0; }
+
+/* ── Command Palette ── */
+.cmd-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:5000; justify-content:center; align-items:flex-start; padding-top:15vh; }
+.cmd-overlay.show { display:flex; }
+.cmd-box { background:#fff; border-radius:12px; width:480px; max-width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3); overflow:hidden; }
+.cmd-box input { width:100%; padding:14px 18px; border:none; border-bottom:1px solid #eee; font-size:15px; outline:none; }
+.cmd-box input::placeholder { color:#aaa; }
+.cmd-results { max-height:320px; overflow-y:auto; }
+.cmd-item { padding:10px 18px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+.cmd-item:hover, .cmd-item.active { background:#e8eaf6; }
+.cmd-item .cmd-label { color:#333; }
+.cmd-item .cmd-hint { color:#999; font-size:11px; }
+.cmd-empty { padding:20px; text-align:center; color:#999; font-size:13px; }
+
+/* ── Density ── */
+body.density-compact .poi-table td { padding:4px 6px; font-size:11px; }
+body.density-compact .poi-table th { padding:6px 8px; font-size:10px; }
+body.density-compact .stat-card { padding:8px 12px; min-width:90px; }
+body.density-compact .stat-card .value { font-size:18px; }
+body.density-compact .stat-card .label { font-size:9px; }
+body.density-compact .detail-excel td { padding:1px 3px; font-size:11px; }
+body.density-compact .detail-excel .field-name { padding:3px 8px; font-size:10px; }
+body.density-compact .filter-bar { padding:8px 20px 0; }
+body.density-compact .view-tab { padding:8px 12px; font-size:11px; }
+body.density-compact .data-tab { padding:4px 10px; font-size:11px; }
+
+/* ── View States ── */
+.view-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:#888; }
+.view-state .icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
+.view-state .title { font-size:16px; font-weight:600; color:#555; margin-bottom:6px; }
+.view-state .desc { font-size:13px; color:#999; margin-bottom:16px; text-align:center; max-width:400px; }
+.view-state button { padding:8px 20px; background:#1a237e; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; }
+.view-state button:hover { background:#283593; }
+
+/* ── Active Filters Summary ── */
+.filter-summary { padding:4px 30px 8px; font-size:12px; color:#666; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.filter-chip { background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:10px; font-size:11px; display:inline-flex; align-items:center; gap:4px; }
+.filter-chip .remove { cursor:pointer; font-size:14px; color:#1565c0; opacity:0.6; }
+.filter-chip .remove:hover { opacity:1; }
+
+/* ── Accessibility ── */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid #1a237e; outline-offset: 2px;
+}
+.detail-close:focus-visible { outline-color: #fff; }
 </style>
 </head>
 <body>
@@ -553,6 +609,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     </select>
     <span class="count" id="filterCount"></span>
   </div>
+  <div class="filter-summary" id="filterSummary" style="display:none;"></div>
   <div class="data-tabs" id="dataTabs">
     <div class="data-tab active" data-tab="all">All</div>
     <div class="data-tab" data-tab="flagged">Flagged</div>
@@ -773,7 +830,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
       <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;" onclick="navPoi(-1)">Prev</button>
       <span id="detailCounter" style="font-size:11px;opacity:0.7;"></span>
       <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;" onclick="navPoi(1)">Next</button>
-      <button class="detail-close" onclick="closeDetail()">&times;</button>
+      <button class="detail-close" onclick="closeDetail()" aria-label="Close detail panel">&times;</button>
     </div>
   </div>
   <div class="detail-view-toggle">
@@ -793,16 +850,25 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
       <button class="btn btn-primary" onclick="saveEdits()">Save</button>
     </div>
     <div class="action-group" style="border-right:none;">
-      <button class="btn btn-success btn-approve" onclick="approvePoi()">Approve</button>
+      <button class="btn btn-success btn-approve" onclick="approveAndNext()" title="Approve & advance to next (A)">Approve & Next</button>
+      <button class="btn" onclick="approvePoi()" style="background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;" title="Approve without advancing">Approve</button>
       <button class="btn" onclick="archivePoi()" style="background:#757575;color:#fff;">Archive</button>
       <button class="btn" onclick="rejectPoi()" style="background:none;color:#c62828;border:1px solid #c62828;">Reject</button>
       <div class="overflow-menu-wrap">
-        <button class="overflow-menu-btn" onclick="toggleOverflowMenu()">&#8943;</button>
+        <button class="overflow-menu-btn" onclick="toggleOverflowMenu()" aria-label="More actions">&#8943;</button>
         <div class="overflow-menu" id="detailOverflow">
           <button class="danger" onclick="deletePoi(); toggleOverflowMenu()">Delete POI</button>
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Command Palette -->
+<div class="cmd-overlay" id="cmdOverlay" onclick="if(event.target===this)toggleCommandPalette()">
+  <div class="cmd-box">
+    <input type="text" id="cmdInput" placeholder="Type a command or search POI..." oninput="filterCommands()" onkeydown="cmdKeyNav(event)">
+    <div class="cmd-results" id="cmdResults"></div>
   </div>
 </div>
 
@@ -2554,6 +2620,17 @@ function filterFromStat(filterVal) {
   applyFilters();
 }
 
+function clearAllFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterSeverity').value = '';
+  document.getElementById('filterStatus').value = '';
+  currentDataTab = 'all';
+  document.querySelectorAll('.data-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.data-tab[data-tab="all"]')?.classList.add('active');
+  applyFilters();
+}
+
 function applyFilters() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const cat = document.getElementById('filterCategory').value;
@@ -2580,6 +2657,22 @@ function applyFilters() {
     return true;
   });
   currentPage = 0; renderTable();
+  // Build filter summary chips
+  const fs = document.getElementById('filterSummary');
+  const chips = [];
+  const tabLabels = {all:'All',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',errors:'Errors'};
+  if (currentDataTab && currentDataTab !== 'all') chips.push({label:tabLabels[currentDataTab]||currentDataTab, clear:()=>{document.querySelector('.data-tab.active')?.click(); setDataTab('all');}});
+  if (search) chips.push({label:'Search: "'+search+'"', clear:()=>{document.getElementById('searchInput').value=''; applyFilters();}});
+  if (cat) chips.push({label:'Category: '+cat, clear:()=>{document.getElementById('filterCategory').value=''; applyFilters();}});
+  if (qa) chips.push({label:'QA: '+(qa==='high'?'≥80':qa==='mid'?'60-79':'<60'), clear:()=>{document.getElementById('filterSeverity').value=''; applyFilters();}});
+  if (status) chips.push({label:'Status: '+status, clear:()=>{document.getElementById('filterStatus').value=''; applyFilters();}});
+  if (chips.length) {
+    fs.style.display = '';
+    fs.innerHTML = '<span style="font-weight:600;color:#444;">Active filters:</span> ' + chips.map((c,i) =>
+      `<span class="filter-chip">${esc(c.label)}<span class="remove" onclick="window._clearChip(${i})">&times;</span></span>`).join('');
+    window._chipClearFns = chips.map(c=>c.clear);
+    window._clearChip = function(i) { if(window._chipClearFns[i]) window._chipClearFns[i](); };
+  } else { fs.style.display = 'none'; fs.innerHTML = ''; }
 }
 
 // ===== CARD TABLE =====
@@ -2588,6 +2681,20 @@ function renderTable() {
   const rows = filteredPois.slice(start, start + PAGE_SIZE);
   const tp = Math.ceil(filteredPois.length / PAGE_SIZE);
   document.getElementById('filterCount').textContent = `${filteredPois.length} results`;
+
+  // Empty state
+  if (filteredPois.length === 0) {
+    const hasFilters = document.getElementById('searchInput').value || document.getElementById('filterCategory').value || document.getElementById('filterSeverity').value || document.getElementById('filterStatus').value || currentDataTab !== 'all';
+    document.getElementById('tableContainer').innerHTML = `<div class="view-state">
+      <div class="icon">${hasFilters ? '🔍' : '📋'}</div>
+      <div class="title">${hasFilters ? 'No matching POIs' : 'No POIs loaded'}</div>
+      <div class="desc">${hasFilters ? 'Try adjusting your filters or search query.' : 'Import a CSV file or add POIs manually to get started.'}</div>
+      ${hasFilters ? '<button onclick="clearAllFilters()">Clear all filters</button>' : '<button onclick="document.getElementById(\'fileInput\').click()">Import CSV</button>'}
+    </div>`;
+    document.getElementById('pagination').innerHTML = '';
+    updateBulkBar();
+    return;
+  }
 
   let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Phone</th><th>Ext</th><th>Int</th><th>QA</th><th>Status</th><th>Flag</th><th>Valid</th></tr></thead><tbody>`;
   rows.forEach((p, i) => {
@@ -2881,6 +2988,15 @@ function renderMiniMap(poi) {
 }
 
 // DETAIL: Excel Table (Field | Value) - ALL 72 fields editable
+function toggleSection(headerRow, sectionIdx) {
+  const table = headerRow.closest('table');
+  const rows = table.querySelectorAll(`tr[data-section="${sectionIdx}"]`);
+  const isCollapsed = rows.length > 0 && rows[0].classList.contains('section-collapsed');
+  rows.forEach(r => r.classList.toggle('section-collapsed', !isCollapsed));
+  const toggle = headerRow.querySelector('.section-toggle');
+  if (toggle) toggle.innerHTML = isCollapsed ? '&#9660;' : '&#9654;';
+}
+
 function renderDetailExcel(poi) {
   // Validation error summary at top
   const errs = validationResults.get(poi.GlobalID) || [];
@@ -2908,11 +3024,27 @@ function renderDetailExcel(poi) {
     h += `<div style="margin:10px 12px;padding:8px 14px;border-radius:6px;background:#e8f5e9;border:1px solid #c8e6c9;font-size:12px;color:#2e7d32;">All validations passed</div>`;
   }
 
+  // Build per-section issue counts
+  const sectionIssues = {};
+  DETAIL_SECTIONS.forEach(section => {
+    let cnt = 0;
+    section.fields.forEach(f => { if (getValidationTooltip(poi.GlobalID, f)) cnt++; });
+    sectionIssues[section.title] = cnt;
+  });
+
   h += '<table class="detail-excel"><thead><tr><th style="width:30px">#</th><th>Field</th><th>Value</th></tr></thead><tbody>';
   let n = 0;
 
-  DETAIL_SECTIONS.forEach(section => {
-    h += `<tr class="section-row"><td colspan="3">${section.title}</td></tr>`;
+  // Default expanded: IDENTITY, LOCATION, and any section with issues
+  const defaultExpanded = new Set(['IDENTITY', 'LOCATION']);
+  DETAIL_SECTIONS.forEach(s => { if (sectionIssues[s.title] > 0) defaultExpanded.add(s.title); });
+
+  DETAIL_SECTIONS.forEach((section, si) => {
+    const iCnt = sectionIssues[section.title] || 0;
+    const collapsed = !defaultExpanded.has(section.title);
+    const issueHtml = iCnt > 0 ? `<span class="issue-count has-issues">${iCnt} issue${iCnt>1?'s':''}</span>` : '';
+    const toggleIcon = collapsed ? '&#9654;' : '&#9660;';
+    h += `<tr class="section-row" onclick="toggleSection(this,${si})"><td colspan="3">${section.title}${issueHtml}<span class="section-toggle">${toggleIcon}</span></td></tr>`;
     section.fields.forEach(field => {
       n++;
       const val = poi[field] || '';
@@ -2923,10 +3055,11 @@ function renderDetailExcel(poi) {
 
       const vColor = getValidationColor(poi.GlobalID, field);
       const vTip = getValidationTooltip(poi.GlobalID, field);
+      const fieldClass = vTip ? (vColor && vColor.includes('ffcdd2') ? 'field-blocker' : 'field-warning') : (hasEdit ? 'field-edited' : '');
       const vStyle = vColor ? ` style="background:${vColor};"` : '';
       const vBadge = vTip ? ` <span style="color:#c62828;font-size:9px;" title="${esc(vTip)}">⚠</span>` : '';
 
-      h += `<tr><td style="text-align:center;color:#888;font-size:10px;">${n}</td>`;
+      h += `<tr class="${collapsed?'section-collapsed':''} ${fieldClass}" data-section="${si}"><td style="text-align:center;color:#888;font-size:10px;">${n}</td>`;
       h += `<td class="field-name">${label}${hasEdit?' <span style="color:#4caf50;font-size:9px;">edited</span>':''}${vBadge}</td>`;
 
       if (isRO) {
@@ -3129,8 +3262,11 @@ function flagPoi() {
   toast('Flagged: ' + trunc(poi.Name_EN,30) + ' (status: ' + (poi.Review_Status||'Draft') + ')');
 }
 
-function approvePoi() {
-  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+function _doApprove() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return null;
+  const prevStatus = poi.Review_Status || 'Draft';
+  const prevFlagged = poi.flagged;
+  const prevFlagReason = poi.flag_reason;
   const note = document.getElementById('noteInput').value;
   poi.Review_Status='Reviewed'; poi.Review_Notes=note; poi.Review_Flag='';
   poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = '';
@@ -3142,8 +3278,26 @@ function approvePoi() {
   Object.assign(edits[poi.GlobalID], fields);
   saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
   renderTable(); buildStats();
-  if (currentPoiIdx+1 < filteredPois.length) openDetail(currentPoiIdx+1);
-  toast('Approved: ' + trunc(poi.Name_EN,30) + ' (v' + poi.review_version + ')');
+  return { gid: poi.GlobalID, name: poi.Name_EN, version: poi.review_version, prevStatus, prevFlagged, prevFlagReason };
+}
+
+function approvePoi() {
+  const result = _doApprove();
+  if (!result) return;
+  renderDetailBody();
+  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus, result.prevFlagged, result.prevFlagReason);
+}
+
+function approveAndNext() {
+  const result = _doApprove();
+  if (!result) return;
+  if (currentPoiIdx + 1 < filteredPois.length) {
+    openDetail(currentPoiIdx + 1);
+  } else {
+    renderDetailBody();
+    toast('End of queue — all filtered POIs reviewed!');
+  }
+  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus, result.prevFlagged, result.prevFlagReason);
 }
 
 function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
@@ -3276,7 +3430,50 @@ function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function ce(v) { if (v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; }
 function trunc(s,n) { return s&&s.length>n ? s.substring(0,n)+'...' : (s||''); }
 function openLightbox(url) { document.getElementById('lightboxImg').src=url; document.getElementById('lightbox').classList.add('active'); }
-function toast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+let _toastTimer = null;
+function toast(msg) {
+  const t=document.getElementById('toast');
+  t.innerHTML = esc(msg);
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── Undo System ──
+let _undoStack = [];
+function undoToast(msg, gid, prevStatus, prevFlagged, prevFlagReason) {
+  const entry = { gid, prevStatus, prevFlagged: !!prevFlagged, prevFlagReason: prevFlagReason || '' };
+  _undoStack.push(entry);
+  const t = document.getElementById('toast');
+  t.innerHTML = `<span>${esc(msg)}</span><button class="undo-btn" onclick="undoLastAction()">Undo</button>`;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove('show'); _undoStack = _undoStack.filter(e => e !== entry); }, 8000);
+}
+
+function undoLastAction() {
+  const entry = _undoStack.pop();
+  if (!entry) return;
+  const poi = allPois.find(p => p.GlobalID === entry.gid);
+  if (!poi) { toast('Cannot undo: POI not found'); return; }
+  poi.Review_Status = entry.prevStatus;
+  poi.flagged = entry.prevFlagged;
+  poi.flag_reason = entry.prevFlagReason;
+  poi.Review_Flag = entry.prevFlagReason;
+  poi.review_version = Math.max(0, (parseInt(poi.review_version) || 1) - 1);
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
+  Object.assign(edits[poi.GlobalID], {
+    Review_Status: entry.prevStatus,
+    flagged: entry.prevFlagged,
+    flag_reason: entry.prevFlagReason
+  });
+  saveEditsToStorage();
+  saveFieldsToDb(poi.GlobalID, { Review_Status: entry.prevStatus, flagged: entry.prevFlagged, flag_reason: entry.prevFlagReason });
+  renderTable(); buildStats();
+  if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
+  document.getElementById('toast').classList.remove('show');
+  toast('Undone: ' + trunc(poi.Name_EN || poi.Name_AR, 30) + ' → ' + entry.prevStatus);
+}
 
 // ===== HOVER PREVIEW =====
 let previewTimer = null;
@@ -3480,7 +3677,12 @@ function runDuplicateDetection() {
 function renderDuplicatesView() {
   const container = document.getElementById('dupContainer');
   if (!dupGroups.length) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:#4caf50;font-size:14px;font-weight:600;">No duplicates found!</div>';
+    container.innerHTML = `<div class="view-state">
+      <div class="icon">✓</div>
+      <div class="title">No duplicates found</div>
+      <div class="desc">Run duplicate detection to find matching POIs based on name, phone, or location.</div>
+      <button onclick="runDuplicateDetection()">Detect Duplicates</button>
+    </div>`;
     document.getElementById('dupSummary').textContent = '';
     return;
   }
@@ -5191,7 +5393,7 @@ setInterval(checkForUpdates, 60000);
 
 async function loadDrafts() {
   const container = document.getElementById('draftTableContainer');
-  container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Loading drafts...</div>';
+  container.innerHTML = '<div class="view-state"><div class="icon">⏳</div><div class="title">Loading drafts...</div></div>';
   try {
     const qs = new URLSearchParams();
     const status = document.getElementById('draftStatusFilter').value;
@@ -5217,7 +5419,7 @@ async function loadDrafts() {
     loadDraftStats();
     populateDraftCategoryFilter();
   } catch (e) {
-    container.innerHTML = `<div style="padding:40px;text-align:center;color:#c62828;">Failed to load drafts: ${e.message}</div>`;
+    container.innerHTML = `<div class="view-state"><div class="icon">⚠</div><div class="title">Failed to load drafts</div><div class="desc">${esc(e.message)}</div><button onclick="loadDrafts()">Retry</button></div>`;
   }
 }
 
@@ -5303,7 +5505,11 @@ function filterDrafts() {
 function renderDraftTable() {
   const container = document.getElementById('draftTableContainer');
   if (!filteredDrafts.length) {
-    container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">No drafts found. Use "Import CSV" to add candidate POIs.</div>';
+    container.innerHTML = `<div class="view-state">
+      <div class="icon">📦</div>
+      <div class="title">No drafts found</div>
+      <div class="desc">Use "Import CSV" to add candidate POIs for review.</div>
+    </div>`;
     document.getElementById('draftPagination').innerHTML = '';
     return;
   }
@@ -5662,13 +5868,25 @@ document.addEventListener('keydown', function(e) {
       if (detailOpen) { navPoi(-1); e.preventDefault(); }
       break;
     case 'a': case 'A':
-      if (detailOpen && !e.ctrlKey && !e.metaKey) { approvePoi(); e.preventDefault(); }
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { approveAndNext(); e.preventDefault(); }
       break;
     case 'f': case 'F':
       if (detailOpen && !e.ctrlKey && !e.metaKey) { document.getElementById('flagSelect').focus(); e.preventDefault(); }
       break;
     case 's': case 'S':
       if (detailOpen && !e.ctrlKey && !e.metaKey) { saveEdits(); e.preventDefault(); }
+      break;
+    case 'e': case 'E':
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { openPoiForm('edit'); e.preventDefault(); }
+      break;
+    case 'Enter':
+      if (detailOpen && (e.ctrlKey || e.metaKey)) { approveAndNext(); e.preventDefault(); }
+      break;
+    case 'k': case 'K':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); toggleCommandPalette(); }
+      break;
+    case '/':
+      if (!detailOpen) { e.preventDefault(); toggleCommandPalette(); }
       break;
     case '?':
       toggleShortcutHelp();
@@ -5694,11 +5912,14 @@ function toggleShortcutHelp() {
   el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;padding:24px;z-index:4000;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:360px;';
   el.innerHTML = `<h3 style="margin:0 0 12px;font-size:15px;">Keyboard Shortcuts</h3>
     <table style="width:100%;font-size:13px;border-collapse:collapse;">
-    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">A</kbd></td><td>Approve POI</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">A</kbd></td><td>Approve & Next</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">Ctrl+Enter</kbd></td><td>Approve & Next</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">F</kbd></td><td>Focus flag dropdown</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">E</kbd></td><td>Edit POI form</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">S</kbd></td><td>Save edits</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">&larr; &rarr;</kbd></td><td>Prev / Next POI</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">Esc</kbd></td><td>Close panel / dialog</td></tr>
+    <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">Ctrl+K</kbd> / <kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">/</kbd></td><td>Command palette</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">1-5</kbd></td><td>Switch data tabs</td></tr>
     <tr><td style="padding:4px 0;"><kbd style="background:#eee;padding:2px 6px;border-radius:3px;font-size:11px;">?</kbd></td><td>Toggle this help</td></tr>
     </table>
@@ -5711,6 +5932,124 @@ function toggleShortcutHelp() {
   ov.onclick = () => { el.remove(); ov.remove(); };
   document.body.appendChild(ov);
 }
+
+// ── Command Palette ──
+const CMD_LIST = [
+  { label: 'Go to List view', hint: 'Review', action: () => switchView('card') },
+  { label: 'Go to Table view', hint: 'Review', action: () => switchView('excel') },
+  { label: 'Go to Media view', hint: 'Review', action: () => switchView('arcgis') },
+  { label: 'Go to Map', hint: 'Analysis', action: () => switchView('map') },
+  { label: 'Go to Duplicates', hint: 'Analysis', action: () => switchView('duplicates') },
+  { label: 'Go to Audit Log', hint: 'Analysis', action: () => switchView('audit') },
+  { label: 'Go to Drafts', hint: 'Operations', action: () => switchView('drafts') },
+  { label: 'Go to Invoice', hint: 'Operations', action: () => switchView('invoice') },
+  { label: 'Approve & Next', hint: 'A', action: () => { if (document.getElementById('detailPanel').classList.contains('open')) approveAndNext(); } },
+  { label: 'Approve current POI', hint: '', action: () => { if (document.getElementById('detailPanel').classList.contains('open')) approvePoi(); } },
+  { label: 'Flag current POI', hint: 'F', action: () => { if (document.getElementById('detailPanel').classList.contains('open')) document.getElementById('flagSelect').focus(); } },
+  { label: 'Next POI', hint: '→', action: () => navPoi(1) },
+  { label: 'Previous POI', hint: '←', action: () => navPoi(-1) },
+  { label: 'Validate All POIs', hint: '', action: () => runValidation() },
+  { label: 'Detect Duplicates', hint: '', action: () => runDuplicateDetection() },
+  { label: 'Export All CSV', hint: '', action: () => exportCSV() },
+  { label: 'Export Edits Only', hint: '', action: () => exportEdits() },
+  { label: 'Filter: Draft', hint: '', action: () => filterFromStat('Draft') },
+  { label: 'Filter: Reviewed', hint: '', action: () => filterFromStat('Reviewed') },
+  { label: 'Filter: Flagged', hint: '', action: () => filterFromStat('Flagged') },
+  { label: 'Filter: Low QA', hint: '', action: () => filterFromStat('qa-low') },
+  { label: 'Filter: Rejected', hint: '', action: () => filterFromStat('Rejected') },
+  { label: 'Toggle density mode', hint: '', action: () => toggleDensity() },
+  { label: 'Keyboard shortcuts', hint: '?', action: () => toggleShortcutHelp() },
+];
+
+let _cmdIdx = 0;
+let _cmdFiltered = [];
+
+function toggleCommandPalette() {
+  const ov = document.getElementById('cmdOverlay');
+  if (ov.classList.contains('show')) {
+    ov.classList.remove('show');
+  } else {
+    ov.classList.add('show');
+    const inp = document.getElementById('cmdInput');
+    inp.value = '';
+    _cmdIdx = 0;
+    filterCommands();
+    setTimeout(() => inp.focus(), 50);
+  }
+}
+
+function filterCommands() {
+  const q = document.getElementById('cmdInput').value.toLowerCase().trim();
+  const res = document.getElementById('cmdResults');
+
+  // Static commands
+  _cmdFiltered = CMD_LIST.filter(c => c.label.toLowerCase().includes(q));
+
+  // Live POI search if query is long enough
+  if (q.length >= 2) {
+    const poiMatches = allPois.filter(p =>
+      (p.Name_EN || '').toLowerCase().includes(q) ||
+      (p.Name_AR || '').includes(q) ||
+      (p.GlobalID || '').toLowerCase().includes(q) ||
+      (p.District_EN || '').toLowerCase().includes(q)
+    ).slice(0, 8);
+    poiMatches.forEach(p => {
+      _cmdFiltered.push({
+        label: (p.Name_EN || p.Name_AR || p.GlobalID),
+        hint: (p.Category || '') + ' | ' + (p.District_EN || ''),
+        action: () => { applyFilters(); openDetailByGid(p.GlobalID); }
+      });
+    });
+  }
+
+  _cmdIdx = 0;
+  if (_cmdFiltered.length === 0) {
+    res.innerHTML = '<div class="cmd-empty">No results</div>';
+    return;
+  }
+  res.innerHTML = _cmdFiltered.map((c, i) =>
+    `<div class="cmd-item${i===_cmdIdx?' active':''}" onmouseenter="_cmdIdx=${i};highlightCmd()" onclick="runCmd(${i})">
+      <span class="cmd-label">${esc(c.label)}</span>
+      <span class="cmd-hint">${esc(c.hint)}</span>
+    </div>`
+  ).join('');
+}
+
+function highlightCmd() {
+  document.querySelectorAll('.cmd-item').forEach((el, i) => el.classList.toggle('active', i === _cmdIdx));
+}
+
+function cmdKeyNav(e) {
+  if (e.key === 'ArrowDown') { e.preventDefault(); _cmdIdx = Math.min(_cmdIdx + 1, _cmdFiltered.length - 1); highlightCmd(); scrollCmdIntoView(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _cmdIdx = Math.max(_cmdIdx - 1, 0); highlightCmd(); scrollCmdIntoView(); }
+  else if (e.key === 'Enter') { e.preventDefault(); runCmd(_cmdIdx); }
+  else if (e.key === 'Escape') { toggleCommandPalette(); }
+}
+
+function scrollCmdIntoView() {
+  const items = document.querySelectorAll('.cmd-item');
+  if (items[_cmdIdx]) items[_cmdIdx].scrollIntoView({ block: 'nearest' });
+}
+
+function runCmd(idx) {
+  const cmd = _cmdFiltered[idx];
+  if (!cmd) return;
+  toggleCommandPalette();
+  cmd.action();
+}
+
+// ── Density Mode ──
+function toggleDensity() {
+  document.body.classList.toggle('density-compact');
+  const isCompact = document.body.classList.contains('density-compact');
+  localStorage.setItem('poi_density', isCompact ? 'compact' : 'comfortable');
+  toast('Density: ' + (isCompact ? 'Compact' : 'Comfortable'));
+}
+
+function restoreDensity() {
+  if (localStorage.getItem('poi_density') === 'compact') document.body.classList.add('density-compact');
+}
+restoreDensity();
 
 init();
 </script>

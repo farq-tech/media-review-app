@@ -9,6 +9,7 @@ import os
 import sys
 import uuid
 import time
+import datetime
 import gzip
 import hashlib
 import threading
@@ -163,6 +164,17 @@ def sync_to_arcgis(action, global_id, data=None):
     threading.Thread(target=_sync, daemon=True).start()
 
 app = Flask(__name__)
+
+# Custom JSON provider for datetime objects (Flask 3.x)
+from flask.json.provider import DefaultJSONProvider
+class DateTimeJSONProvider(DefaultJSONProvider):
+    def default(self, o):
+        if isinstance(o, (datetime.datetime, datetime.date)):
+            return o.isoformat()
+        return super().default(o)
+app.json_provider_class = DateTimeJSONProvider
+app.json = DateTimeJSONProvider(app)
+
 CORS(app)
 
 api = Blueprint('api', __name__, url_prefix='/api')
@@ -391,10 +403,12 @@ def get_pois():
         for row in rows:
             d = {}
             for k, v in row.items():
-                if k in ('created_at', 'updated_at', 'delivery_date'):
-                    d[k] = str(v) if v else ''
+                if v is None:
+                    d[k] = ''
+                elif isinstance(v, (datetime.datetime, datetime.date)):
+                    d[k] = v.isoformat()
                 else:
-                    d[k] = v if v is not None else ''
+                    d[k] = v
             result.append(d)
         # Gzip compress large JSON response (~2.7MB → ~250KB)
         body = json.dumps(result, separators=(',', ':'))
