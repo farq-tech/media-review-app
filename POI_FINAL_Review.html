@@ -413,6 +413,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
   <div class="view-tab" onclick="switchView('map')">Map View</div>
   <div class="view-tab" onclick="switchView('arcgis')">ArcGIS Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
   <div class="view-tab" onclick="switchView('invoice')">Invoice <span class="badge" id="invoiceBadge" style="display:none;background:#f59e0b;">0</span></div>
+  <div class="view-tab" onclick="switchView('drafts')">Drafts <span class="badge" id="draftsBadge" style="display:none;background:#9c27b0;">0</span></div>
 </div>
 
 <!-- CARD VIEW -->
@@ -609,6 +610,39 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
   </div>
 </div>
 
+<!-- DRAFTS VIEW -->
+<div id="draftsView" class="view-content">
+  <div style="padding:12px 20px;background:#f3e5f5;border-bottom:1px solid #ce93d8;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <button onclick="document.getElementById('draftFileInput').click()" style="background:#9c27b0;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Import CSV</button>
+    <input type="file" id="draftFileInput" accept=".csv" onchange="uploadDraftsCSV(this)" style="display:none;">
+    <input type="text" id="draftSearch" placeholder="Search name..." oninput="filterDrafts()" style="padding:5px 10px;border:1px solid #ddd;border-radius:5px;width:180px;font-size:12px;">
+    <select id="draftVerdictFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+      <option value="">All Verdicts</option>
+      <option value="LIKELY_NEW">LIKELY_NEW</option>
+      <option value="LIKELY_DUP">LIKELY_DUP</option>
+      <option value="REVIEW">REVIEW</option>
+    </select>
+    <select id="draftStatusFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+      <option value="">All Status</option>
+      <option value="pending">Pending</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="rejected">Rejected</option>
+    </select>
+    <select id="draftCategoryFilter" onchange="filterDrafts()" style="padding:5px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px;">
+      <option value="">All Categories</option>
+      <option value="__empty__">No Category</option>
+    </select>
+    <span id="draftCount" style="color:#666;font-size:11px;">0 drafts</span>
+    <div style="margin-left:auto;display:flex;gap:6px;">
+      <button onclick="bulkConfirmDrafts()" style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">Confirm Selected</button>
+      <button onclick="bulkRejectDrafts()" style="background:#f44336;color:#fff;border:none;padding:6px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">Reject Selected</button>
+    </div>
+  </div>
+  <div id="draftStatsBar" style="display:flex;gap:10px;padding:10px 20px;flex-wrap:wrap;"></div>
+  <div id="draftTableContainer" style="padding:0 20px;overflow-x:auto;"></div>
+  <div id="draftPagination" style="padding:8px 20px;text-align:center;"></div>
+</div>
+
 <!-- Media Assign Modal -->
 <div id="mediaAssignOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:2000;" onclick="closeMediaAssign()"></div>
 <div id="mediaAssignModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; border-radius:12px; padding:20px; width:560px; max-height:85vh; overflow-y:auto; z-index:2001; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
@@ -686,6 +720,15 @@ let excelPage = 0;
 let excelSortCol = null;
 let excelSortAsc = true;
 let currentDataTab = 'all';
+
+// ===== DRAFTS STATE =====
+let draftPois = [];
+let filteredDrafts = [];
+let draftPage = 0;
+const DRAFT_PAGE_SIZE = 50;
+let selectedDrafts = new Set();
+let draftStatsCache = null;
+let draftCurrentIdx = -1;
 
 const REVIEW_FLAGS = [
   "Business name is incorrect","Image and Text's Phone Number is Different",
@@ -2326,8 +2369,8 @@ function buildCategoryFilter() {
 }
 
 // ===== VIEWS =====
-const VIEW_MAP = {card:0, excel:1, audit:2, duplicates:3, map:4, arcgis:5, invoice:6};
-const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', invoice:'invoiceView'};
+const VIEW_MAP = {card:0, excel:1, audit:2, duplicates:3, map:4, arcgis:5, invoice:6, drafts:7};
+const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', invoice:'invoiceView', drafts:'draftsView'};
 function switchView(view) {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
@@ -2340,6 +2383,7 @@ function switchView(view) {
   else if (view === 'arcgis') initArcGISMedia();
   else if (view === 'invoice') renderInvoice();
   else if (view === 'audit') loadAuditLog();
+  else if (view === 'drafts') loadDrafts();
 }
 
 // ===== FILTERING =====
@@ -4834,6 +4878,461 @@ document.addEventListener('click', function(e) {
 
 // Poll for updates every 60 seconds
 setInterval(checkForUpdates, 60000);
+
+// =============================================
+// ===== DRAFTS MODULE =====
+// =============================================
+
+async function loadDrafts() {
+  const container = document.getElementById('draftTableContainer');
+  container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Loading drafts...</div>';
+  try {
+    const qs = new URLSearchParams();
+    const status = document.getElementById('draftStatusFilter').value;
+    const verdict = document.getElementById('draftVerdictFilter').value;
+    const search = document.getElementById('draftSearch').value.trim();
+    const category = document.getElementById('draftCategoryFilter').value;
+    if (status) qs.set('status', status);
+    if (verdict) qs.set('verdict', verdict);
+    if (search) qs.set('search', search);
+    if (category) qs.set('category', category);
+    qs.set('limit', '500');
+    qs.set('page', '0');
+
+    const r = await fetch('/api/drafts?' + qs.toString());
+    if (!r.ok) throw new Error('API error ' + r.status);
+    const data = await r.json();
+    draftPois = data.drafts || [];
+    filteredDrafts = draftPois;
+    draftPage = 0;
+    selectedDrafts.clear();
+    document.getElementById('draftCount').textContent = `${data.total} drafts`;
+    renderDraftTable();
+    loadDraftStats();
+    populateDraftCategoryFilter();
+  } catch (e) {
+    container.innerHTML = `<div style="padding:40px;text-align:center;color:#c62828;">Failed to load drafts: ${e.message}</div>`;
+  }
+}
+
+function populateDraftCategoryFilter() {
+  const sel = document.getElementById('draftCategoryFilter');
+  const current = sel.value;
+  const cats = new Set();
+  draftPois.forEach(d => { if (d.Category) cats.add(d.Category); });
+  // Keep first two options (All, No Category), rebuild rest
+  while (sel.options.length > 2) sel.remove(2);
+  [...cats].sort().forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    sel.appendChild(o);
+  });
+  sel.value = current;
+}
+
+async function loadDraftStats() {
+  try {
+    const r = await fetch('/api/drafts/stats');
+    if (!r.ok) return;
+    draftStatsCache = await r.json();
+    renderDraftStats();
+    // Update badge
+    const badge = document.getElementById('draftsBadge');
+    const pending = draftStatsCache.by_status?.pending || 0;
+    if (pending > 0) {
+      badge.textContent = pending;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (e) { /* silent */ }
+}
+
+function renderDraftStats() {
+  const bar = document.getElementById('draftStatsBar');
+  if (!draftStatsCache) { bar.innerHTML = ''; return; }
+  const s = draftStatsCache;
+  const cards = [
+    { label: 'Total', value: s.total, color: '#1a237e' },
+    { label: 'Pending', value: s.by_status?.pending || 0, color: '#9c27b0' },
+    { label: 'Confirmed', value: s.by_status?.confirmed || 0, color: '#2e7d32' },
+    { label: 'Rejected', value: s.by_status?.rejected || 0, color: '#c62828' },
+    { label: 'LIKELY_NEW', value: s.by_verdict?.LIKELY_NEW || 0, color: '#00695c' },
+    { label: 'LIKELY_DUP', value: s.by_verdict?.LIKELY_DUP || 0, color: '#e65100' },
+    { label: 'REVIEW', value: s.by_verdict?.REVIEW || 0, color: '#f9a825' },
+    { label: 'No Category', value: s.by_category?.['(empty)'] || 0, color: '#757575' },
+    { label: 'QA Pass', value: s.qa_pass || 0, color: '#388e3c' },
+    { label: 'QA Fail', value: s.qa_fail || 0, color: '#d32f2f' },
+  ];
+  bar.innerHTML = cards.map(c =>
+    `<div style="background:#fff;border-radius:6px;padding:8px 14px;min-width:90px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+       <div style="font-size:9px;color:#999;text-transform:uppercase;">${c.label}</div>
+       <div style="font-size:20px;font-weight:700;color:${c.color};">${c.value}</div>
+     </div>`
+  ).join('');
+}
+
+function filterDrafts() {
+  const search = (document.getElementById('draftSearch').value || '').toLowerCase();
+  const verdict = document.getElementById('draftVerdictFilter').value;
+  const status = document.getElementById('draftStatusFilter').value;
+  const category = document.getElementById('draftCategoryFilter').value;
+
+  filteredDrafts = draftPois.filter(d => {
+    if (verdict && d.Dup_Verdict !== verdict) return false;
+    if (status && d.Draft_Status !== status) return false;
+    if (category === '__empty__' && d.Category) return false;
+    if (category && category !== '__empty__' && d.Category !== category) return false;
+    if (search) {
+      const t = [d.Name_EN, d.Name_AR, d.Category, d.Source_CSV, d.GlobalID].join(' ').toLowerCase();
+      if (!t.includes(search)) return false;
+    }
+    return true;
+  });
+  draftPage = 0;
+  document.getElementById('draftCount').textContent = `${filteredDrafts.length} drafts`;
+  renderDraftTable();
+}
+
+function renderDraftTable() {
+  const container = document.getElementById('draftTableContainer');
+  if (!filteredDrafts.length) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">No drafts found. Use "Import CSV" to add candidate POIs.</div>';
+    document.getElementById('draftPagination').innerHTML = '';
+    return;
+  }
+
+  const start = draftPage * DRAFT_PAGE_SIZE;
+  const rows = filteredDrafts.slice(start, start + DRAFT_PAGE_SIZE);
+
+  const verdictBadge = (v) => {
+    if (v === 'LIKELY_NEW') return '<span style="background:#e0f2f1;color:#004d40;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">NEW</span>';
+    if (v === 'LIKELY_DUP') return '<span style="background:#fbe9e7;color:#bf360c;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">DUP</span>';
+    if (v === 'REVIEW') return '<span style="background:#fff8e1;color:#f57f17;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">REVIEW</span>';
+    return '<span style="color:#999;font-size:10px;">—</span>';
+  };
+
+  const statusBadge = (s) => {
+    if (s === 'confirmed') return '<span style="background:#c8e6c9;color:#1b5e20;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">Confirmed</span>';
+    if (s === 'rejected') return '<span style="background:#ffcdd2;color:#b71c1c;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">Rejected</span>';
+    return '<span style="background:#e1bee7;color:#6a1b9a;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">Pending</span>';
+  };
+
+  let h = `<table class="poi-table"><thead><tr>
+    <th style="width:30px"><input type="checkbox" onchange="toggleDraftPageCheckbox(this)" title="Select page"></th>
+    <th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>Orig Category</th>
+    <th>Verdict</th><th>Score</th><th>Source</th>
+    <th>QA</th><th>Status</th><th>Actions</th>
+  </tr></thead><tbody>`;
+
+  rows.forEach((d, i) => {
+    const idx = start + i;
+    const checked = selectedDrafts.has(d.GlobalID) ? 'checked' : '';
+    const qaB = d.QA_Blockers || 0;
+    const qaW = d.QA_Warnings || 0;
+    const qaClass = qaB > 0 ? 'qa-low' : qaW > 2 ? 'qa-mid' : 'qa-high';
+    const qaLabel = qaB > 0 ? `${qaB}B/${qaW}W` : qaW > 0 ? `${qaW}W` : 'OK';
+    const rowBg = d.Draft_Status === 'confirmed' ? 'background:#f1f8e9;' : d.Draft_Status === 'rejected' ? 'background:#fce4ec;' : '';
+
+    h += `<tr style="${rowBg}" onclick="openDraftDetail(${idx})" title="${d.GlobalID}">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${checked} onchange="toggleDraftSelect('${d.GlobalID}', this.checked)"></td>
+      <td>${idx + 1}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.Name_EN || ''}</td>
+      <td class="ar-text" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.Name_AR || ''}</td>
+      <td style="font-size:11px;">${d.Category || '<span style="color:#ccc;">—</span>'}</td>
+      <td style="font-size:10px;color:#888;">${d.Original_Category || ''}</td>
+      <td>${verdictBadge(d.Dup_Verdict)}</td>
+      <td style="font-size:10px;">${d.Dup_Score || ''}</td>
+      <td style="font-size:10px;">${d.Source_CSV || ''}</td>
+      <td><span class="${qaClass}">${qaLabel}</span></td>
+      <td>${statusBadge(d.Draft_Status)}</td>
+      <td onclick="event.stopPropagation()" style="white-space:nowrap;">
+        ${d.Draft_Status === 'pending' ? `
+          <button onclick="confirmDraft('${d.GlobalID}')" style="background:#4caf50;color:#fff;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;" title="Confirm">✓</button>
+          <button onclick="rejectDraft('${d.GlobalID}')" style="background:#f44336;color:#fff;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;" title="Reject">✗</button>
+        ` : ''}
+      </td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  container.innerHTML = h;
+
+  // Pagination
+  const totalPages = Math.ceil(filteredDrafts.length / DRAFT_PAGE_SIZE);
+  let pag = '';
+  if (totalPages > 1) {
+    pag += `<button onclick="draftPage=0;renderDraftTable()" ${draftPage===0?'disabled':''} style="padding:4px 10px;margin:0 2px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:11px;">First</button>`;
+    pag += `<button onclick="draftPage=Math.max(0,draftPage-1);renderDraftTable()" ${draftPage===0?'disabled':''} style="padding:4px 10px;margin:0 2px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:11px;">Prev</button>`;
+    pag += `<span style="margin:0 8px;font-size:12px;color:#666;">Page ${draftPage+1} of ${totalPages}</span>`;
+    pag += `<button onclick="draftPage=Math.min(${totalPages-1},draftPage+1);renderDraftTable()" ${draftPage>=totalPages-1?'disabled':''} style="padding:4px 10px;margin:0 2px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:11px;">Next</button>`;
+    pag += `<button onclick="draftPage=${totalPages-1};renderDraftTable()" ${draftPage>=totalPages-1?'disabled':''} style="padding:4px 10px;margin:0 2px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:11px;">Last</button>`;
+  }
+  document.getElementById('draftPagination').innerHTML = pag;
+}
+
+function toggleDraftSelect(gid, checked) {
+  if (checked) selectedDrafts.add(gid);
+  else selectedDrafts.delete(gid);
+}
+
+function toggleDraftPageCheckbox(cb) {
+  const start = draftPage * DRAFT_PAGE_SIZE;
+  const rows = filteredDrafts.slice(start, start + DRAFT_PAGE_SIZE);
+  rows.forEach(d => {
+    if (cb.checked) selectedDrafts.add(d.GlobalID);
+    else selectedDrafts.delete(d.GlobalID);
+  });
+  renderDraftTable();
+}
+
+function openDraftDetail(idx) {
+  const d = filteredDrafts[idx];
+  if (!d) return;
+  draftCurrentIdx = idx;
+
+  document.getElementById('detailTitle').textContent = (d.Name_EN || d.Name_AR || 'Unnamed') + ' [DRAFT]';
+  document.getElementById('detailSubtitle').textContent = `${d.Category||'No Category'} | ${d.Source_CSV||''} | QA: ${(d.QA_Blockers||0)}B/${(d.QA_Warnings||0)}W`;
+  document.getElementById('detailCounter').textContent = `${idx+1}/${filteredDrafts.length}`;
+
+  const body = document.getElementById('detailBody');
+
+  // Build detail view
+  let h = '';
+
+  // Draft banner
+  h += `<div style="margin:10px 12px;padding:10px 14px;border-radius:6px;background:#f3e5f5;border:1px solid #ce93d8;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span style="background:#9c27b0;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">DRAFT</span>`;
+
+  // Verdict badge
+  if (d.Dup_Verdict === 'LIKELY_NEW') h += '<span style="background:#00695c;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">LIKELY NEW</span>';
+  else if (d.Dup_Verdict === 'LIKELY_DUP') h += '<span style="background:#c62828;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">LIKELY DUP</span>';
+  else if (d.Dup_Verdict === 'REVIEW') h += '<span style="background:#f57f17;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">REVIEW</span>';
+
+  // Status badge
+  if (d.Draft_Status === 'confirmed') h += '<span style="background:#2e7d32;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">CONFIRMED</span>';
+  else if (d.Draft_Status === 'rejected') h += '<span style="background:#c62828;color:#fff;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">REJECTED</span>';
+  else h += '<span style="background:#e1bee7;color:#6a1b9a;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;">PENDING</span>';
+
+  h += `</div></div>`;
+
+  // Duplicate match info (for LIKELY_DUP)
+  if (d.Dup_Verdict === 'LIKELY_DUP' && d.Matched_Name) {
+    h += `<div style="margin:0 12px 10px;padding:10px 14px;border-radius:6px;background:#fff3e0;border:1px solid #ffcc80;font-size:12px;">
+      <div style="font-weight:700;color:#e65100;margin-bottom:4px;">Potential Duplicate Match</div>
+      <div><b>Matched:</b> ${d.Matched_Name}</div>
+      <div><b>Match Type:</b> ${d.Match_Type || '—'} | <b>Similarity:</b> ${d.Similarity || '—'} | <b>Distance:</b> ${d.Distance_m || '—'}m</div>
+      ${d.Matched_GID ? `<div><b>Matched GID:</b> ${d.Matched_GID} <button onclick="openDetailByGid('${d.Matched_GID}')" style="font-size:10px;color:#1565c0;border:none;background:none;cursor:pointer;text-decoration:underline;">View in Data</button></div>` : ''}
+    </div>`;
+  }
+
+  // Map
+  const lat = parseFloat(d.Latitude);
+  const lon = parseFloat(d.Longitude);
+  if (!isNaN(lat) && !isNaN(lon)) {
+    h += `<div style="padding:10px 12px 6px; display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap;">
+      <iframe width="280" height="160" frameborder="0" scrolling="no" style="border:1px solid #c5cae9; border-radius:6px;"
+        src="https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.003},${lat-0.002},${lon+0.003},${lat+0.002}&layer=mapnik&marker=${lat},${lon}"></iframe>
+      <div style="font-size:11px; color:#555; display:flex; flex-direction:column; gap:4px;">
+        <span><b>Lat:</b> ${lat}</span><span><b>Lon:</b> ${lon}</span>
+        <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" style="color:#1565c0;">Google Maps</a>
+      </div>
+    </div>`;
+  }
+
+  // Field table
+  const fields = [
+    ['GlobalID', d.GlobalID], ['Name EN', d.Name_EN], ['Name AR', d.Name_AR],
+    ['Category', d.Category], ['Subcategory', d.Subcategory],
+    ['Original Category', d.Original_Category], ['Original Subcategory', d.Original_Subcategory],
+    ['Latitude', d.Latitude], ['Longitude', d.Longitude],
+    ['Phone', d.Phone_Number], ['Website', d.Website],
+    ['Google Map', d.Google_Map_URL],
+    ['Source', d.Source_CSV], ['Import Batch', d.Import_Batch],
+    ['Dup Verdict', d.Dup_Verdict], ['Dup Score', d.Dup_Score],
+    ['Match Type', d.Match_Type], ['Similarity', d.Similarity],
+    ['Distance (m)', d.Distance_m], ['Matched Name', d.Matched_Name],
+    ['QA Blockers', d.QA_Blockers], ['QA Warnings', d.QA_Warnings],
+    ['Review Notes', d.Review_Notes],
+    ['Reviewed By', d.Reviewed_By], ['Reviewed At', d.Reviewed_At],
+    ['Created', d.created_at], ['Updated', d.updated_at],
+  ];
+
+  h += '<div style="padding:0 12px;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+  fields.forEach(([label, val]) => {
+    const v = val || '';
+    const isUrl = typeof v === 'string' && (v.startsWith('http://') || v.startsWith('https://'));
+    const display = isUrl ? `<a href="${v}" target="_blank" style="color:#1565c0;word-break:break-all;">${v}</a>` : `<span style="word-break:break-all;">${v}</span>`;
+    h += `<tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:5px 8px;font-weight:600;color:#555;width:140px;white-space:nowrap;">${label}</td>
+      <td style="padding:5px 8px;" class="${label.includes('AR') ? 'ar-text' : ''}">${display}</td>
+    </tr>`;
+  });
+  h += '</table></div>';
+
+  body.innerHTML = h;
+
+  // Override detail actions for draft
+  const actions = document.querySelector('.detail-actions');
+  if (d.Draft_Status === 'pending') {
+    actions.innerHTML = `
+      <button class="btn btn-success" onclick="confirmDraft('${d.GlobalID}')">Confirm (Add to DB)</button>
+      <button class="btn btn-danger" onclick="rejectDraft('${d.GlobalID}')">Reject</button>
+      <button class="btn" style="background:#666;color:#fff;" onclick="navDraft(-1)">Prev</button>
+      <button class="btn" style="background:#666;color:#fff;" onclick="navDraft(1)">Next</button>
+      <button class="btn" style="margin-left:auto;" onclick="closeDetail()">Close</button>
+    `;
+  } else {
+    actions.innerHTML = `
+      <span style="font-size:12px;color:#666;">Status: ${d.Draft_Status}</span>
+      <button class="btn" style="background:#666;color:#fff;" onclick="navDraft(-1)">Prev</button>
+      <button class="btn" style="background:#666;color:#fff;" onclick="navDraft(1)">Next</button>
+      <button class="btn" style="margin-left:auto;" onclick="closeDetail()">Close</button>
+    `;
+  }
+
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('overlay').classList.add('active');
+}
+
+function navDraft(dir) {
+  const n = draftCurrentIdx + dir;
+  if (n >= 0 && n < filteredDrafts.length) openDraftDetail(n);
+}
+
+async function confirmDraft(gid) {
+  if (!confirm('Confirm this draft POI? It will be added to the production database.')) return;
+  try {
+    const r = await fetch(`/api/drafts/${encodeURIComponent(gid)}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewer: 'dashboard' })
+    });
+    const data = await r.json();
+    if (r.status === 409) {
+      // Duplicate warning - ask to force
+      if (confirm(data.error + '\n\nForce confirm anyway?')) {
+        const r2 = await fetch(`/api/drafts/${encodeURIComponent(gid)}/confirm?force=true`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewer: 'dashboard' })
+        });
+        const d2 = await r2.json();
+        if (r2.ok) {
+          toast('Draft confirmed (forced) - added to production DB');
+          advanceDraftAfterAction(gid);
+          return;
+        }
+        toast('Error: ' + (d2.error || 'Unknown'));
+        return;
+      }
+      return;
+    }
+    if (!r.ok) { toast('Error: ' + (data.error || 'Unknown')); return; }
+    toast('Draft confirmed - added to production DB as ' + data.production_gid);
+    advanceDraftAfterAction(gid);
+  } catch (e) {
+    toast('Network error: ' + e.message);
+  }
+}
+
+async function rejectDraft(gid) {
+  const reason = prompt('Rejection reason (optional):') || '';
+  try {
+    const r = await fetch(`/api/drafts/${encodeURIComponent(gid)}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewer: 'dashboard', reason })
+    });
+    const data = await r.json();
+    if (!r.ok) { toast('Error: ' + (data.error || 'Unknown')); return; }
+    toast('Draft rejected');
+    advanceDraftAfterAction(gid);
+  } catch (e) {
+    toast('Network error: ' + e.message);
+  }
+}
+
+function advanceDraftAfterAction(gid) {
+  // Update local state
+  const d = draftPois.find(d => d.GlobalID === gid);
+  if (d) d.Draft_Status = d.Draft_Status; // will be refreshed
+  // Reload to get fresh data
+  loadDrafts();
+  closeDetail();
+}
+
+async function bulkConfirmDrafts() {
+  const gids = [...selectedDrafts].filter(gid => {
+    const d = draftPois.find(p => p.GlobalID === gid);
+    return d && d.Draft_Status === 'pending';
+  });
+  if (!gids.length) { toast('No pending drafts selected'); return; }
+  if (!confirm(`Confirm ${gids.length} draft POIs? They will be added to the production database.`)) return;
+
+  try {
+    const r = await fetch('/api/drafts/bulk-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'confirm', globalIds: gids, reviewer: 'dashboard' })
+    });
+    const data = await r.json();
+    if (!r.ok) { toast('Error: ' + (data.error || 'Unknown')); return; }
+    const ok = (data.results || []).filter(r => r.ok).length;
+    toast(`Bulk confirm: ${ok}/${gids.length} confirmed`);
+    selectedDrafts.clear();
+    loadDrafts();
+  } catch (e) {
+    toast('Network error: ' + e.message);
+  }
+}
+
+async function bulkRejectDrafts() {
+  const gids = [...selectedDrafts].filter(gid => {
+    const d = draftPois.find(p => p.GlobalID === gid);
+    return d && d.Draft_Status === 'pending';
+  });
+  if (!gids.length) { toast('No pending drafts selected'); return; }
+  const reason = prompt(`Reject ${gids.length} drafts. Reason (optional):`) || 'Bulk rejected';
+  if (!confirm(`Reject ${gids.length} draft POIs?`)) return;
+
+  try {
+    const r = await fetch('/api/drafts/bulk-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reject', globalIds: gids, reviewer: 'dashboard', reason })
+    });
+    const data = await r.json();
+    if (!r.ok) { toast('Error: ' + (data.error || 'Unknown')); return; }
+    toast(`Bulk reject: ${gids.length} rejected`);
+    selectedDrafts.clear();
+    loadDrafts();
+  } catch (e) {
+    toast('Network error: ' + e.message);
+  }
+}
+
+async function uploadDraftsCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  toast('Uploading CSV... this may take a moment');
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const r = await fetch('/api/drafts/import', { method: 'POST', body: form });
+    const data = await r.json();
+    if (!r.ok) { toast('Import error: ' + (data.error || 'Unknown')); return; }
+    let msg = `Import done: ${data.imported} imported, ${data.skipped} skipped`;
+    if (data.errors && data.errors.length) msg += `, ${data.errors.length} errors`;
+    toast(msg);
+    loadDrafts();
+  } catch (e) {
+    toast('Upload failed: ' + e.message);
+  }
+}
 
 init();
 </script>

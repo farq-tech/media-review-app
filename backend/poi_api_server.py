@@ -205,6 +205,53 @@ def _init_audit_tables(conn):
     conn.commit()
     cur.close()
 
+def _init_draft_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS draft_pois (
+            id SERIAL PRIMARY KEY,
+            "GlobalID" TEXT UNIQUE NOT NULL,
+            "Name_AR" TEXT, "Name_EN" TEXT, "Legal_Name" TEXT,
+            "Category" TEXT, "Subcategory" TEXT, "Category_Level_3" TEXT,
+            "Company_Status" TEXT,
+            "Latitude" TEXT, "Longitude" TEXT, "Google_Map_URL" TEXT,
+            "Building_Number" TEXT, "Floor_Number" TEXT, "Entrance_Location" TEXT,
+            "Phone_Number" TEXT, "Email" TEXT, "Website" TEXT, "Social_Media" TEXT,
+            "Working_Days" TEXT, "Working_Hours" TEXT, "Break_Time" TEXT, "Holidays" TEXT,
+            "Menu_Barcode_URL" TEXT, "Language" TEXT, "Cuisine" TEXT,
+            "Payment_Methods" TEXT, "Commercial_License" TEXT,
+            "Exterior_Photo_URL" TEXT, "Interior_Photo_URL" TEXT,
+            "Menu_Photo_URL" TEXT, "Video_URL" TEXT,
+            "Amenities" TEXT, "District_AR" TEXT, "District_EN" TEXT,
+            "Menu" TEXT, "Drive_Thru" TEXT, "Dine_In" TEXT, "Only_Delivery" TEXT,
+            "Reservation" TEXT, "Require_Ticket" TEXT, "Order_from_Car" TEXT,
+            "Pickup_Point" TEXT, "WiFi" TEXT, "Music" TEXT, "Valet_Parking" TEXT,
+            "Has_Parking_Lot" TEXT, "Wheelchair_Accessible" TEXT, "Family_Seating" TEXT,
+            "Waiting_Area" TEXT, "Private_Dining" TEXT, "Smoking_Area" TEXT,
+            "Children_Area" TEXT, "Shisha" TEXT, "Live_Sports" TEXT,
+            "Is_Landmark" TEXT, "Is_Trending" TEXT, "Large_Groups" TEXT,
+            "Women_Prayer_Room" TEXT, "Iftar_Tent" TEXT, "Iftar_Menu" TEXT,
+            "Open_Suhoor" TEXT, "Free_Entry" TEXT,
+            "Source" TEXT, "QA_Score" TEXT,
+            "Review_Flag" TEXT, "Review_Notes" TEXT, "Review_Status" TEXT,
+            "Additional_Photo_URLs" TEXT, "License_Photo_URL" TEXT,
+            "Draft_Status" TEXT DEFAULT 'pending',
+            "Dup_Verdict" TEXT, "Dup_Score" TEXT,
+            "Match_Type" TEXT, "Similarity" TEXT, "Distance_m" TEXT,
+            "Matched_Name" TEXT, "Matched_GID" TEXT,
+            "Original_Category" TEXT, "Original_Subcategory" TEXT,
+            "Source_CSV" TEXT, "Import_Batch" TEXT,
+            "QA_Blockers" INTEGER DEFAULT 0, "QA_Warnings" INTEGER DEFAULT 0,
+            "Reviewed_By" TEXT, "Reviewed_At" TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_draft_status ON draft_pois(\"Draft_Status\");")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_draft_verdict ON draft_pois(\"Dup_Verdict\");")
+    conn.commit()
+    cur.close()
+
 _tables_initialized = False
 def ensure_tables():
     global _tables_initialized
@@ -213,6 +260,7 @@ def ensure_tables():
     try:
         conn = get_db()
         _init_audit_tables(conn)
+        _init_draft_table(conn)
         conn.close()
         _tables_initialized = True
     except Exception as e:
@@ -1440,6 +1488,501 @@ def audit_stats():
     cur.close()
     conn.close()
     return jsonify(rows)
+
+# ===== Draft POI Category Mapping =====
+_DRAFT_CAT_MAP = {
+    'Restaurants': 'Restaurants', 'Restaurant': 'Restaurants', 'restaurants': 'Restaurants',
+    'Coffee Shops': 'Coffee Shops', 'Coffee Shop': 'Coffee Shops', 'Cafe': 'Coffee Shops',
+    'Café': 'Coffee Shops', 'Cafes': 'Coffee Shops',
+    'Shopping': 'Shopping', 'Retail': 'Shopping', 'Shopping & Distribution': 'Shopping',
+    'shopping_distribution': 'Shopping', 'Mall / Shopping Center': 'Shopping',
+    'Corporate': 'Corporate', 'Corporate Office': 'Corporate',
+    'Services & Industry': 'Corporate', 'services_industry': 'Corporate',
+    'Professional Services': 'Corporate', 'Business Consulting': 'Corporate',
+    'Legal Services': 'Corporate', 'Contracting': 'Corporate', 'Contractor': 'Corporate',
+    'Construction': 'Corporate', 'Construction Services': 'Corporate',
+    'Facilities Services': 'Corporate', 'Translation Service': 'Corporate',
+    'Environmental Services': 'Corporate', 'Engineering Consultancy': 'Corporate',
+    'Coworking Space': 'Corporate', 'Event Planners': 'Corporate', 'Event Planning': 'Corporate',
+    'Event Venue': 'Corporate', 'Media company': 'Corporate', 'Services': 'Corporate',
+    'Insurance Company': 'Corporate', 'HVAC Services': 'Corporate',
+    'Beauty and Spa': 'Beauty and Spa', 'Beauty & Spa': 'Beauty and Spa',
+    'Salon': 'Beauty and Spa', 'Beauty Clinic': 'Beauty and Spa',
+    'Automotive Services': 'Automotive Services', 'Automotive Repair': 'Automotive Services',
+    'Car Rental': 'Automotive Services',
+    'Home Goods': 'Home Goods', 'Home Services': 'Home Goods',
+    'Food and Beverages': 'Food and Beverages', 'Bakery': 'Food and Beverages',
+    'Dessert Shop': 'Food and Beverages',
+    'Grocery': 'Grocery',
+    'Banks': 'Banks', 'Bank': 'Banks', 'finance_insurance': 'Banks',
+    'Sports': 'Sports', 'Sports & Recreation': 'Sports', 'Sports Club': 'Sports', 'Gym': 'Sports',
+    'Hospitals': 'Hospitals', 'Health & Medical': 'Hospitals', 'health_medical': 'Hospitals',
+    'Healthcare': 'Hospitals', 'Medical Center': 'Hospitals', 'Medical Clinic': 'Hospitals',
+    'Clinic': 'Hospitals', 'Health & Wellness Center': 'Hospitals',
+    'Hotels and Accommodations': 'Hotels and Accommodations', 'Hotel': 'Hotels and Accommodations',
+    'accommodation': 'Hotels and Accommodations', 'Accommodation': 'Hotels and Accommodations',
+    'Residential Compound': 'Hotels and Accommodations',
+    'Pharmacies': 'Pharmacies', 'Pharmacy': 'Pharmacies',
+    'Education': 'Education', 'School': 'Education', 'Educational Institution': 'Education',
+    'Childcare': 'Education',
+    'Government Services': 'Government Services', 'Government': 'Government Services',
+    'Entertainment': 'Entertainment', 'Photography Studio': 'Entertainment',
+    'Transportation': 'Transportation',
+    'Fuel Stations': 'Fuel Stations',
+    'Cultural Sites': 'Cultural Sites',
+    'Nature': 'Nature', 'Park': 'Nature',
+    'Public Parks': 'Public Parks',
+    'Public Services': 'Public Services', 'Non-profit organization': 'Public Services',
+    'Non-Profit Organization': 'Public Services', 'Emergency Services': 'Public Services',
+    'Mosques': 'Mosques', 'Mosque': 'Mosques',
+    'Life & Convenience': 'Corporate', 'life_convenience': 'Corporate',
+    'Real Estate': 'Corporate', 'Real Estate Agency': 'Corporate',
+    'Laundry': 'Corporate', 'Laundry Service': 'Corporate',
+    'Cleaning Service': 'Corporate', 'Repair Workshop': 'Corporate',
+    'Telecommunication': 'Corporate', 'Telecommunications': 'Corporate',
+    'Travel Agency': 'Corporate', 'Neighborhood': 'Public Services',
+    'الفنادق والإقامة': 'Hotels and Accommodations',
+    'Energy and Utilities': 'Corporate',
+}
+
+def _map_draft_cat(raw_cat):
+    """Map a CSV category string to one of the 25 taxonomy categories."""
+    raw = (raw_cat or '').strip()
+    if not raw:
+        return ''
+    if raw in _DRAFT_CAT_MAP:
+        return _DRAFT_CAT_MAP[raw]
+    return raw  # keep as-is if unknown
+
+def _quick_qa(draft):
+    """Lightweight QA: count blockers and warnings for a draft POI."""
+    b, w = 0, 0
+    name_ar = (draft.get('Name_AR') or '').strip()
+    name_en = (draft.get('Name_EN') or '').strip()
+    if not name_ar or len(name_ar) < 2: b += 1
+    if not name_en or len(name_en) < 2: b += 1
+    cat = (draft.get('Category') or '').strip()
+    if not cat: b += 1
+    lat = draft.get('Latitude') or ''
+    lon = draft.get('Longitude') or ''
+    try:
+        la = float(lat); lo = float(lon)
+        if la < 15 or la > 35: b += 1
+        if lo < 35 or lo > 60: b += 1
+    except (ValueError, TypeError):
+        if lat or lon: b += 1
+        else: b += 1  # missing coords
+    if not (draft.get('Phone_Number') or '').strip(): w += 1
+    if not (draft.get('Website') or '').strip(): w += 1
+    return b, w
+
+
+# ===== API: Draft POIs =====
+
+@api.route('/drafts/import', methods=['POST'])
+def import_drafts():
+    """Bulk import draft POIs from CSV file."""
+    ensure_tables()
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided. Use multipart form with key "file".'}), 400
+
+    file = request.files['file']
+    batch_id = str(uuid.uuid4())[:8]
+
+    content = file.read().decode('utf-8-sig')
+    reader = csv.DictReader(io.StringIO(content))
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    imported = 0
+    skipped = 0
+    errs = []
+
+    for i, row in enumerate(reader):
+        try:
+            name_en = (row.get('Name_EN') or '').strip()
+            name_ar = (row.get('Name_AR') or '').strip()
+            if not name_en and not name_ar:
+                skipped += 1
+                continue
+
+            raw_cat = (row.get('Category') or '').strip()
+            raw_sub = (row.get('Subcategory') or '').strip()
+            mapped_cat = _map_draft_cat(raw_cat)
+
+            lat = (row.get('Latitude') or '').strip()
+            lon = (row.get('Longitude') or '').strip()
+            if lat.lower() == 'none': lat = ''
+            if lon.lower() == 'none': lon = ''
+
+            phone = (row.get('Phone') or '').strip()
+            website = (row.get('Website') or '').strip()
+            gmap = (row.get('Google_Map') or '').strip()
+            if not gmap and lat and lon:
+                gmap = f'https://www.google.com/maps?q={lat},{lon}'
+
+            # Extract cuisine from Extra_Info if available
+            extra = (row.get('Extra_Info') or '').strip()
+            cuisine = ''
+            if 'cuisine=' in extra:
+                import re as _r
+                m = _r.search(r'cuisine=\{([^}]*)\}', extra)
+                if m:
+                    cuisine = m.group(1).replace('"', '').strip()
+
+            draft = {
+                'Name_EN': name_en, 'Name_AR': name_ar,
+                'Category': mapped_cat, 'Subcategory': raw_sub,
+                'Original_Category': raw_cat, 'Original_Subcategory': raw_sub,
+                'Latitude': lat, 'Longitude': lon,
+                'Phone_Number': phone, 'Website': website,
+                'Google_Map_URL': gmap, 'Cuisine': cuisine,
+                'Source_CSV': (row.get('Source') or '').strip(),
+                'Dup_Verdict': (row.get('Dup_Verdict') or '').strip(),
+                'Dup_Score': (row.get('Dup_Score') or '').strip(),
+                'Match_Type': (row.get('Match_Type') or '').strip(),
+                'Similarity': (row.get('Similarity') or '').strip(),
+                'Distance_m': (row.get('Distance_m') or '').strip(),
+                'Matched_Name': (row.get('Matched_Name') or '').strip(),
+                'Matched_GID': (row.get('Matched_GID') or '').strip(),
+                'Review_Notes': extra,
+                'Import_Batch': batch_id,
+                'Draft_Status': 'pending',
+            }
+            gid = '{DRAFT-' + str(uuid.uuid4()).upper()[:8] + '}'
+            draft['GlobalID'] = gid
+
+            blockers, warnings = _quick_qa(draft)
+            draft['QA_Blockers'] = blockers
+            draft['QA_Warnings'] = warnings
+
+            cols = [f'"{k}"' for k in draft.keys()]
+            placeholders = ['%s'] * len(draft)
+            cur.execute(
+                f'INSERT INTO draft_pois ({", ".join(cols)}) VALUES ({", ".join(placeholders)})',
+                list(draft.values())
+            )
+            imported += 1
+        except Exception as e:
+            errs.append(f'Row {i+2}: {str(e)[:100]}')
+            if len(errs) > 100:
+                break
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'ok': True, 'batch_id': batch_id, 'imported': imported, 'skipped': skipped, 'errors': errs[:50]})
+
+
+@api.route('/drafts', methods=['GET'])
+def get_drafts():
+    """List draft POIs with filters."""
+    ensure_tables()
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    where = []
+    params = []
+    status = request.args.get('status')
+    if status:
+        where.append('"Draft_Status" = %s')
+        params.append(status)
+    verdict = request.args.get('verdict')
+    if verdict:
+        where.append('"Dup_Verdict" = %s')
+        params.append(verdict)
+    search = request.args.get('search')
+    if search:
+        where.append('("Name_EN" ILIKE %s OR "Name_AR" ILIKE %s)')
+        params.extend([f'%{search}%', f'%{search}%'])
+    category = request.args.get('category')
+    if category == '__empty__':
+        where.append("(\"Category\" IS NULL OR \"Category\" = '')")
+    elif category:
+        where.append('"Category" = %s')
+        params.append(category)
+
+    where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+    cur.execute(f'SELECT COUNT(*) as total FROM draft_pois{where_sql}', params)
+    total = cur.fetchone()['total']
+
+    page = int(request.args.get('page', 0))
+    limit = min(int(request.args.get('limit', 100)), 500)
+    offset = page * limit
+
+    cur.execute(
+        f'SELECT * FROM draft_pois{where_sql} ORDER BY id LIMIT %s OFFSET %s',
+        params + [limit, offset]
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    for r in rows:
+        for k, v in r.items():
+            if hasattr(v, 'isoformat'):
+                r[k] = v.isoformat()
+
+    body = json.dumps({'drafts': rows, 'total': total, 'page': page, 'limit': limit}, separators=(',', ':'), default=str)
+    ae = request.headers.get('Accept-Encoding', '')
+    if 'gzip' in ae:
+        compressed = gzip.compress(body.encode(), compresslevel=6)
+        resp = Response(compressed, content_type='application/json')
+        resp.headers['Content-Encoding'] = 'gzip'
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    return Response(body, content_type='application/json')
+
+
+@api.route('/drafts/<globalid>', methods=['PATCH'])
+def update_draft(globalid):
+    """Update fields on a draft POI."""
+    ensure_tables()
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    sets = []
+    vals = []
+    skip = {'GlobalID', 'id', 'created_at', 'Draft_Status', 'Import_Batch'}
+    for k, v in data.items():
+        if k in skip:
+            continue
+        sets.append(f'"{k}" = %s')
+        vals.append(v)
+
+    if not sets:
+        cur.close(); conn.close()
+        return jsonify({'error': 'No valid fields'}), 400
+
+    sets.append('"updated_at" = NOW()')
+    vals.append(globalid)
+
+    cur.execute(f'UPDATE draft_pois SET {", ".join(sets)} WHERE "GlobalID" = %s', vals)
+    updated = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'ok': True, 'updated': updated})
+
+
+@api.route('/drafts/<globalid>/confirm', methods=['POST'])
+def confirm_draft(globalid):
+    """Confirm a draft POI — copy to final_delivery."""
+    ensure_tables()
+    force = request.args.get('force', '').lower() == 'true'
+    body = request.get_json(silent=True) or {}
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute('SELECT * FROM draft_pois WHERE "GlobalID" = %s', (globalid,))
+    draft = cur.fetchone()
+    if not draft:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Draft not found'}), 404
+    if draft['Draft_Status'] != 'pending':
+        cur.close(); conn.close()
+        return jsonify({'error': f'Draft already {draft["Draft_Status"]}'}), 400
+
+    # Duplicate name check
+    name_en = (draft.get('Name_EN') or '').strip()
+    if name_en and not force:
+        cur.execute('SELECT "GlobalID" FROM final_delivery WHERE "Name_EN" = %s LIMIT 1', (name_en,))
+        dup = cur.fetchone()
+        if dup:
+            cur.close(); conn.close()
+            return jsonify({'error': f'Duplicate: Name_EN "{name_en}" already exists (GID={dup["GlobalID"]}). Use ?force=true to override.'}), 409
+
+    prod_gid = '{' + str(uuid.uuid4()).upper() + '}'
+
+    # Get final_delivery columns
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'final_delivery'")
+    fd_cols = {r['column_name'] for r in cur.fetchall()}
+
+    draft_only = {'id', 'Draft_Status', 'Dup_Verdict', 'Dup_Score', 'Match_Type',
+                  'Similarity', 'Distance_m', 'Matched_Name', 'Matched_GID',
+                  'Original_Category', 'Original_Subcategory', 'Source_CSV',
+                  'Import_Batch', 'QA_Blockers', 'QA_Warnings',
+                  'Reviewed_By', 'Reviewed_At', 'created_at', 'updated_at'}
+
+    cols = ['"GlobalID"']
+    vals = [prod_gid]
+    placeholders = ['%s']
+
+    for key, val in draft.items():
+        if key in draft_only or key == 'GlobalID':
+            continue
+        if key in fd_cols and key not in ('created_at', 'updated_at', 'delivery_date'):
+            cols.append(f'"{key}"')
+            vals.append(val or '')
+            placeholders.append('%s')
+
+    # Tag source
+    cols.append('"Source"')
+    vals.append(f'draft:{draft.get("Source_CSV", "")}')
+    placeholders.append('%s')
+    cols.append('"created_at"'); placeholders.append('NOW()')
+    cols.append('"updated_at"'); placeholders.append('NOW()')
+
+    try:
+        cur.execute(f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(placeholders)})', vals)
+    except Exception as e:
+        conn.rollback(); cur.close(); conn.close()
+        return jsonify({'error': str(e)}), 500
+
+    reviewer = body.get('reviewer', 'unknown')
+    cur.execute(
+        '''UPDATE draft_pois SET "Draft_Status" = 'confirmed', "Reviewed_By" = %s, "Reviewed_At" = NOW()
+           WHERE "GlobalID" = %s''',
+        (reviewer, globalid)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    sync_to_arcgis('create', prod_gid, dict(draft))
+    return jsonify({'ok': True, 'draft_gid': globalid, 'production_gid': prod_gid})
+
+
+@api.route('/drafts/<globalid>/reject', methods=['POST'])
+def reject_draft(globalid):
+    """Reject a draft POI."""
+    ensure_tables()
+    body = request.get_json(silent=True) or {}
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        '''UPDATE draft_pois SET "Draft_Status" = 'rejected',
+           "Reviewed_By" = %s, "Reviewed_At" = NOW(), "Review_Notes" = COALESCE("Review_Notes",'') || %s
+           WHERE "GlobalID" = %s AND "Draft_Status" = 'pending' ''',
+        (body.get('reviewer', 'unknown'), '\n[REJECTED] ' + body.get('reason', ''), globalid)
+    )
+    updated = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not updated:
+        return jsonify({'error': 'Draft not found or already processed'}), 404
+    return jsonify({'ok': True})
+
+
+@api.route('/drafts/bulk-action', methods=['POST'])
+def bulk_draft_action():
+    """Bulk confirm or reject drafts."""
+    ensure_tables()
+    body = request.get_json()
+    if not body:
+        return jsonify({'error': 'No data'}), 400
+
+    action = body.get('action')
+    gids = body.get('globalIds', [])
+    reviewer = body.get('reviewer', 'unknown')
+
+    if action not in ('confirm', 'reject') or not gids:
+        return jsonify({'error': 'Need action (confirm/reject) and globalIds array'}), 400
+
+    if action == 'reject':
+        conn = get_db()
+        cur = conn.cursor()
+        reason = body.get('reason', 'Bulk rejected')
+        for gid in gids:
+            cur.execute(
+                '''UPDATE draft_pois SET "Draft_Status" = 'rejected',
+                   "Reviewed_By" = %s, "Reviewed_At" = NOW()
+                   WHERE "GlobalID" = %s AND "Draft_Status" = 'pending' ''',
+                (reviewer, gid)
+            )
+        conn.commit()
+        count = cur.rowcount
+        cur.close()
+        conn.close()
+        return jsonify({'ok': True, 'processed': len(gids)})
+
+    # Bulk confirm — process each one
+    results = []
+    for gid in gids:
+        try:
+            conn = get_db()
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute('SELECT * FROM draft_pois WHERE "GlobalID" = %s AND "Draft_Status" = \'pending\'', (gid,))
+            draft = cur.fetchone()
+            if not draft:
+                results.append({'gid': gid, 'ok': False, 'error': 'not found/already processed'})
+                cur.close(); conn.close()
+                continue
+
+            prod_gid = '{' + str(uuid.uuid4()).upper() + '}'
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'final_delivery'")
+            fd_cols = {r['column_name'] for r in cur.fetchall()}
+            draft_only = {'id', 'Draft_Status', 'Dup_Verdict', 'Dup_Score', 'Match_Type',
+                          'Similarity', 'Distance_m', 'Matched_Name', 'Matched_GID',
+                          'Original_Category', 'Original_Subcategory', 'Source_CSV',
+                          'Import_Batch', 'QA_Blockers', 'QA_Warnings',
+                          'Reviewed_By', 'Reviewed_At', 'created_at', 'updated_at'}
+
+            cols = ['"GlobalID"']; vals = [prod_gid]; ph = ['%s']
+            for key, val in draft.items():
+                if key in draft_only or key == 'GlobalID': continue
+                if key in fd_cols and key not in ('created_at', 'updated_at', 'delivery_date'):
+                    cols.append(f'"{key}"'); vals.append(val or ''); ph.append('%s')
+            cols.append('"Source"'); vals.append(f'draft:{draft.get("Source_CSV","")}'); ph.append('%s')
+            cols.append('"created_at"'); ph.append('NOW()')
+            cols.append('"updated_at"'); ph.append('NOW()')
+
+            cur.execute(f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(ph)})', vals)
+            cur.execute(
+                '''UPDATE draft_pois SET "Draft_Status" = 'confirmed', "Reviewed_By" = %s, "Reviewed_At" = NOW()
+                   WHERE "GlobalID" = %s''', (reviewer, gid)
+            )
+            conn.commit()
+            results.append({'gid': gid, 'ok': True, 'production_gid': prod_gid})
+            cur.close(); conn.close()
+        except Exception as e:
+            results.append({'gid': gid, 'ok': False, 'error': str(e)[:100]})
+
+    return jsonify({'ok': True, 'results': results})
+
+
+@api.route('/drafts/stats', methods=['GET'])
+def draft_stats():
+    """Return draft POI statistics."""
+    ensure_tables()
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    cur.execute('SELECT COUNT(*) as total FROM draft_pois')
+    total = cur.fetchone()['total']
+
+    cur.execute('''SELECT "Draft_Status", COUNT(*) as count FROM draft_pois GROUP BY "Draft_Status"''')
+    by_status = {r['Draft_Status']: r['count'] for r in cur.fetchall()}
+
+    cur.execute('''SELECT "Dup_Verdict", COUNT(*) as count FROM draft_pois GROUP BY "Dup_Verdict"''')
+    by_verdict = {r['Dup_Verdict']: r['count'] for r in cur.fetchall()}
+
+    cur.execute('''SELECT "Category", COUNT(*) as count FROM draft_pois WHERE "Draft_Status" = 'pending' GROUP BY "Category" ORDER BY count DESC LIMIT 30''')
+    by_category = {(r['Category'] or '(empty)'): r['count'] for r in cur.fetchall()}
+
+    cur.execute('''SELECT COUNT(*) as c FROM draft_pois WHERE "Draft_Status" = 'pending' AND "QA_Blockers" = 0''')
+    qa_pass = cur.fetchone()['c']
+    cur.execute('''SELECT COUNT(*) as c FROM draft_pois WHERE "Draft_Status" = 'pending' AND "QA_Blockers" > 0''')
+    qa_fail = cur.fetchone()['c']
+
+    cur.close()
+    conn.close()
+    return jsonify({
+        'total': total,
+        'by_status': by_status,
+        'by_verdict': by_verdict,
+        'by_category': by_category,
+        'qa_pass': qa_pass,
+        'qa_fail': qa_fail,
+    })
+
 
 # Register API blueprint
 app.register_blueprint(api)
