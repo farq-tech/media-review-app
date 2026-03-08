@@ -2582,7 +2582,7 @@ function buildCategoryFilter() {
 }
 
 // ===== VIEWS =====
-const VIEW_MAP = {card:0, excel:1, audit:2, duplicates:3, map:4, arcgis:5, invoice:6, drafts:7};
+const VIEW_MAP = {card:0, excel:1, arcgis:2, map:3, duplicates:4, audit:5, drafts:6, invoice:7};
 const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', invoice:'invoiceView', drafts:'draftsView'};
 function switchView(view) {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
@@ -4082,7 +4082,11 @@ const CAT_COLORS = {
 function getMarkerColor(cat) { return CAT_COLORS[cat] || '#1976d2'; }
 
 function initMap() {
-  if (mapInitialized) { updateMapMarkers(); return; }
+  if (mapInitialized) {
+    updateMapMarkers();
+    if (poiMap) setTimeout(() => poiMap.invalidateSize(), 100);
+    return;
+  }
   mapInitialized = true;
 
   // Populate category filter
@@ -4090,17 +4094,20 @@ function initMap() {
   const cats = [...new Set(allPois.map(p => p.Category).filter(Boolean))].sort();
   cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catFilter.appendChild(o); });
 
-  // Create map centered on Riyadh
-  poiMap = L.map('mapContainer').setView([24.7136, 46.6753], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  }).addTo(poiMap);
+  // Create map centered on Riyadh — delay init to let container become visible
+  setTimeout(() => {
+    poiMap = L.map('mapContainer').setView([24.7136, 46.6753], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(poiMap);
 
-  mapMarkers = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
-  poiMap.addLayer(mapMarkers);
+    mapMarkers = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
+    poiMap.addLayer(mapMarkers);
 
-  updateMapMarkers();
+    updateMapMarkers();
+    setTimeout(() => poiMap.invalidateSize(), 200);
+  }, 50);
 }
 
 function updateMapMarkers() {
@@ -5900,6 +5907,7 @@ document.addEventListener('keydown', function(e) {
 });
 
 function setDataTab(tab) {
+  currentDataTab = tab;
   document.querySelectorAll('.data-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   applyFilters();
 }
