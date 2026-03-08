@@ -4392,8 +4392,8 @@ function _doRenderUnassigned() {
     return;
   }
 
-  // Clean up previous observer
-  if (_arcLazyObserver) _arcLazyObserver.disconnect();
+  // Clean up previous observer — create fresh one for new grid content
+  if (_arcLazyObserver) { _arcLazyObserver.disconnect(); _arcLazyObserver = null; }
   grid.innerHTML = '';
   _arcAppendCards(grid);
 }
@@ -4757,7 +4757,7 @@ function filterCrossPoiList() {
 function closeMediaAssign() {
   document.getElementById('mediaAssignOverlay').style.display = 'none';
   document.getElementById('mediaAssignModal').style.display = 'none';
-  _pendingAssign = {}; // cleanup
+  // Don't wipe _pendingAssign — grid card keys are still needed for next clicks
 }
 
 async function promptMediaUrl(gid, field, mediaType) {
