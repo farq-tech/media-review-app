@@ -2942,6 +2942,9 @@ function openDetail(idx) {
   renderDetailBody();
   document.getElementById('detailPanel').classList.add('open');
   document.getElementById('overlay').classList.add('active');
+  // Preload current + next POI images for instant switching
+  preloadPoiImages(idx);
+  if (idx + 1 < filteredPois.length) preloadPoiImages(idx + 1);
 }
 
 function closeDetail() {
@@ -3163,23 +3166,28 @@ function renderDetailPhotos(poi) {
   let h = '<div class="detail-section"><h3>Media</h3><div class="photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));">';
   fields.forEach(({k,l}) => {
     const v = poi[k]||'';
-    if (!v||v==='UNAVAILABLE') { h += `<div class="photo-card"><div class="no-photo">${l}: N/A</div><div class="photo-label">${l}</div></div>`; return; }
+    if (!v||v==='UNAVAILABLE'||v==='UNAPPLICABLE') { h += `<div class="photo-card"><div class="no-photo">${l}: N/A</div><div class="photo-label">${l}</div></div>`; return; }
     const urls = v.split(',').map(u=>u.trim()).filter(Boolean);
     totalPhotos += urls.length;
     urls.forEach((url,i) => {
       const num = urls.length > 1 ? ` ${i+1}/${urls.length}` : '';
       const uid = 'ph-' + Math.random().toString(36).substr(2,6);
       if (k==='Video_URL') {
+        const vSrc = url.includes('arcgis.com') ? arcVid(url) : url;
         h += `<div class="photo-card">
-          <video controls preload="metadata" style="width:100%;height:180px;background:#000;" src="${esc(url)}"></video>
+          <video controls preload="metadata" style="width:100%;height:180px;background:#000;" src="${esc(vSrc)}"></video>
           <div class="photo-label">${l}${num} <a href="${esc(url)}" target="_blank" style="float:right;font-size:9px;">Open</a></div>
         </div>`;
       } else {
-        // Use a container div so we can swap content for HEIC
+        // Fast thumbnail first, full on click
+        const cached = _imgCache[url];
+        const thumbSrc = cached || (url.includes('arcgis.com') ? arcThumb(url, 400) : url);
+        const fullSrc = url.includes('arcgis.com') ? arcImg(url) : url;
         h += `<div class="photo-card">
-          <div id="${uid}" style="width:100%;height:180px;overflow:hidden;background:#f5f5f5;display:flex;align-items:center;justify-content:center;">
-            <img src="${esc(url)}" loading="lazy" style="width:100%;height:180px;object-fit:cover;cursor:pointer;"
-              onclick="openLightbox(this.src)"
+          <div id="${uid}" style="width:100%;height:180px;overflow:hidden;background:#f0f0f0;display:flex;align-items:center;justify-content:center;">
+            <img src="${esc(thumbSrc)}" loading="eager" style="width:100%;height:180px;object-fit:cover;cursor:pointer;"
+              onclick="openLightbox('${esc(fullSrc)}')"
+              onload="_imgCache['${esc(url)}']='${esc(thumbSrc)}'"
               onerror="tryHeicConvert('${uid}','${esc(url)}',this)">
           </div>
           <div class="photo-label">${l}${num} <a href="${esc(url)}" target="_blank" style="float:right;font-size:9px;">Open</a></div>
@@ -3189,6 +3197,8 @@ function renderDetailPhotos(poi) {
   });
   h += '</div></div>';
   h += `<div class="detail-section"><h3>Stats</h3><p style="font-size:12px;">Total Photos Shown: ${totalPhotos} | Menu Photos: ${poi.Num_Menu_Photos||'0'} | Additional: ${poi.Num_Additional_Photos||'0'}</p></div>`;
+  // Preload next POI images
+  if (currentPoiIdx + 1 < filteredPois.length) preloadPoiImages(currentPoiIdx + 1);
   return h;
 }
 
@@ -4376,35 +4386,61 @@ function _arcAppendCards(grid) {
 let _arcLoadingCount = 0;
 const _arcLoadQueue = [];
 function _arcLoadThumb(el, src, isVid) {
-  if (_arcLoadingCount >= 4) { _arcLoadQueue.push({el,src,isVid}); return; }
+  if (_arcLoadingCount >= 6) { _arcLoadQueue.push({el,src,isVid}); return; }
   _arcLoadingCount++;
   const done = () => { _arcLoadingCount--; if (_arcLoadQueue.length) { const n = _arcLoadQueue.shift(); _arcLoadThumb(n.el, n.src, n.isVid); } };
-  const tUrl = isVid ? arcVid(src) : arcImg(src);
+  // Use small thumbnail (w=200) for grid — much faster than full image
+  const tUrl = isVid ? arcVid(src) : arcThumb(src, 200);
   if (isVid) {
     el.innerHTML = `<video style="width:100%;height:160px;object-fit:cover;background:#000;" controls preload="none"><source src="${tUrl}"></video>`;
     done();
   } else {
     const img = new Image();
     img.style.cssText = 'width:100%;height:160px;object-fit:cover;';
-    img.onload = () => { el.innerHTML = ''; el.appendChild(img); done(); };
+    img.onload = () => { el.innerHTML = ''; el.appendChild(img); _imgCache[src] = tUrl; done(); };
     img.onerror = () => { el.innerHTML = '<div style="width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;color:#ccc;font-size:11px;">Failed</div>'; done(); };
     img.src = tUrl;
   }
 }
 
+// Image cache for instant re-display
+const _imgCache = {};
+
 function arcImg(url) {
   if (!url || !url.includes('arcgis.com')) return url;
-  // Direct URL with token — avoids overwhelming backend proxy
   return url + (url.includes('?')?'&':'?') + 'token=' + (arcToken||'');
 }
+function arcThumb(url, w) {
+  // ArcGIS thumbnail with width param — much smaller/faster
+  if (!url || !url.includes('arcgis.com')) return url;
+  return url + (url.includes('?')?'&':'?') + 'w=' + (w||200) + '&token=' + (arcToken||'');
+}
 function arcImgProxy(url) {
-  // Backend proxy — only for HEIC conversion, use sparingly
   if (!url || !url.includes('arcgis.com')) return url;
   return '/api/arcgis-image?url=' + encodeURIComponent(url);
 }
 function arcVid(url) {
   if (!url || !url.includes('arcgis.com')) return url;
   return url + (url.includes('?')?'&':'?') + 'token=' + (arcToken||'');
+}
+
+// Preload next POI images for instant preview
+function preloadPoiImages(idx) {
+  const poi = filteredPois[idx];
+  if (!poi) return;
+  const fields = ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL'];
+  fields.forEach(f => {
+    const v = (poi[f]||'').trim();
+    if (!v || v === 'UNAVAILABLE' || v === 'UNAPPLICABLE' || !v.startsWith('http')) return;
+    v.split(',').forEach(u => {
+      u = u.trim();
+      if (!u || _imgCache[u]) return;
+      const img = new Image();
+      const src = u.includes('arcgis.com') ? arcThumb(u, 400) : u;
+      img.onload = () => { _imgCache[u] = src; };
+      img.src = src;
+    });
+  });
 }
 
 async function arcAutoAssign(gid) {
