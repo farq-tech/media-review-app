@@ -68,6 +68,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .status-flagged { color: #c62828; font-weight: 600; }
 .status-ok { color: #2e7d32; font-weight: 600; }
 .status-pending { color: #666; }
+.status-rejected { color: #c62828; font-weight: 600; text-decoration: line-through; }
+.poi-table tr.rejected td { background: #ffebee; }
 .photo-link { color: #1565c0; text-decoration: none; font-size: 11px; }
 .photo-link:hover { text-decoration: underline; }
 
@@ -431,8 +433,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
       <option value="">All Status</option>
       <option value="Draft">Draft</option>
       <option value="Reviewed">Reviewed</option>
-      <option value="Flagged">Flagged</option>
       <option value="Archived">Archived</option>
+      <option value="Rejected">Rejected</option>
+      <option value="Flagged">Flagged (any status)</option>
     </select>
     <span class="count" id="filterCount"></span>
   </div>
@@ -685,6 +688,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
     <button class="btn btn-primary" onclick="saveEdits()">Save</button>
     <button class="btn btn-primary" onclick="openPoiForm('edit')" style="margin-left:auto;background:#0d47a1;">Edit POI</button>
     <button class="btn" onclick="archivePoi()" style="background:#757575;color:#fff;">Archive</button>
+    <button class="btn" onclick="rejectPoi()" style="background:#c62828;color:#fff;">Reject</button>
     <button class="btn btn-danger" onclick="deletePoi()">Delete POI</button>
   </div>
 </div>
@@ -752,12 +756,12 @@ const COL_GROUPS = {
   hours: ['GlobalID','Name_EN','Working_Days','Working_Hours','Break_Time','Holidays'],
   photos: ['GlobalID','Name_EN','Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Num_Menu_Photos','Num_Additional_Photos'],
   amenities: ['GlobalID','Name_EN','Amenities','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'],
-  qa: ['GlobalID','Name_EN','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'],
+  qa: ['GlobalID','Name_EN','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status','flagged','flag_reason','draft_reason','last_reviewed_at','last_reviewed_by','review_version'],
 };
 
-const ALL_FIELDS = ['GlobalID','Name_AR','Name_EN','Legal_Name','Category','Subcategory','Category_Level_3','Company_Status','Latitude','Longitude','Google_Map_URL','Building_Number','Floor_Number','Entrance_Location','Phone_Number','Email','Website','Social_Media','Working_Days','Working_Hours','Break_Time','Holidays','Menu_Barcode_URL','Language','Cuisine','Payment_Methods','Commercial_License','Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Amenities','District_AR','District_EN','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry','Num_Menu_Photos','Num_Additional_Photos','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'];
+const ALL_FIELDS = ['GlobalID','Name_AR','Name_EN','Legal_Name','Category','Subcategory','Category_Level_3','Company_Status','Latitude','Longitude','Google_Map_URL','Building_Number','Floor_Number','Entrance_Location','Phone_Number','Email','Website','Social_Media','Working_Days','Working_Hours','Break_Time','Holidays','Menu_Barcode_URL','Language','Cuisine','Payment_Methods','Commercial_License','Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Amenities','District_AR','District_EN','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry','Num_Menu_Photos','Num_Additional_Photos','Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status','flagged','flag_reason','draft_reason','archived_reason','rejected_reason','last_reviewed_at','last_reviewed_by','review_version'];
 
-const READONLY_FIELDS = new Set(['GlobalID','Google_Map_URL','Confidence','Source','All_Sources','Importance_Score','QA_Score','Num_Menu_Photos','Num_Additional_Photos']);
+const READONLY_FIELDS = new Set(['GlobalID','Google_Map_URL','Confidence','Source','All_Sources','Importance_Score','QA_Score','Num_Menu_Photos','Num_Additional_Photos','flagged','flag_reason','draft_reason','archived_reason','rejected_reason','last_reviewed_at','last_reviewed_by','review_version']);
 
 // Fields that use Yes / No / UNAVAILABLE / UNAPPLICABLE dropdown
 const DROPDOWN_FIELDS = new Set([
@@ -2073,7 +2077,7 @@ const DETAIL_SECTIONS = [
   { title: 'WORKING HOURS', fields: ['Working_Days','Working_Hours','Break_Time','Holidays'] },
   { title: 'MEDIA', fields: ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs','Num_Menu_Photos','Num_Additional_Photos'] },
   { title: 'AMENITIES & SERVICES', fields: ['Amenities','Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'] },
-  { title: 'QA & REVIEW', fields: ['Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status'] },
+  { title: 'QA & REVIEW', fields: ['Confidence','Source','All_Sources','Importance_Score','QA_Score','Review_Flag','Review_Notes','Review_Status','flagged','flag_reason','draft_reason','archived_reason','rejected_reason','last_reviewed_at','last_reviewed_by','review_version'] },
 ];
 
 // ===== DB MODE =====
@@ -2329,11 +2333,13 @@ function buildUI() {
 }
 
 function buildStats() {
-  const t = allPois.length, fl = allPois.filter(p => p.Review_Flag).length;
+  const t = allPois.length;
+  const fl = allPois.filter(p => p.flagged).length;
   const rv = allPois.filter(p => p.Review_Status === 'Reviewed').length;
-  const dr = allPois.filter(p => !p.Review_Status || p.Review_Status === 'Draft' || p.Review_Status === 'Flagged').length;
+  const dr = allPois.filter(p => !p.Review_Status || p.Review_Status === 'Draft').length;
   const ar = allPois.filter(p => p.Review_Status === 'Archived').length;
-  const avg = Math.round(allPois.reduce((s, p) => s + (parseInt(p.QA_Score)||0), 0) / t);
+  const rj = allPois.filter(p => p.Review_Status === 'Rejected').length;
+  const avg = Math.round(allPois.reduce((s, p) => s + (parseInt(p.QA_Score)||0), 0) / (t||1));
   const qh = allPois.filter(p => parseInt(p.QA_Score)>=80).length;
   const ql = allPois.filter(p => parseInt(p.QA_Score)<60).length;
   const ed = Object.keys(edits).length;
@@ -2347,7 +2353,8 @@ function buildStats() {
   }
   document.getElementById('statsBar').innerHTML = [
     {l:'Total POIs',v:t},{l:'Draft',v:dr,c:dr?'warn':''},{l:'Reviewed',v:rv,c:'success'},
-    {l:'Archived',v:ar,c:''},{l:'Flagged',v:fl,c:fl?'alert':''},
+    {l:'Archived',v:ar,c:''},{l:'Rejected',v:rj,c:rj?'alert':''},
+    {l:'Flagged',v:fl,c:fl?'alert':''},
     {l:'Avg QA',v:avg,c:'success'},
     {l:'QA >= 80',v:qh,c:'success'},{l:'QA < 60',v:ql,c:ql?'alert':''},{l:'Edited',v:ed,c:ed?'warn':''},
     ...vStats,
@@ -2398,7 +2405,7 @@ function applyFilters() {
   const qa = document.getElementById('filterSeverity').value;
   const status = document.getElementById('filterStatus').value;
   filteredPois = allPois.filter(p => {
-    if (currentDataTab === 'flagged' && !p.Review_Flag) return false;
+    if (currentDataTab === 'flagged' && !p.flagged) return false;
     if (currentDataTab === 'lowqa' && (parseInt(p.QA_Score)||0) >= 60) return false;
     if (currentDataTab === 'reviewed' && p.Review_Status !== 'Reviewed') return false;
     if (currentDataTab === 'errors' && !validationResults.has(p.GlobalID)) return false;
@@ -2407,9 +2414,13 @@ function applyFilters() {
     const qs = parseInt(p.QA_Score)||0;
     if (qa==='high'&&qs<80) return false; if (qa==='mid'&&(qs<60||qs>=80)) return false; if (qa==='low'&&qs>=60) return false;
     if (status) {
-      const pStatus = p.Review_Status || 'Draft';
-      if (status === 'Draft' && pStatus !== 'Draft' && pStatus !== '' && pStatus !== 'Flagged') return false;
-      else if (status !== 'Draft' && pStatus !== status) return false;
+      if (status === 'Flagged') {
+        if (!p.flagged) return false;
+      } else {
+        const pStatus = p.Review_Status || 'Draft';
+        if (status === 'Draft' && pStatus !== 'Draft' && pStatus !== '') return false;
+        else if (status !== 'Draft' && pStatus !== status) return false;
+      }
     }
     return true;
   });
@@ -2428,8 +2439,8 @@ function renderTable() {
     const idx = start + i;
     const qs = parseInt(p.QA_Score)||0;
     const qc = qs>=80?'qa-high':qs>=60?'qa-mid':'qa-low';
-    const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Archived'?'status-pending':p.Review_Flag?'status-flagged':'status-pending';
-    const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Flag?'flagged':'';
+    const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Rejected'?'status-rejected':p.Review_Status==='Archived'?'status-pending':p.flagged?'status-flagged':'status-pending';
+    const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Status==='Rejected'?'rejected':p.flagged?'flagged':'';
     const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
     const chk = selectedPois.has(p.GlobalID)?'checked':'';
     h += `<tr class="${rc}"${ed} onmouseenter="showPreview(event,${idx})" onmouseleave="hidePreview()">
@@ -2441,8 +2452,8 @@ function renderTable() {
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
       <td>${esc(trunc(p.Phone_Number,15))}</td>
       <td>${photoLink(p.Exterior_Photo_URL)}</td><td>${photoLink(p.Interior_Photo_URL)}</td>
-      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Draft')}</td>
-      <td title="${esc(p.Review_Flag||'')}">${esc(trunc(p.Review_Flag,20))}</td>
+      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
+      <td title="${esc(p.flag_reason||p.Review_Flag||'')}">${esc(trunc(p.flag_reason||p.Review_Flag,20))}</td>
       <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td></tr>`;
   });
   h += '</tbody></table>';
@@ -2500,8 +2511,14 @@ function bulkApprove() {
     const poi = allPois.find(p => p.GlobalID === gid);
     if (poi) {
       poi.Review_Status = 'Reviewed'; poi.Review_Flag = '';
+      poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = '';
+      poi.review_version = (parseInt(poi.review_version) || 0) + 1;
+      poi.last_reviewed_at = new Date().toISOString();
+      poi.last_reviewed_by = currentReviewer?.username || 'dashboard';
       if (!edits[gid]) edits[gid] = {};
       edits[gid].Review_Status = 'Reviewed'; edits[gid].Review_Flag = '';
+      edits[gid].flagged = false; edits[gid].flag_reason = '';
+      edits[gid].draft_reason = '';
     }
   });
   saveEditsToStorage(); selectedPois.clear();
@@ -2517,9 +2534,9 @@ function bulkFlag() {
   selectedPois.forEach(gid => {
     const poi = allPois.find(p => p.GlobalID === gid);
     if (poi) {
-      poi.Review_Status = 'Flagged'; poi.Review_Flag = flag;
+      poi.flagged = true; poi.flag_reason = flag; poi.Review_Flag = flag;
       if (!edits[gid]) edits[gid] = {};
-      edits[gid].Review_Status = 'Flagged'; edits[gid].Review_Flag = flag;
+      edits[gid].flagged = true; edits[gid].flag_reason = flag; edits[gid].Review_Flag = flag;
     }
   });
   saveEditsToStorage(); selectedPois.clear();
@@ -2784,7 +2801,7 @@ function renderDetailExcel(poi) {
         h += `</select></td>`;
       } else if (field === 'Review_Status') {
         h += `<td class="field-value"${vStyle}><select data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${hasEdit?'background:#e8f5e9':''}">`;
-        ['Draft','Reviewed','Flagged','Archived'].forEach(s => h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`);
+        ['Draft','Reviewed','Archived','Rejected'].forEach(s => h += `<option value="${s}"${val===s?' selected':''}>${s}</option>`);
         h += `</select></td>`;
       } else if (DROPDOWN_FIELDS.has(field)) {
         h += `<td class="field-value"${vStyle}>${renderDropdown(val, poi.GlobalID, field, hasEdit, 'detailEdit')}</td>`;
@@ -2936,26 +2953,42 @@ function flagPoi() {
   const poi = filteredPois[currentPoiIdx]; if (!poi) return;
   const flag = document.getElementById('flagSelect').value;
   const note = document.getElementById('noteInput').value;
-  poi.Review_Flag=flag; poi.Review_Notes=note; poi.Review_Status='Flagged';
+  if (!flag) { toast('Select a flag reason first'); return; }
+  // Flag is an overlay — does NOT change Review_Status
+  poi.flagged = true;
+  poi.flag_reason = flag;
+  poi.Review_Flag = flag;
+  poi.Review_Notes = note;
   if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
-  const fields = {Review_Flag:flag,Review_Notes:note,Review_Status:'Flagged'};
-  Object.assign(edits[poi.GlobalID], fields);
-  saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
+  Object.assign(edits[poi.GlobalID], { flagged: true, flag_reason: flag, Review_Notes: note });
+  saveEditsToStorage();
+  if (dbMode) {
+    fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/flag', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flagged: true, flag_reason: flag, reviewer: currentReviewer?.username || 'dashboard' })
+    }).catch(e => console.warn('Flag failed:', e));
+    if (note) saveFieldsToDb(poi.GlobalID, { Review_Notes: note });
+  }
   renderTable(); buildStats(); renderDetailBody();
-  toast('Flagged: ' + trunc(poi.Name_EN,30));
+  toast('Flagged: ' + trunc(poi.Name_EN,30) + ' (status: ' + (poi.Review_Status||'Draft') + ')');
 }
 
 function approvePoi() {
   const poi = filteredPois[currentPoiIdx]; if (!poi) return;
   const note = document.getElementById('noteInput').value;
   poi.Review_Status='Reviewed'; poi.Review_Notes=note; poi.Review_Flag='';
+  poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = '';
+  poi.review_version = (parseInt(poi.review_version) || 0) + 1;
+  poi.last_reviewed_by = currentReviewer?.username || 'dashboard';
+  poi.last_reviewed_at = new Date().toISOString();
   if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
-  const fields = {Review_Status:'Reviewed',Review_Notes:note,Review_Flag:''};
+  const fields = {Review_Status:'Reviewed',Review_Notes:note,Review_Flag:'',flagged:false,flag_reason:'',draft_reason:''};
   Object.assign(edits[poi.GlobalID], fields);
   saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
   renderTable(); buildStats();
   if (currentPoiIdx+1 < filteredPois.length) openDetail(currentPoiIdx+1);
-  toast('Approved: ' + trunc(poi.Name_EN,30));
+  toast('Approved: ' + trunc(poi.Name_EN,30) + ' (v' + poi.review_version + ')');
 }
 
 function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
@@ -2986,25 +3019,54 @@ async function archivePoi() {
   const poi = filteredPois[currentPoiIdx];
   if (!poi) return;
   const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
-  if (!confirm(`Archive "${name}"?\n\nThis will mark it as Archived.`)) return;
+  const reason = prompt(`Archive "${name}"?\n\nReason: closed / inactive / out_of_scope / other\n\nEnter reason:`);
+  if (!reason) return;
   if (dbMode) {
     try {
       const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/archive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewer: 'dashboard' })
+        body: JSON.stringify({ reviewer: currentReviewer?.username || 'dashboard', reason })
       });
       const r = await resp.json();
       if (!r.ok) { toast('Archive failed: ' + (r.error || 'Unknown error')); return; }
     } catch(e) { toast('Archive failed: ' + e.message); return; }
   }
-  poi.Review_Status = 'Archived';
+  poi.Review_Status = 'Archived'; poi.archived_reason = reason;
   if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
   edits[poi.GlobalID].Review_Status = 'Archived';
+  edits[poi.GlobalID].archived_reason = reason;
   saveEditsToStorage();
   renderTable(); buildStats();
   if (currentPoiIdx + 1 < filteredPois.length) openDetail(currentPoiIdx + 1);
-  toast('Archived: ' + trunc(name, 30));
+  toast('Archived: ' + trunc(name, 30) + ' (' + reason + ')');
+}
+
+async function rejectPoi() {
+  const poi = filteredPois[currentPoiIdx];
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || poi.GlobalID;
+  const reason = prompt(`Reject "${name}"?\n\nReason codes:\n  DUP - Duplicate\n  IMG-NOT-POI - Image not matching POI\n  NAME-MISM - Name mismatch\n  NON-COM - Non-commercial\n  CAT-MISM - Category mismatch\n  MISS-FLD - Missing required fields\n  IMG-QUAL - Image quality issue\n  FAKE - Fake/fabricated entry\n  OTHER - Other reason\n\nEnter reason code or description:`);
+  if (!reason) return;
+  if (dbMode) {
+    try {
+      const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: currentReviewer?.username || 'dashboard', reason })
+      });
+      const r = await resp.json();
+      if (!r.ok) { toast('Reject failed: ' + (r.error || 'Unknown error')); return; }
+    } catch(e) { toast('Reject failed: ' + e.message); return; }
+  }
+  poi.Review_Status = 'Rejected'; poi.rejected_reason = reason;
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
+  edits[poi.GlobalID].Review_Status = 'Rejected';
+  edits[poi.GlobalID].rejected_reason = reason;
+  saveEditsToStorage();
+  renderTable(); buildStats();
+  if (currentPoiIdx + 1 < filteredPois.length) openDetail(currentPoiIdx + 1);
+  toast('Rejected: ' + trunc(name, 30) + ' (' + reason + ')');
 }
 
 function saveEditsToStorage() {

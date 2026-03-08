@@ -252,6 +252,49 @@ def _init_draft_table(conn):
     conn.commit()
     cur.close()
 
+def _migrate_lifecycle_columns(conn):
+    """Add lifecycle columns to final_delivery if they don't exist."""
+    cur = conn.cursor()
+    migrations = [
+        ('flagged',          'BOOLEAN DEFAULT FALSE'),
+        ('flag_reason',      "TEXT DEFAULT ''"),
+        ('draft_reason',     "TEXT DEFAULT ''"),
+        ('archived_reason',  "TEXT DEFAULT ''"),
+        ('rejected_reason',  "TEXT DEFAULT ''"),
+        ('last_reviewed_at', 'TIMESTAMP'),
+        ('last_reviewed_by', "TEXT DEFAULT ''"),
+        ('review_version',   'INTEGER DEFAULT 0'),
+    ]
+    for col_name, col_type in migrations:
+        try:
+            cur.execute(f'ALTER TABLE final_delivery ADD COLUMN "{col_name}" {col_type};')
+        except Exception:
+            conn.rollback()
+    # Backfill: migrate Review_Status='Flagged' to flagged boolean overlay
+    try:
+        cur.execute("""
+            UPDATE final_delivery
+            SET "flagged" = TRUE,
+                "flag_reason" = COALESCE("Review_Flag", ''),
+                "Review_Status" = 'Draft',
+                "draft_reason" = 'modified'
+            WHERE "Review_Status" = 'Flagged';
+        """)
+    except Exception:
+        conn.rollback()
+    # Backfill: set draft_reason for existing Drafts without one
+    try:
+        cur.execute("""
+            UPDATE final_delivery
+            SET "draft_reason" = 'new'
+            WHERE ("Review_Status" IS NULL OR "Review_Status" = '' OR "Review_Status" = 'Draft')
+              AND ("draft_reason" IS NULL OR "draft_reason" = '');
+        """)
+    except Exception:
+        conn.rollback()
+    conn.commit()
+    cur.close()
+
 _tables_initialized = False
 def ensure_tables():
     global _tables_initialized
@@ -261,6 +304,7 @@ def ensure_tables():
         conn = get_db()
         _init_audit_tables(conn)
         _init_draft_table(conn)
+        _migrate_lifecycle_columns(conn)
         conn.close()
         _tables_initialized = True
     except Exception as e:
@@ -292,6 +336,26 @@ def _seed_reviewers():
     conn.commit()
     cur.close()
     conn.close()
+
+# ===== Lifecycle: Major vs Minor fields =====
+# Only edits to MAJOR_FIELDS (with actual value change) trigger Reviewed→Draft revert
+MAJOR_FIELDS = {
+    'Name_EN', 'Name_AR', 'Legal_Name', 'Category', 'Subcategory', 'Category_Level_3',
+    'Latitude', 'Longitude', 'Phone_Number', 'Email', 'Website', 'Social_Media',
+    'Working_Days', 'Working_Hours', 'Break_Time', 'Holidays',
+    'Building_Number', 'Floor_Number', 'Entrance_Location',
+    'Cuisine', 'Payment_Methods', 'Language', 'Commercial_License', 'Company_Status',
+    'Exterior_Photo_URL', 'Interior_Photo_URL', 'Menu_Photo_URL', 'Video_URL',
+    'Additional_Photo_URLs', 'License_Photo_URL', 'Menu_Barcode_URL',
+    'District_EN', 'District_AR',
+    'Menu', 'Drive_Thru', 'Dine_In', 'Only_Delivery', 'Reservation',
+    'Require_Ticket', 'Order_from_Car', 'Pickup_Point',
+    'WiFi', 'Music', 'Valet_Parking', 'Has_Parking_Lot', 'Wheelchair_Accessible',
+    'Family_Seating', 'Waiting_Area', 'Private_Dining', 'Smoking_Area',
+    'Children_Area', 'Shisha', 'Live_Sports', 'Is_Landmark', 'Is_Trending',
+    'Large_Groups', 'Women_Prayer_Room', 'Iftar_Tent', 'Iftar_Menu',
+    'Open_Suhoor', 'Free_Entry', 'Amenities',
+}
 
 # ===== Audit logging helper =====
 def log_audit(conn, global_id, poi_name, reviewer, action, changes_dict, old_data=None):
@@ -390,12 +454,14 @@ def update_poi(globalid):
     cur = conn.cursor()
     sets = []
     vals = []
-    # Status lifecycle: if a Reviewed POI is edited (data fields, not just status),
-    # revert Review_Status to Draft. Skip revert if the edit IS a status transition.
-    status_fields = {'Review_Status', 'Review_Flag', 'Review_Notes'}
-    editing_data_fields = any(f not in status_fields for f in data.keys()
-                              if f not in ('GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer'))
+    skip_keys = {'GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer'}
     old_status = (old_row.get('Review_Status') or '').strip()
+
+    # Check if any MAJOR field has an actual value change
+    editing_major = any(
+        f in MAJOR_FIELDS and str(data[f] or '') != str(old_row.get(f, '') or '')
+        for f in data.keys() if f not in skip_keys
+    )
 
     for field, value in data.items():
         if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
@@ -403,10 +469,21 @@ def update_poi(globalid):
         sets.append(f'"{field}" = %s')
         vals.append(value)
 
-    # Auto-revert to Draft when data fields of a Reviewed POI are edited
-    if editing_data_fields and old_status == 'Reviewed' and 'Review_Status' not in data:
+    # Auto-revert: Reviewed + major edit → Draft (only if not explicitly setting status)
+    if editing_major and old_status == 'Reviewed' and 'Review_Status' not in data:
         sets.append('"Review_Status" = %s')
         vals.append('Draft')
+        sets.append('"draft_reason" = %s')
+        vals.append('modified')
+
+    # Approval metadata: when transitioning to Reviewed, set review tracking fields
+    if data.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed':
+        sets.append('"last_reviewed_at" = NOW()')
+        sets.append('"last_reviewed_by" = %s')
+        vals.append(reviewer)
+        sets.append('"review_version" = COALESCE("review_version", 0) + 1')
+        sets.append('"draft_reason" = %s')
+        vals.append('')
 
     if not sets:
         cur.close()
@@ -442,23 +519,50 @@ def bulk_update():
     cur = conn.cursor()
     updated = 0
 
+    cur2 = conn.cursor(cursor_factory=RealDictCursor)
     for item in data:
         gid = item.get('GlobalID')
         if not gid:
             continue
+        # Fetch current status for major/minor field check
+        cur2.execute('SELECT "Review_Status" FROM final_delivery WHERE "GlobalID" = %s', (gid,))
+        current = cur2.fetchone()
+        if not current:
+            continue
+        old_status = (current.get('Review_Status') or '').strip()
+
         sets = []
         vals = []
+        has_major = False
         for field, value in item.items():
             if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
                 continue
             sets.append(f'"{field}" = %s')
             vals.append(value)
+            if field in MAJOR_FIELDS:
+                has_major = True
+
+        # Auto-revert: Reviewed + major edit → Draft
+        if has_major and old_status == 'Reviewed' and 'Review_Status' not in item:
+            sets.append('"Review_Status" = %s')
+            vals.append('Draft')
+            sets.append('"draft_reason" = %s')
+            vals.append('modified')
+
+        # Approval metadata
+        if item.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed':
+            sets.append('"last_reviewed_at" = NOW()')
+            sets.append('"review_version" = COALESCE("review_version", 0) + 1')
+            sets.append('"draft_reason" = %s')
+            vals.append('')
+
         if not sets:
             continue
         sets.append('"updated_at" = NOW()')
         vals.append(gid)
         cur.execute(f'UPDATE final_delivery SET {", ".join(sets)} WHERE "GlobalID" = %s', vals)
         updated += cur.rowcount
+    cur2.close()
 
     conn.commit()
     cur.close()
@@ -501,19 +605,27 @@ def get_stats():
     total = cur.fetchone()[0]
     cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Reviewed',))
     reviewed = cur.fetchone()[0]
-    cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Draft',))
+    cur.execute("SELECT COUNT(*) FROM final_delivery WHERE \"Review_Status\" = 'Draft' OR \"Review_Status\" IS NULL OR \"Review_Status\" = '';")
     draft_count = cur.fetchone()[0]
     cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Archived',))
     archived = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM final_delivery WHERE \"Review_Flag\" IS NOT NULL AND \"Review_Flag\" != '';")
-    flagged = cur.fetchone()[0]
+    cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "Review_Status" = %s;', ('Rejected',))
+    rejected = cur.fetchone()[0]
+    # Flagged is now a boolean overlay, not a status
+    try:
+        cur.execute('SELECT COUNT(*) FROM final_delivery WHERE "flagged" = TRUE;')
+        flagged = cur.fetchone()[0]
+    except Exception:
+        conn.rollback()
+        cur.execute("SELECT COUNT(*) FROM final_delivery WHERE \"Review_Flag\" IS NOT NULL AND \"Review_Flag\" != '';")
+        flagged = cur.fetchone()[0]
     cur.execute("SELECT AVG(NULLIF(\"QA_Score\",'')::numeric) FROM final_delivery;")
     avg_qa = cur.fetchone()[0]
     cur.close()
     conn.close()
     return jsonify({
         'total': total, 'reviewed': reviewed, 'draft': draft_count,
-        'archived': archived, 'flagged': flagged,
+        'archived': archived, 'rejected': rejected, 'flagged': flagged,
         'avg_qa': round(float(avg_qa or 0), 1)
     })
 
@@ -535,7 +647,7 @@ def delete_poi(globalid):
 # ===== API: Archive POI =====
 @api.route('/pois/<globalid>/archive', methods=['POST'])
 def archive_poi(globalid):
-    """Archive a reviewed POI — sets Review_Status to 'Archived'."""
+    """Archive a POI with reason."""
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute('SELECT "Review_Status", "Name_EN", "Name_AR" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
@@ -544,20 +656,93 @@ def archive_poi(globalid):
         cur.close(); conn.close()
         return jsonify({'error': 'Not found'}), 404
 
-    cur2 = conn.cursor()
     body = request.get_json(silent=True) or {}
     reviewer = body.get('reviewer', 'unknown')
+    reason = body.get('reason', '')
+
+    cur2 = conn.cursor()
     cur2.execute(
-        '''UPDATE final_delivery SET "Review_Status" = 'Archived', "updated_at" = NOW()
+        '''UPDATE final_delivery SET "Review_Status" = 'Archived', "archived_reason" = %s, "updated_at" = NOW()
            WHERE "GlobalID" = %s''',
-        (globalid,)
+        (reason, globalid)
     )
     poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
     log_audit(conn, globalid, poi_name, reviewer, 'archive',
-              {'Review_Status': 'Archived'}, old_data={'Review_Status': row.get('Review_Status', '')})
+              {'Review_Status': 'Archived', 'archived_reason': reason},
+              old_data={'Review_Status': row.get('Review_Status', '')})
     conn.commit()
     cur.close(); cur2.close(); conn.close()
-    return jsonify({'ok': True, 'status': 'Archived'})
+    return jsonify({'ok': True, 'status': 'Archived', 'reason': reason})
+
+# ===== API: Reject POI (terminal state) =====
+@api.route('/pois/<globalid>/reject', methods=['POST'])
+def reject_poi(globalid):
+    """Reject a POI — terminal state for bad/invalid records."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT "Review_Status", "Name_EN", "Name_AR" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    if (row.get('Review_Status') or '') == 'Rejected':
+        cur.close(); conn.close()
+        return jsonify({'error': 'Already rejected'}), 400
+
+    body = request.get_json(silent=True) or {}
+    reviewer = body.get('reviewer', 'unknown')
+    reason = body.get('reason', '')
+    if not reason:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Rejection reason is required'}), 400
+
+    cur2 = conn.cursor()
+    cur2.execute(
+        '''UPDATE final_delivery SET "Review_Status" = 'Rejected', "rejected_reason" = %s, "updated_at" = NOW()
+           WHERE "GlobalID" = %s''',
+        (reason, globalid)
+    )
+    poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
+    log_audit(conn, globalid, poi_name, reviewer, 'reject',
+              {'Review_Status': 'Rejected', 'rejected_reason': reason},
+              old_data={'Review_Status': row.get('Review_Status', '')})
+    conn.commit()
+    cur.close(); cur2.close(); conn.close()
+    return jsonify({'ok': True, 'status': 'Rejected', 'reason': reason})
+
+# ===== API: Flag/Unflag POI (overlay, not status change) =====
+@api.route('/pois/<globalid>/flag', methods=['PATCH'])
+def flag_poi_endpoint(globalid):
+    """Set or clear the flagged overlay without changing Review_Status."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Not found'}), 404
+
+    body = request.get_json(silent=True) or {}
+    reviewer = body.get('reviewer', 'unknown')
+    flagged = body.get('flagged', True)
+    flag_reason = body.get('flag_reason', '')
+
+    cur2 = conn.cursor()
+    cur2.execute(
+        '''UPDATE final_delivery
+           SET "flagged" = %s, "flag_reason" = %s, "Review_Flag" = %s, "updated_at" = NOW()
+           WHERE "GlobalID" = %s''',
+        (flagged, flag_reason if flagged else '', flag_reason if flagged else '', globalid)
+    )
+    poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
+    action = 'flag' if flagged else 'unflag'
+    log_audit(conn, globalid, poi_name, reviewer, action,
+              {'flagged': str(flagged), 'flag_reason': flag_reason},
+              old_data={'flagged': str(row.get('flagged', False)), 'flag_reason': row.get('flag_reason', '')})
+    conn.commit()
+    cur.close(); cur2.close(); conn.close()
+    return jsonify({'ok': True, 'flagged': flagged, 'flag_reason': flag_reason})
 
 # ===== API: ArcGIS Token Proxy =====
 @api.route('/arcgis-token', methods=['GET'])
@@ -859,6 +1044,12 @@ def create_poi():
     if 'Review_Status' not in data:
         cols.append('"Review_Status"')
         vals.append('Draft')
+        placeholders.append('%s')
+        cols.append('"draft_reason"')
+        vals.append('new')
+        placeholders.append('%s')
+        cols.append('"review_version"')
+        vals.append(0)
         placeholders.append('%s')
 
     cols.append('"created_at"')
@@ -1879,6 +2070,12 @@ def confirm_draft(globalid):
     # Confirmed drafts start as Draft status in production (need review)
     cols.append('"Review_Status"')
     vals.append('Draft')
+    placeholders.append('%s')
+    cols.append('"draft_reason"')
+    vals.append('imported')
+    placeholders.append('%s')
+    cols.append('"review_version"')
+    vals.append(0)
     placeholders.append('%s')
     cols.append('"created_at"'); placeholders.append('NOW()')
     cols.append('"updated_at"'); placeholders.append('NOW()')
