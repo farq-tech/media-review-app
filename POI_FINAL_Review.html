@@ -1962,9 +1962,7 @@ const ALLOWED_PAYMENT_METHODS = ['Cash','Visa','Mastercard','Mada','Apple Pay','
 const GATE_RULES = {
   N1: { field:'Name_AR',   check: v => v && v.trim().length >= 2, msg:'Name AR missing or too short', fix:'Provide Arabic name (≥2 chars)' },
   N2: { field:'Name_EN',   check: v => v && v.trim().length >= 2, msg:'Name EN missing or too short', fix:'Provide English name (≥2 chars)' },
-  // Phone is not mandatory — moved to FIELD_VALIDATORS as MAJOR
-  M1: { field:'Exterior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing exterior photo', fix:'Add valid exterior photo URL' },
-  M2: { field:'Interior_Photo_URL', check: v => v && v!=='UNAVAILABLE' && v.startsWith('http'), msg:'Missing interior photo', fix:'Add valid interior photo URL' },
+  // Photos moved to FIELD_VALIDATORS as MAJOR (not blockers)
   M3: { field:'Latitude',  check: v => { const n=parseFloat(v); return !isNaN(n) && n>=15 && n<=35; }, msg:'Latitude out of Saudi bounds (15-35)', fix:'Correct latitude' },
   M4: { field:'Longitude', check: v => { const n=parseFloat(v); return !isNaN(n) && n>=35 && n<=60; }, msg:'Longitude out of Saudi bounds (35-60)', fix:'Correct longitude' },
   M5: { field:'Category',  check: v => v && v.trim().length > 0, msg:'Category is empty', fix:'Select a valid category' },
@@ -2000,6 +1998,12 @@ const GATE_RULES = {
 
 // Field-level validators (non-GATE, MAJOR/MINOR severity)
 const FIELD_VALIDATORS = {
+  Exterior_Photo_URL: [
+    { id:'M1', check: v => !v || v==='UNAVAILABLE' || v.startsWith('http'), severity:'MAJOR', msg:'Missing or invalid exterior photo', fix:'Add valid exterior photo URL' },
+  ],
+  Interior_Photo_URL: [
+    { id:'M2', check: v => !v || v==='UNAVAILABLE' || v.startsWith('http'), severity:'MAJOR', msg:'Missing or invalid interior photo', fix:'Add valid interior photo URL' },
+  ],
   Name_AR: [
     { id:'NAR1', check: v => !v || v==='UNAVAILABLE' || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name' },
     { id:'NAR2', check: v => !v || v.length <= 100, severity:'MINOR', msg:'Arabic name too long (>100 chars)', fix:'Shorten name' },
@@ -2153,13 +2157,18 @@ function validatePoi(poi) {
 // Score = completeness base (0-70) + error-free bonus (0-30) - validation penalties
 
 const QA_SCORED_FIELDS = [
-  // {field, weight} — total weights should sum to ~70 for the completeness portion
-  {f:'Name_EN', w:6}, {f:'Name_AR', w:6}, {f:'Category', w:5}, {f:'Subcategory', w:3},
-  {f:'Latitude', w:5}, {f:'Longitude', w:5}, {f:'District_EN', w:3}, {f:'District_AR', w:3},
-  {f:'Exterior_Photo_URL', w:5}, {f:'Interior_Photo_URL', w:5}, {f:'Video_URL', w:4},
-  {f:'Working_Hours', w:4}, {f:'Working_Days', w:3}, {f:'Phone_Number', w:3},
-  {f:'Building_Number', w:2}, {f:'Floor_Number', w:1}, {f:'Website', w:2},
-  {f:'Commercial_License', w:2}, {f:'Menu_Photo_URL', w:2}, {f:'Email', w:1},
+  // {field, weight} — total weights sum to 70 for the completeness portion
+  // Core identity (high weight)
+  {f:'Name_EN', w:8}, {f:'Name_AR', w:8}, {f:'Category', w:7}, {f:'Subcategory', w:4},
+  // Location (high weight)
+  {f:'Latitude', w:6}, {f:'Longitude', w:6}, {f:'District_EN', w:4}, {f:'District_AR', w:3},
+  // Contact & operations (medium weight)
+  {f:'Phone_Number', w:4}, {f:'Working_Hours', w:4}, {f:'Working_Days', w:3},
+  {f:'Building_Number', w:2}, {f:'Floor_Number', w:1},
+  // Media (low weight — not blockers)
+  {f:'Exterior_Photo_URL', w:2}, {f:'Interior_Photo_URL', w:2}, {f:'Video_URL', w:1},
+  // Optional extras
+  {f:'Website', w:2}, {f:'Commercial_License', w:1}, {f:'Menu_Photo_URL', w:1}, {f:'Email', w:1},
 ]; // total = 70
 
 function calcQaScore(poi, errors) {
@@ -2179,9 +2188,9 @@ function calcQaScore(poi, errors) {
   const blockers = errors.filter(e => e.severity === 'BLOCKER').length;
   const majors   = errors.filter(e => e.severity === 'MAJOR').length;
   const minors   = errors.filter(e => e.severity === 'MINOR').length;
-  validationScore -= blockers * 5;
-  validationScore -= majors * 3;
-  validationScore -= minors * 1;
+  validationScore -= blockers * 4;
+  validationScore -= majors * 2;
+  validationScore -= minors * 0.5;
   validationScore = Math.max(0, validationScore);
 
   return Math.max(0, Math.min(100, Math.round(completeness + validationScore)));
