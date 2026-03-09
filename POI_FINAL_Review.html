@@ -631,6 +631,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     <div class="data-tab" data-tab="rejected">Rejected</div>
     <div class="data-tab" data-tab="archived">Archived</div>
     <div class="data-tab" data-tab="errors">With Errors</div>
+    <div class="data-tab" data-tab="unavailable">UNAVAILABLE</div>
   </div>
   <!-- Bulk Action Bar -->
   <div id="bulkBar" class="bulk-bar">
@@ -2791,6 +2792,19 @@ function clearAllFilters() {
   applyFilters();
 }
 
+const _UNAVAILABLE_CHECK_FIELDS = [
+  'Name_AR','Name_EN','Legal_Name','Phone_Number','Email','Website','Social_Media',
+  'Working_Days','Working_Hours','Break_Time','Holidays','Building_Number','Floor_Number',
+  'Entrance_Location','Exterior_Photo_URL','Interior_Photo_URL','Video_URL',
+  'Menu_Photo_URL','Menu_Barcode_URL','Commercial_License','Cuisine','Payment_Methods'
+];
+function _hasUnavailableFields(p) {
+  return _UNAVAILABLE_CHECK_FIELDS.some(f => {
+    const v = String(p[f] || '').trim().toUpperCase();
+    return v === 'UNAVAILABLE';
+  });
+}
+
 function applyFilters() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const cat = document.getElementById('filterCategory').value;
@@ -2804,6 +2818,7 @@ function applyFilters() {
     if (currentDataTab === 'archived' && p.Review_Status !== 'Archived') return false;
     if (currentDataTab === 'queue' && (p.Review_Status === 'Reviewed' || p.Review_Status === 'Rejected' || p.Review_Status === 'Archived')) return false;
     if (currentDataTab === 'errors' && !validationResults.has(p.GlobalID)) return false;
+    if (currentDataTab === 'unavailable' && !_hasUnavailableFields(p)) return false;
     if (search) { const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase(); if (!s.includes(search)) return false; }
     if (cat && p.Category !== cat) return false;
     const qs = parseInt(p.QA_Score)||0;
@@ -2823,7 +2838,7 @@ function applyFilters() {
   // Build filter summary chips
   const fs = document.getElementById('filterSummary');
   const chips = [];
-  const tabLabels = {all:'All',queue:'My Queue',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',rejected:'Rejected',archived:'Archived',errors:'Errors'};
+  const tabLabels = {all:'All',queue:'My Queue',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',rejected:'Rejected',archived:'Archived',errors:'Errors',unavailable:'UNAVAILABLE'};
   if (currentDataTab && currentDataTab !== 'all') chips.push({label:tabLabels[currentDataTab]||currentDataTab, clear:()=>{document.querySelector('.data-tab.active')?.click(); setDataTab('all');}});
   if (search) chips.push({label:'Search: "'+search+'"', clear:()=>{document.getElementById('searchInput').value=''; applyFilters();}});
   if (cat) chips.push({label:'Category: '+cat, clear:()=>{document.getElementById('filterCategory').value=''; applyFilters();}});
