@@ -2010,6 +2010,7 @@ const GATE_RULES = {
 };
 
 // Field-level validators (non-GATE, MAJOR/MINOR severity)
+// computeFix(v, poi) — returns concrete replacement value, or null if no auto-fix
 const FIELD_VALIDATORS = {
   Exterior_Photo_URL: [
     { id:'M1', check: v => !v || v==='UNAVAILABLE' || v.startsWith('http'), severity:'MAJOR', msg:'Missing or invalid exterior photo', fix:'Add valid exterior photo URL' },
@@ -2018,56 +2019,73 @@ const FIELD_VALIDATORS = {
     { id:'M2', check: v => !v || v==='UNAVAILABLE' || v.startsWith('http'), severity:'MAJOR', msg:'Missing or invalid interior photo', fix:'Add valid interior photo URL' },
   ],
   Name_AR: [
-    { id:'NAR1', check: v => !v || v==='UNAVAILABLE' || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name' },
-    { id:'NAR2', check: v => !v || v.length <= 100, severity:'MINOR', msg:'Arabic name too long (>100 chars)', fix:'Shorten name' },
+    { id:'NAR1', check: v => !v || v==='UNAVAILABLE' || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name',
+      computeFix: v => v ? v.replace(/[a-zA-Z]+/g, '').replace(/\s{2,}/g,' ').trim() || null : null },
+    { id:'NAR2', check: v => !v || v.length <= 100, severity:'MINOR', msg:'Arabic name too long (>100 chars)', fix:'Shorten name',
+      computeFix: v => v ? v.substring(0, 100) : null },
     { id:'NAR3', check: v => !v || v==='UNAVAILABLE' || /[\u0600-\u06FF]/.test(v), severity:'MAJOR', msg:'Arabic name has no Arabic characters (wrong language?)', fix:'Replace with actual Arabic name' },
   ],
   Name_EN: [
-    { id:'NEN1', check: v => !v || v==='UNAVAILABLE' || !/[\u0600-\u06FF]{2,}/.test(v), severity:'MAJOR', msg:'English name contains Arabic text', fix:'Remove Arabic from English name' },
-    { id:'NEN2', check: v => !v || !/\d{7,}/.test(v), severity:'MAJOR', msg:'Name contains phone number', fix:'Remove phone from name' },
-    { id:'NEN3', check: v => !v || v.length <= 100, severity:'MINOR', msg:'English name too long', fix:'Shorten name' },
+    { id:'NEN1', check: v => !v || v==='UNAVAILABLE' || !/[\u0600-\u06FF]{2,}/.test(v), severity:'MAJOR', msg:'English name contains Arabic text', fix:'Remove Arabic from English name',
+      computeFix: v => v ? v.replace(/[\u0600-\u06FF]+/g, '').replace(/\s{2,}/g,' ').trim() || null : null },
+    { id:'NEN2', check: v => !v || !/\d{7,}/.test(v), severity:'MAJOR', msg:'Name contains phone number', fix:'Remove phone from name',
+      computeFix: v => v ? v.replace(/\d{7,}/g, '').replace(/\s{2,}/g,' ').trim() || null : null },
+    { id:'NEN3', check: v => !v || v.length <= 100, severity:'MINOR', msg:'English name too long', fix:'Shorten name',
+      computeFix: v => v ? v.substring(0, 100) : null },
     { id:'NEN4', check: v => !v || v==='UNAVAILABLE' || /[a-zA-Z]/.test(v), severity:'MAJOR', msg:'English name has no Latin characters (wrong language?)', fix:'Replace with actual English name' },
   ],
   Email: [
-    { id:'EM1', check: v => !v || v==='UNAVAILABLE' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), severity:'MAJOR', msg:'Invalid email format', fix:'Correct email (user@domain.com)' },
+    { id:'EM1', check: v => !v || v==='UNAVAILABLE' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), severity:'MAJOR', msg:'Invalid email format', fix:'Set to UNAVAILABLE',
+      computeFix: v => (v && v !== 'UNAVAILABLE' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) ? 'UNAVAILABLE' : null },
   ],
   Website: [
-    { id:'WS1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Website missing http(s)://', fix:'Add https:// prefix' },
+    { id:'WS1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Website missing http(s)://', fix:'Add https:// prefix',
+      computeFix: v => (v && v !== 'UNAVAILABLE' && !/^https?:\/\//.test(v)) ? 'https://' + v : null },
     { id:'WS2', check: v => {
       if (!v || v==='UNAVAILABLE') return true;
       const bad = ['facebook.com','instagram.com','twitter.com','maps.google','maps.app','wa.me','t.me'];
       return !bad.some(d => v.toLowerCase().includes(d));
-    }, severity:'MAJOR', msg:'Website is a social media link', fix:'Use actual business website' },
+    }, severity:'MAJOR', msg:'Website is a social media link', fix:'Move to Social Media',
+      computeFix: (v, poi) => {
+        if (!v || v === 'UNAVAILABLE') return null;
+        const bad = ['facebook.com','instagram.com','twitter.com','wa.me','t.me'];
+        if (bad.some(d => v.toLowerCase().includes(d))) return 'UNAVAILABLE';
+        if (v.toLowerCase().includes('maps.google') || v.toLowerCase().includes('maps.app')) return 'UNAVAILABLE';
+        return null;
+      }
+    },
   ],
   Phone_Number: [
-    { id:'PH1', check: v => !v || v==='UNAVAILABLE' || !/[eE]\+/.test(v), severity:'MAJOR', msg:'Phone in scientific notation', fix:'Convert to digits' },
+    { id:'PH1', check: v => !v || v==='UNAVAILABLE' || !/[eE]\+/.test(v), severity:'MAJOR', msg:'Phone in scientific notation', fix:'Set to UNAVAILABLE',
+      computeFix: v => (v && /[eE]\+/.test(v)) ? 'UNAVAILABLE' : null },
   ],
   Floor_Number: [
-    { id:'FL1', check: v => !v || v==='UNAVAILABLE' || ALLOWED_FLOOR_NUMBERS.includes(String(v).trim()), severity:'MINOR', msg:'Floor not in allowed list', fix:'Use G, 1-5' },
+    { id:'FL1', check: v => !v || v==='UNAVAILABLE' || ALLOWED_FLOOR_NUMBERS.includes(String(v).trim()), severity:'MINOR', msg:'Floor not in allowed list', fix:'Set to UNAVAILABLE',
+      computeFix: v => (v && !ALLOWED_FLOOR_NUMBERS.includes(String(v).trim()) && v !== 'UNAVAILABLE') ? 'UNAVAILABLE' : null },
   ],
   Company_Status: [
     { id:'CS1', check: v => !v || ALLOWED_COMPANY_STATUS.includes(v), severity:'MAJOR', msg:'Invalid company status', fix:'Use Open/Closed/Temporarily Closed' },
   ],
   Social_Media: [
-    { id:'SM1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Social media missing URL', fix:'Add full URL' },
+    { id:'SM1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Social media missing URL', fix:'Add https:// prefix',
+      computeFix: v => (v && v !== 'UNAVAILABLE' && !/^https?:\/\//.test(v)) ? 'https://' + v : null },
   ],
-  Phone_Number: [
+  Phone_Number_Format: [
     { id:'PH2', check: v => {
       if (!v || v === 'UNAVAILABLE') return true;
       const cleaned = v.replace(/[\s\-()]/g, '');
-      // Saudi mobile: 05XXXXXXXX or 966 5XXXXXXXX or +966 5XXXXXXXX
       if (/^(\+?966|05)\d{7,9}$/.test(cleaned)) return true;
-      // Saudi landline: 01X-XXXXXXX (011, 012, 013, etc.)
       if (/^(\+?966)?0?1[1-7]\d{7}$/.test(cleaned)) return true;
-      // Saudi short codes & hotlines: 3-6 digit numbers (e.g. 19996, 920XXXXXXX, 800XXXXXXX, 9200XXXXXX)
       if (/^(9200|920|800|19)\d{3,7}$/.test(cleaned)) return true;
-      // Generic short codes: 3-6 digits
       if (/^\d{3,6}$/.test(cleaned)) return true;
       return false;
-    }, severity:'MAJOR', msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX, 05XXXXXXXX, or short code' },
+    }, severity:'MAJOR', msg:'Invalid phone format', fix:'Set to UNAVAILABLE',
+      computeFix: v => (v && v !== 'UNAVAILABLE') ? 'UNAVAILABLE' : null,
+      field_override: 'Phone_Number' },
   ],
   Commercial_License: [
-    { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Use digits only' },
+    { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Strip non-digits',
+      computeFix: v => (v && v !== 'UNAVAILABLE') ? v.replace(/\D/g, '') || 'UNAVAILABLE' : null },
     { id:'CL2', check: v => !v || v==='UNAVAILABLE' || /^\d{11}$/.test(v.replace(/\D/g,'')), severity:'MAJOR', msg:'Commercial license should be 11 digits', fix:'Provide 11-digit license number' },
   ],
 };
@@ -2085,10 +2103,18 @@ function validatePoi(poi) {
   }
   // Field validators (MAJOR/MINOR)
   for (const [field, rules] of Object.entries(FIELD_VALIDATORS)) {
-    const val = String(poi[field] ?? '');
+    const actualField = rules[0]?.field_override || field;
+    const val = String(poi[actualField] ?? '');
     for (const rule of rules) {
       if (!rule.check(val)) {
-        errors.push({ column: field, rule_id: rule.id, severity: rule.severity, fail_reason: rule.msg, suggested_fix: rule.fix });
+        const err = { column: actualField, rule_id: rule.id, severity: rule.severity, fail_reason: rule.msg, suggested_fix: rule.fix };
+        if (rule.computeFix) {
+          const fixVal = rule.computeFix(val, poi);
+          if (fixVal !== null && fixVal !== undefined && fixVal !== val) {
+            err.fix_value = fixVal;
+          }
+        }
+        errors.push(err);
       }
     }
   }
@@ -2163,7 +2189,7 @@ function validatePoi(poi) {
     if (suggestedCat) {
       errors.push({ column: 'Category', rule_id: 'CNM1', severity: 'MAJOR',
         fail_reason: `Name suggests "${suggestedCat}" but category is "${cat}"`,
-        suggested_fix: `Verify category — consider changing to "${suggestedCat}"` });
+        suggested_fix: `Change to "${suggestedCat}"`, fix_value: suggestedCat });
     }
   }
 
@@ -2171,7 +2197,14 @@ function validatePoi(poi) {
   DROPDOWN_FIELDS.forEach(field => {
     const val = (poi[field] || '').trim();
     if (val && !DROPDOWN_OPTIONS.includes(val)) {
-      errors.push({ column: field, rule_id: 'DD1', severity: 'MINOR', fail_reason: `"${val}" not in allowed dropdown values`, suggested_fix: 'Use Yes/No/UNAVAILABLE/UNAPPLICABLE' });
+      // Try to auto-match: yes->Yes, no->No, etc.
+      const vl = val.toLowerCase();
+      let fixVal = null;
+      if (['yes','y','true','1'].includes(vl)) fixVal = 'Yes';
+      else if (['no','n','false','0'].includes(vl)) fixVal = 'No';
+      else if (['n/a','na','none','null','unavailable'].includes(vl)) fixVal = 'UNAVAILABLE';
+      else if (['unapplicable'].includes(vl)) fixVal = 'UNAPPLICABLE';
+      errors.push({ column: field, rule_id: 'DD1', severity: 'MINOR', fail_reason: `"${val}" not in allowed dropdown values`, suggested_fix: fixVal ? `Change to "${fixVal}"` : 'Use Yes/No/UNAVAILABLE/UNAPPLICABLE', fix_value: fixVal });
     }
   });
   return errors;
@@ -2262,6 +2295,54 @@ function getValidationTooltip(gid, field) {
   const errs = validationResults.get(gid);
   if (!errs) return '';
   return errs.filter(e => e.column === field).map(e => `[${e.severity}] ${e.fail_reason}`).join(' | ');
+}
+
+function getValidationFixValue(gid, field) {
+  const errs = validationResults.get(gid);
+  if (!errs) return null;
+  const e = errs.find(e => e.column === field && e.fix_value !== undefined && e.fix_value !== null);
+  return e ? e.fix_value : null;
+}
+
+function applyValidationFix(gid, field, fixValue) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid][field] = fixValue;
+  poi[field] = fixValue;
+  const errs = validatePoi(poi);
+  if (errs.length > 0) validationResults.set(gid, errs);
+  else validationResults.delete(gid);
+  saveEditsToStorage();
+  saveToDb(gid, field, fixValue);
+  buildStats(true);
+  renderDetailBody();
+  renderTable();
+  toast('Applied: ' + field.replace(/_/g,' ') + ' \u2192 ' + (String(fixValue).length > 40 ? String(fixValue).substring(0,40) + '...' : fixValue));
+}
+
+function applyAllValidationFixes(gid) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const errs = validationResults.get(gid) || [];
+  const fixable = errs.filter(e => e.fix_value !== undefined && e.fix_value !== null);
+  if (!fixable.length) { toast('No auto-fixable issues'); return; }
+  if (!edits[gid]) edits[gid] = {};
+  const fieldsToSave = {};
+  fixable.forEach(e => {
+    edits[gid][e.column] = e.fix_value;
+    poi[e.column] = e.fix_value;
+    fieldsToSave[e.column] = e.fix_value;
+  });
+  const newErrs = validatePoi(poi);
+  if (newErrs.length > 0) validationResults.set(gid, newErrs);
+  else validationResults.delete(gid);
+  saveEditsToStorage();
+  saveFieldsToDb(gid, fieldsToSave);
+  buildStats(true);
+  renderDetailBody();
+  renderTable();
+  toast(fixable.length + ' fix' + (fixable.length > 1 ? 'es' : '') + ' applied');
 }
 
 // ===== DECISION ENGINE =====
@@ -3583,18 +3664,37 @@ function renderDetailExcel(poi) {
     const majors = errs.filter(e => e.severity === 'MAJOR');
     const minors = errs.filter(e => e.severity === 'MINOR');
     h += `<div style="margin:10px 12px;padding:10px 14px;border-radius:6px;background:#fff3e0;border:1px solid #ffe0b2;font-size:12px;">`;
-    h += `<div style="font-weight:700;color:#e65100;margin-bottom:6px;">Validation: ${errs.length} issue${errs.length>1?'s':''}</div>`;
+    const fixableCount = errs.filter(e => e.fix_value !== undefined && e.fix_value !== null).length;
+    h += `<div style="font-weight:700;color:#e65100;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">`;
+    h += `<span>Validation: ${errs.length} issue${errs.length>1?'s':''}</span>`;
+    if (fixableCount > 0) h += `<button onclick="applyAllValidationFixes('${esc(poi.GlobalID)}')" style="font-size:10px;padding:2px 10px;border:1px solid #e65100;border-radius:4px;background:#fff;color:#e65100;cursor:pointer;font-weight:600;">Apply All Fixes (${fixableCount})</button>`;
+    h += `</div>`;
     if (blockers.length) {
       h += `<div style="color:#c62828;margin-bottom:4px;"><b>BLOCKER (${blockers.length}):</b></div>`;
-      blockers.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason} → <i>${e.suggested_fix}</i></div>`);
+      blockers.forEach(e => {
+        const applyBtn = (e.fix_value !== undefined && e.fix_value !== null)
+          ? ` <button onclick="applyValidationFix('${esc(poi.GlobalID)}','${e.column}',${JSON.stringify(String(e.fix_value)).replace(/'/g,'\\&#39;')})" style="font-size:9px;padding:1px 6px;border:1px solid #c62828;border-radius:3px;background:#fff;color:#c62828;cursor:pointer;margin-left:4px;">Apply: ${esc(trunc(String(e.fix_value),25))}</button>`
+          : '';
+        h += `<div style="margin-left:12px;margin-bottom:3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">• <b>${e.column.replace(/_/g,' ')}</b>: ${e.fail_reason} → <i>${e.suggested_fix}</i>${applyBtn}</div>`;
+      });
     }
     if (majors.length) {
       h += `<div style="color:#e65100;margin-bottom:4px;"><b>MAJOR (${majors.length}):</b></div>`;
-      majors.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason} → <i>${e.suggested_fix}</i></div>`);
+      majors.forEach(e => {
+        const applyBtn = (e.fix_value !== undefined && e.fix_value !== null)
+          ? ` <button onclick="applyValidationFix('${esc(poi.GlobalID)}','${e.column}',${JSON.stringify(String(e.fix_value)).replace(/'/g,'\\&#39;')})" style="font-size:9px;padding:1px 6px;border:1px solid #e65100;border-radius:3px;background:#fff;color:#e65100;cursor:pointer;margin-left:4px;">Apply: ${esc(trunc(String(e.fix_value),25))}</button>`
+          : '';
+        h += `<div style="margin-left:12px;margin-bottom:3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">• <b>${e.column.replace(/_/g,' ')}</b>: ${e.fail_reason} → <i>${e.suggested_fix}</i>${applyBtn}</div>`;
+      });
     }
     if (minors.length) {
       h += `<div style="color:#9e9d24;margin-bottom:4px;"><b>MINOR (${minors.length}):</b></div>`;
-      minors.forEach(e => h += `<div style="margin-left:12px;margin-bottom:2px;">• <b>${e.column.replace(/_/g,' ')}</b> [${e.rule_id}]: ${e.fail_reason}</div>`);
+      minors.forEach(e => {
+        const applyBtn = (e.fix_value !== undefined && e.fix_value !== null)
+          ? ` <button onclick="applyValidationFix('${esc(poi.GlobalID)}','${e.column}',${JSON.stringify(String(e.fix_value)).replace(/'/g,'\\&#39;')})" style="font-size:9px;padding:1px 6px;border:1px solid #9e9d24;border-radius:3px;background:#fff;color:#9e9d24;cursor:pointer;margin-left:4px;">Apply: ${esc(trunc(String(e.fix_value),25))}</button>`
+          : '';
+        h += `<div style="margin-left:12px;margin-bottom:3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">• <b>${e.column.replace(/_/g,' ')}</b>: ${e.fail_reason}${e.suggested_fix ? ' → <i>'+e.suggested_fix+'</i>' : ''}${applyBtn}</div>`;
+      });
     }
     h += `</div>`;
   } else {
@@ -3638,12 +3738,14 @@ function renderDetailExcel(poi) {
 
       const vColor = getValidationColor(poi.GlobalID, field);
       const vTip = getValidationTooltip(poi.GlobalID, field);
+      const vFixVal = getValidationFixValue(poi.GlobalID, field);
       const fieldClass = vTip ? (vColor && vColor.includes('ffcdd2') ? 'field-blocker' : 'field-warning') : (hasEdit ? 'field-edited' : '');
       const vStyle = vColor ? ` style="background:${vColor};"` : '';
       const vBadge = vTip ? ` <span style="color:#c62828;font-size:9px;" title="${esc(vTip)}">⚠</span>` : '';
+      const vFixBtn = (vTip && vFixVal !== null) ? ` <button onclick="event.stopPropagation();applyValidationFix('${esc(poi.GlobalID)}','${field}',${JSON.stringify(String(vFixVal)).replace(/'/g,'\\&#39;')})" style="font-size:8px;padding:0 5px;border:1px solid #e65100;border-radius:3px;background:#fff3e0;color:#e65100;cursor:pointer;" title="Apply: ${esc(String(vFixVal))}">Apply</button>` : '';
 
       h += `<tr class="${collapsed?'section-collapsed':''} ${fieldClass}" data-section="${si}"><td style="text-align:center;color:#888;font-size:10px;">${n}</td>`;
-      h += `<td class="field-name">${label}${hasEdit?' <span style="color:#4caf50;font-size:9px;">edited</span>':''}${vBadge}</td>`;
+      h += `<td class="field-name">${label}${hasEdit?' <span style="color:#4caf50;font-size:9px;">edited</span>':''}${vBadge}${vFixBtn}</td>`;
 
       if (isRO) {
         if (val && val.startsWith('http')) {
