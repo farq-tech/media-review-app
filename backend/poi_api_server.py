@@ -558,13 +558,16 @@ def update_poi(globalid):
         vals.append('modified')
 
     # Approval metadata: when transitioning to Reviewed, set review tracking fields
-    if data.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed':
+    is_approving = data.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed'
+    if is_approving:
         sets.append('"last_reviewed_at" = NOW()')
         sets.append('"last_reviewed_by" = %s')
         vals.append(reviewer)
         sets.append('"review_version" = COALESCE("review_version", 0) + 1')
-        sets.append('"draft_reason" = %s')
-        vals.append('')
+        # Only add draft_reason if not already in the payload (avoid duplicate SET)
+        if 'draft_reason' not in data:
+            sets.append('"draft_reason" = %s')
+            vals.append('')
 
     if not sets:
         cur.close()
