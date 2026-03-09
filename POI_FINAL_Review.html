@@ -2590,7 +2590,10 @@ async function saveToDb(gid, field, value) {
     });
     const d = await resp.json();
     if (!resp.ok || !d.ok) {
-      if (resp.status === 409) { toast('Conflict: POI was modified by another user. Reload to see latest.', 'error'); return false; }
+      if (resp.status === 409) {
+        try { const f = await fetch('/api/pois/' + encodeURIComponent(gid)).then(r=>r.json()); if (poi && f.review_version != null) poi.review_version = f.review_version; } catch(_){}
+        toast('Conflict: version synced — please try again.', 'error'); return false;
+      }
       toast('Save failed: ' + (d.error || 'Unknown error'), 'error');
       return false;
     }
@@ -2624,7 +2627,10 @@ async function saveFieldsToDb(gid, fields) {
     });
     const d = await resp.json();
     if (!resp.ok || !d.ok) {
-      if (resp.status === 409) { toast('Conflict: POI was modified by another user. Reload to see latest.', 'error'); return false; }
+      if (resp.status === 409) {
+        try { const f = await fetch('/api/pois/' + encodeURIComponent(gid)).then(r=>r.json()); if (poi && f.review_version != null) poi.review_version = f.review_version; } catch(_){}
+        toast('Conflict: version synced — please try again.', 'error'); return false;
+      }
       toast('Save failed: ' + (d.error || 'Unknown error'), 'error');
       return false;
     }
