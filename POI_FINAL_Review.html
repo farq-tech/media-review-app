@@ -2052,7 +2052,19 @@ const FIELD_VALIDATORS = {
     { id:'SM1', check: v => !v || v==='UNAVAILABLE' || /^https?:\/\//.test(v), severity:'MINOR', msg:'Social media missing URL', fix:'Add full URL' },
   ],
   Phone_Number: [
-    { id:'PH2', check: v => !v || v==='UNAVAILABLE' || /^(966|05|\+966)\d{7,9}$/.test(v.replace(/[\s\-()]/g,'')), severity:'MAJOR', msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX or 05XXXXXXXX' },
+    { id:'PH2', check: v => {
+      if (!v || v === 'UNAVAILABLE') return true;
+      const cleaned = v.replace(/[\s\-()]/g, '');
+      // Saudi mobile: 05XXXXXXXX or 966 5XXXXXXXX or +966 5XXXXXXXX
+      if (/^(\+?966|05)\d{7,9}$/.test(cleaned)) return true;
+      // Saudi landline: 01X-XXXXXXX (011, 012, 013, etc.)
+      if (/^(\+?966)?0?1[1-7]\d{7}$/.test(cleaned)) return true;
+      // Saudi short codes & hotlines: 3-6 digit numbers (e.g. 19996, 920XXXXXXX, 800XXXXXXX, 9200XXXXXX)
+      if (/^(9200|920|800|19)\d{3,7}$/.test(cleaned)) return true;
+      // Generic short codes: 3-6 digits
+      if (/^\d{3,6}$/.test(cleaned)) return true;
+      return false;
+    }, severity:'MAJOR', msg:'Invalid phone format', fix:'Format: 966XXXXXXXXX, 05XXXXXXXX, or short code' },
   ],
   Commercial_License: [
     { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Use digits only' },
