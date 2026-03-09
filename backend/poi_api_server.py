@@ -227,6 +227,13 @@ def _init_audit_tables(conn):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_global_id ON poi_audit_log(global_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_reviewer ON poi_audit_log(reviewer);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON poi_audit_log(created_at DESC);")
+    # Migrate: add 'action' column if table predates it
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE poi_audit_log ADD COLUMN action TEXT DEFAULT 'update';
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
     conn.commit()
     cur.close()
 
@@ -488,6 +495,7 @@ def get_poi(globalid):
 # ===== API: Update POI fields =====
 @api.route('/pois/<globalid>', methods=['PATCH'])
 def update_poi(globalid):
+  try:
     data = request.get_json()
     if not data:
         return api_error('No data', 400, code=VALIDATION_ERROR)
@@ -619,6 +627,9 @@ def update_poi(globalid):
 
     sync_to_arcgis('update', globalid, data)
     return api_success(response)
+  except Exception as e:
+    import traceback
+    return api_error(str(e), 500, code=INTERNAL_ERROR, details=traceback.format_exc())
 
 # ===== API: Bulk update =====
 @api.route('/pois/bulk', methods=['PATCH'])
