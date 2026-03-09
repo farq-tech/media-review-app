@@ -2404,6 +2404,19 @@ def draft_stats():
     })
 
 
+# ===== Admin: reset all review_versions =====
+@api.route('/admin/reset-versions', methods=['POST'])
+def reset_versions():
+    """Reset review_version to 1 for all POIs."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('UPDATE final_delivery SET "review_version" = 1')
+    count = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return api_success({'reset': count, 'new_version': 1})
+
 # Register API blueprint
 app.register_blueprint(api)
 
