@@ -637,6 +637,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   <div id="bulkBar" class="bulk-bar">
     <span class="bulk-count" id="bulkCount">0 selected</span>
     <button class="btn btn-success btn-sm" onclick="bulkApprove()">Approve Selected</button>
+    <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="bulkSetDraft()">Set Draft</button>
     <select id="bulkFlagSelect" class="bulk-bar select">
       <option value="">-- Select Flag --</option>
     </select>
@@ -2970,6 +2971,40 @@ function bulkApprove() {
   saveEditsToStorage(); selectedPois.clear();
   renderTable(); buildStats();
   toast('Approved ' + count + ' POIs');
+}
+
+async function bulkSetDraft() {
+  if (!selectedPois.size) return;
+  const count = selectedPois.size;
+  if (!confirm(`Set ${count} POIs to Draft?`)) return;
+  const reviewer = currentReviewer?.username || 'dashboard';
+  // Update local state
+  selectedPois.forEach(gid => {
+    const poi = allPois.find(p => p.GlobalID === gid);
+    if (poi) {
+      poi.Review_Status = 'Draft'; poi.draft_reason = 'manual';
+      if (!edits[gid]) edits[gid] = {};
+      edits[gid].Review_Status = 'Draft'; edits[gid].draft_reason = 'manual';
+    }
+  });
+  // Push to DB if connected
+  if (dbMode) {
+    const items = [...selectedPois].map(gid => ({
+      GlobalID: gid, Review_Status: 'Draft', draft_reason: 'manual', _reviewer: reviewer
+    }));
+    const BATCH = 50;
+    for (let i = 0; i < items.length; i += BATCH) {
+      try {
+        await fetch('/api/pois/bulk', {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(items.slice(i, i + BATCH))
+        });
+      } catch(e) { console.warn('Bulk draft error:', e); }
+    }
+  }
+  saveEditsToStorage(); selectedPois.clear();
+  renderTable(); buildStats();
+  toast(`Set ${count} POIs to Draft`);
 }
 
 async function approveAllAndPush() {
