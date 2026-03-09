@@ -5505,17 +5505,15 @@ function calcPoiValue(poi, filter) {
   for (const group of groups) {
     // Skip UNAPPLICABLE fields — only check applicable ones
     const applicable = group.fields.filter(f => !isFieldUnapplicable(poi[f]));
-    let filled;
     if (applicable.length === 0) {
-      // All fields unapplicable — no payment for this group
-      filled = false;
-    } else if (group.anyFilled) {
-      filled = applicable.some(f => isFieldFilled(poi[f]));
-    } else {
-      filled = applicable.every(f => isFieldFilled(poi[f]));
+      breakdown[group.id] = 0;
+      continue;
     }
-    breakdown[group.id] = filled;
-    if (filled) total += group.price;
+    const filledCount = applicable.filter(f => isFieldFilled(poi[f])).length;
+    const pricePerField = group.price / group.fields.length;
+    const earned = filledCount * pricePerField;
+    breakdown[group.id] = earned;
+    total += earned;
   }
   return { total, breakdown };
 }
@@ -5563,14 +5561,14 @@ function renderInvoice() {
     '</tr></thead><tbody>';
 
   for (const group of groups) {
-    const filledCount = poiValues.filter(pv => pv.breakdown[group.id]).length;
-    const pct = allPois.length ? (filledCount / allPois.length * 100) : 0;
-    const subtotal = filledCount * group.price;
+    const subtotal = poiValues.reduce((s, pv) => s + (pv.breakdown[group.id] || 0), 0);
+    const maxGroupTotal = allPois.length * group.price;
+    const pct = maxGroupTotal ? (subtotal / maxGroupTotal * 100) : 0;
     const barColor = pct >= 80 ? '#4caf50' : pct >= 50 ? '#ff9800' : '#f44336';
     bt += `<tr style="border-bottom:1px solid #eee;">
-      <td style="padding:6px 12px;">${group.label}${group.mandatory ? ' <span style="color:#c62828;font-size:10px;">*</span>' : ''}</td>
+      <td style="padding:6px 12px;">${group.label}${group.mandatory ? ' <span style="color:#c62828;font-size:10px;">*</span>' : ''} <span style="color:#999;font-size:10px;">(${group.fields.length} fields)</span></td>
       <td style="padding:6px 8px;text-align:center;">${group.price.toFixed(2)}</td>
-      <td style="padding:6px 8px;text-align:center;">${filledCount} / ${allPois.length}</td>
+      <td style="padding:6px 8px;text-align:center;">${(group.price / group.fields.length).toFixed(2)} / field</td>
       <td style="padding:6px 8px;">
         <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
           <div style="width:60px;height:6px;background:#eee;border-radius:3px;overflow:hidden;">
@@ -5606,7 +5604,7 @@ function renderInvoice() {
     '</tr></thead><tbody>';
 
   poiValues.forEach((pv, i) => {
-    const fieldsDone = Object.values(pv.breakdown).filter(Boolean).length;
+    const fieldsDone = Object.values(pv.breakdown).filter(v => v > 0).length;
     const totalFields = groups.length;
     const pct = maxVal ? (pv.total / maxVal * 100) : 0;
     const rowBg = i % 2 === 0 ? '#fff' : '#fafafa';
@@ -5663,10 +5661,10 @@ function exportInvoicePDF() {
   <table><thead><tr><th>Field Group</th><th class="center">Price (SAR)</th><th class="center">Filled</th><th class="center">%</th><th class="right">Subtotal (SAR)</th></tr></thead><tbody>`;
 
   for (const group of groups) {
-    const filledCount = poiValues.filter(pv => pv.breakdown[group.id]).length;
-    const pct = allPois.length ? (filledCount / allPois.length * 100) : 0;
-    const subtotal = filledCount * group.price;
-    html += `<tr><td>${group.label}${group.mandatory?' *':''}</td><td class="center">${group.price.toFixed(2)}</td><td class="center">${filledCount}/${allPois.length}</td><td class="center">${pct.toFixed(0)}%</td><td class="right">${subtotal.toLocaleString('en',{minimumFractionDigits:2})}</td></tr>`;
+    const subtotal = poiValues.reduce((s, pv) => s + (pv.breakdown[group.id] || 0), 0);
+    const maxGroupTotal = allPois.length * group.price;
+    const pct = maxGroupTotal ? (subtotal / maxGroupTotal * 100) : 0;
+    html += `<tr><td>${group.label}${group.mandatory?' *':''} (${group.fields.length})</td><td class="center">${group.price.toFixed(2)}</td><td class="center">${(group.price/group.fields.length).toFixed(2)}/field</td><td class="center">${pct.toFixed(0)}%</td><td class="right">${subtotal.toLocaleString('en',{minimumFractionDigits:2})}</td></tr>`;
   }
 
   html += `<tr class="total-row"><td>TOTAL</td><td class="center">${maxVal.toFixed(2)}</td><td></td><td></td><td class="right">${grandTotal.toLocaleString('en',{minimumFractionDigits:2})}</td></tr></tbody></table>`;
@@ -5677,7 +5675,7 @@ function exportInvoicePDF() {
   <table><thead><tr><th>#</th><th>Name</th><th>Category</th><th class="center">Fields</th><th class="right">Value (SAR)</th></tr></thead><tbody>`;
 
   poiValues.slice(0, 20).forEach((pv, i) => {
-    const fieldsDone = Object.values(pv.breakdown).filter(Boolean).length;
+    const fieldsDone = Object.values(pv.breakdown).filter(v => v > 0).length;
     html += `<tr><td>${i+1}</td><td>${esc(pv.poi.Name_EN||'')}</td><td>${esc(pv.poi.Category||'')}</td><td class="center">${fieldsDone}/${groups.length}</td><td class="right">${pv.total.toFixed(2)}</td></tr>`;
   });
 
