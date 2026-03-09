@@ -2783,45 +2783,54 @@ function buildStats(skipValidation) {
   loadQueueCounts();
 }
 
-async function loadQueueCounts() {
-  // Client-side counts (blocked = Draft + has BLOCKER errors)
+function loadQueueCounts() {
+  // All counts computed client-side using the SAME logic as applyFilters() tab filters
+  const el = id => document.getElementById(id);
+
+  const needsApproval = allPois.filter(p => {
+    const s = p.Review_Status || 'Draft';
+    if (s !== 'Draft' && s !== '') return false;
+    if (p.flagged) return false;
+    const errs = validationResults.get(p.GlobalID) || [];
+    return !errs.some(e => e.severity === 'BLOCKER');
+  }).length;
+
   const blocked = allPois.filter(p => {
     const s = (p.Review_Status || 'Draft');
     if (s !== 'Draft' && s !== '') return false;
     const errs = validationResults.get(p.GlobalID) || [];
     return errs.some(e => e.severity === 'BLOCKER');
   }).length;
-  const errCount = validationResults.size;
 
-  const el = id => document.getElementById(id);
+  const flagged = allPois.filter(p => p.flagged).length;
+
+  const needsMedia = allPois.filter(p => {
+    const ext = (p.Exterior_Photo_URL || '').trim();
+    const int_ = (p.Interior_Photo_URL || '').trim();
+    return !ext || ext === 'UNAVAILABLE' || !int_ || int_ === 'UNAVAILABLE';
+  }).length;
+
+  const recentlyUpdated = allPois.filter(p => {
+    const updated = p.updated_at || p.last_reviewed_at;
+    if (!updated) return false;
+    return Date.now() - new Date(updated).getTime() <= 24*60*60*1000;
+  }).length;
+
+  const reviewed = allPois.filter(p => p.Review_Status === 'Reviewed').length;
+  const errCount = allPois.filter(p => validationResults.has(p.GlobalID)).length;
+  const rejected = allPois.filter(p => p.Review_Status === 'Rejected').length;
+  const archived = allPois.filter(p => p.Review_Status === 'Archived').length;
+
   if (el('qAll')) el('qAll').textContent = allPois.length || '';
+  if (el('qApproval')) el('qApproval').textContent = needsApproval || '';
   if (el('qBlocked')) el('qBlocked').textContent = blocked || '';
+  if (el('qFlagged')) el('qFlagged').textContent = flagged || '';
+  if (el('qMedia')) el('qMedia').textContent = needsMedia || '';
+  if (el('qRecent')) el('qRecent').textContent = recentlyUpdated || '';
+  if (el('qReviewed')) el('qReviewed').textContent = reviewed || '';
   if (el('qErrors')) el('qErrors').textContent = errCount || '';
-
-  if (dbMode) {
-    try {
-      const r = await fetch('/api/queues/summary').then(r => r.json());
-      if (el('qApproval')) el('qApproval').textContent = r.needs_approval || '';
-      if (el('qFlagged')) el('qFlagged').textContent = r.flagged || '';
-      if (el('qRecent')) el('qRecent').textContent = r.recently_updated || '';
-      if (el('qMedia')) el('qMedia').textContent = r.needs_media || '';
-      if (el('qReviewed')) el('qReviewed').textContent = r.reviewed || '';
-      if (el('qRejected')) el('qRejected').textContent = r.rejected || '';
-      if (el('qArchived')) el('qArchived').textContent = r.archived || '';
-    } catch(e) { /* fallback below */ }
-  }
-  if (!dbMode) {
-    if (el('qApproval')) el('qApproval').textContent = allPois.filter(p => (!p.Review_Status || p.Review_Status === 'Draft') && !p.flagged).length || '';
-    if (el('qFlagged')) el('qFlagged').textContent = allPois.filter(p => p.flagged).length || '';
-    if (el('qMedia')) el('qMedia').textContent = allPois.filter(p => {
-      const ext = (p.Exterior_Photo_URL||'').trim(), int_ = (p.Interior_Photo_URL||'').trim();
-      return !ext || ext === 'UNAVAILABLE' || !int_ || int_ === 'UNAVAILABLE';
-    }).length || '';
-    if (el('qReviewed')) el('qReviewed').textContent = allPois.filter(p => p.Review_Status === 'Reviewed').length || '';
-    if (el('qRejected')) el('qRejected').textContent = allPois.filter(p => p.Review_Status === 'Rejected').length || '';
-    if (el('qArchived')) el('qArchived').textContent = allPois.filter(p => p.Review_Status === 'Archived').length || '';
-    if (el('qRecent')) el('qRecent').textContent = '';
-  }
+  if (el('qRejected')) el('qRejected').textContent = rejected || '';
+  if (el('qArchived')) el('qArchived').textContent = archived || '';
 }
 
 function runValidation() {
