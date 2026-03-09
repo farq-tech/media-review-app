@@ -13,12 +13,14 @@ import datetime
 import gzip
 import hashlib
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 import urllib.parse
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
-from flask import Flask, jsonify, request, Response, Blueprint
+from flask import Flask, jsonify, request, Response, Blueprint, stream_with_context
 from flask_cors import CORS
+import requests as req_lib
 from api_responses import (
     success as api_success, error as api_error,
     NOT_FOUND, VALIDATION_ERROR, CONFLICT, INVALID_TRANSITION, INTERNAL_ERROR
@@ -169,7 +171,10 @@ def sync_to_arcgis(action, global_id, data=None):
         except Exception as e:
             print(f'[ArcGIS Sync] Error ({action}): {e}')
 
-    threading.Thread(target=_sync, daemon=True).start()
+    _arcgis_pool.submit(_sync)
+
+# Bounded thread pool for ArcGIS sync (prevents unbounded thread/memory growth)
+_arcgis_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix='arcgis')
 
 app = Flask(__name__)
 
@@ -434,33 +439,32 @@ def get_pois():
                 pass
 
         cur.execute(sql, params)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        result = []
-        for row in rows:
-            d = {}
-            for k, v in row.items():
-                if v is None:
-                    d[k] = ''
-                elif isinstance(v, (datetime.datetime, datetime.date)):
-                    d[k] = v.isoformat()
-                else:
-                    d[k] = v
-            result.append(d)
-        # Gzip compress large JSON response (~2.7MB → ~250KB)
-        body = json.dumps(result, separators=(',', ':'))
-        etag = '"' + hashlib.md5(body.encode()).hexdigest() + '"'
-        if request.headers.get('If-None-Match') == etag:
-            return Response(status=304)
-        ae = request.headers.get('Accept-Encoding', '')
-        if 'gzip' in ae:
-            compressed = gzip.compress(body.encode(), compresslevel=6)
-            resp = Response(compressed, content_type='application/json')
-            resp.headers['Content-Encoding'] = 'gzip'
-        else:
-            resp = Response(body, content_type='application/json')
-        resp.headers['ETag'] = etag
+
+        # Stream JSON row-by-row to avoid loading entire result set in memory
+        def generate():
+            yield '['
+            first = True
+            while True:
+                row = cur.fetchone()
+                if row is None:
+                    break
+                d = {}
+                for k, v in row.items():
+                    if v is None:
+                        d[k] = ''
+                    elif isinstance(v, (datetime.datetime, datetime.date)):
+                        d[k] = v.isoformat()
+                    else:
+                        d[k] = v
+                if not first:
+                    yield ','
+                first = False
+                yield json.dumps(d, separators=(',', ':'))
+            yield ']'
+            cur.close()
+            conn.close()
+
+        resp = Response(stream_with_context(generate()), content_type='application/json')
         resp.headers['Cache-Control'] = 'no-cache'
         return resp
     except Exception as e:
@@ -699,24 +703,42 @@ def bulk_update():
 def export_csv_api():
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN";')
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    if not rows:
-        return Response('No data', mimetype='text/plain')
-
-    output = io.StringIO()
     skip = {'created_at', 'updated_at', 'delivery_date'}
-    fieldnames = [k for k in rows[0].keys() if k not in skip]
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({k: (row[k] or '') for k in fieldnames})
+
+    # Get column names from first row
+    cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN" LIMIT 1;')
+    first = cur.fetchone()
+    if not first:
+        cur.close()
+        conn.close()
+        return Response('No data', mimetype='text/plain')
+    fieldnames = [k for k in first.keys() if k not in skip]
+
+    # Stream CSV row-by-row
+    cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN";')
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=fieldnames)
+        # BOM + header
+        buf.write('\ufeff')
+        writer.writeheader()
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+        while True:
+            row = cur.fetchone()
+            if row is None:
+                break
+            writer.writerow({k: (row[k] or '') for k in fieldnames})
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+        cur.close()
+        conn.close()
 
     return Response(
-        '\ufeff' + output.getvalue(),
+        stream_with_context(generate()),
         mimetype='text/csv; charset=utf-8',
         headers={'Content-Disposition': 'attachment; filename=POI_FINAL_from_DB.csv'}
     )
@@ -893,12 +915,11 @@ def approval_check(globalid):
 # ===== API: ArcGIS Token Proxy =====
 @api.route('/arcgis-token', methods=['GET'])
 def arcgis_token():
-    import requests as req
     username = os.environ.get('ARCGIS_USERNAME', 'nagadco0000')
     password = os.environ.get('ARCGIS_PASSWORD', 'Nagad$1390')
     referer = os.environ.get('ARCGIS_REFERER', 'https://media-review-app.vercel.app')
     try:
-        r = req.post('https://www.arcgis.com/sharing/rest/generateToken', data={
+        r = req_lib.post('https://www.arcgis.com/sharing/rest/generateToken', data={
             'username': username, 'password': password,
             'client': 'referer', 'referer': referer,
             'expiration': 120, 'f': 'json'
@@ -914,14 +935,13 @@ def arcgis_token():
 _agol_token_cache = {'token': None, 'expires': 0}
 
 def _get_agol_token():
-    import requests as req, time
     now = time.time() * 1000
     if _agol_token_cache['token'] and _agol_token_cache['expires'] > now + 60000:
         return _agol_token_cache['token']
     username = os.environ.get('ARCGIS_USERNAME', 'nagadco0000')
     password = os.environ.get('ARCGIS_PASSWORD', 'Nagad$1390')
     referer = os.environ.get('ARCGIS_REFERER', 'https://media-review-app.vercel.app')
-    r = req.post('https://www.arcgis.com/sharing/rest/generateToken', data={
+    r = req_lib.post('https://www.arcgis.com/sharing/rest/generateToken', data={
         'username': username, 'password': password,
         'client': 'referer', 'referer': referer,
         'expiration': 120, 'f': 'json'
@@ -936,7 +956,6 @@ def _get_agol_token():
 @api.route('/arcgis-image', methods=['GET'])
 def arcgis_image_proxy():
     """Proxy ArcGIS attachment URLs, converting HEIC to JPEG for browser display."""
-    import requests as req
     url = request.args.get('url', '')
     if not url or 'arcgis.com' not in url:
         return 'Bad URL', 400
@@ -946,7 +965,7 @@ def arcgis_image_proxy():
         return 'Token failed', 500
 
     try:
-        r = req.get(url, params={'token': token}, timeout=30, stream=True)
+        r = req_lib.get(url, params={'token': token}, timeout=30, stream=True)
         ct = r.headers.get('Content-Type', '').lower()
 
         if 'heic' in ct or 'heif' in ct:
@@ -969,7 +988,6 @@ def arcgis_image_proxy():
 @api.route('/arcgis-search', methods=['GET'])
 def arcgis_search_features():
     """Search ArcGIS features by name and return matching features with attachments."""
-    import requests as req
     q = request.args.get('q', '').strip()
     if not q or len(q) < 2:
         return api_error('Query too short (min 2 chars)', 400, code=VALIDATION_ERROR)
@@ -982,7 +1000,7 @@ def arcgis_search_features():
 
     where_clause = f"poi_name_en LIKE '%{q}%' OR poi_name_ar LIKE '%{q}%' OR place_name LIKE '%{q}%'"
     try:
-        r = req.get(f'{base}/query', params={
+        r = req_lib.get(f'{base}/query', params={
             'where': where_clause,
             'outFields': 'objectid,globalid,poi_name_en,poi_name_ar,place_name',
             'resultRecordCount': 50,
@@ -1003,7 +1021,7 @@ def arcgis_search_features():
     for i in range(0, len(oids), 50):
         batch = oids[i:i+50]
         try:
-            ar = req.get(f'{base}/queryAttachments', params={
+            ar = req_lib.get(f'{base}/queryAttachments', params={
                 'objectIds': ','.join(str(o) for o in batch),
                 'f': 'json', 'token': token
             }, timeout=30)
@@ -1063,7 +1081,6 @@ def arcgis_search_features():
 @api.route('/survey123-to-poi/<objectid>', methods=['POST'])
 def survey123_to_poi(objectid):
     """Fetch a Survey123 feature by objectid and create a new POI in the DB."""
-    import requests as req
     token = _get_agol_token()
     if not token:
         return api_error('ArcGIS token failed', 500, code=INTERNAL_ERROR)
@@ -1072,7 +1089,7 @@ def survey123_to_poi(objectid):
 
     # Query feature by objectid
     try:
-        r = req.get(f'{base}/query', params={
+        r = req_lib.get(f'{base}/query', params={
             'where': f'objectid={int(objectid)}',
             'outFields': '*',
             'returnGeometry': 'true',
@@ -2111,15 +2128,7 @@ def get_drafts():
             if hasattr(v, 'isoformat'):
                 r[k] = v.isoformat()
 
-    body = json.dumps({'drafts': rows, 'total': total, 'page': page, 'limit': limit}, separators=(',', ':'), default=str)
-    ae = request.headers.get('Accept-Encoding', '')
-    if 'gzip' in ae:
-        compressed = gzip.compress(body.encode(), compresslevel=6)
-        resp = Response(compressed, content_type='application/json')
-        resp.headers['Content-Encoding'] = 'gzip'
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        return resp
-    return Response(body, content_type='application/json')
+    return jsonify({'drafts': rows, 'total': total, 'page': page, 'limit': limit})
 
 
 @api.route('/drafts/<globalid>', methods=['PATCH'])
