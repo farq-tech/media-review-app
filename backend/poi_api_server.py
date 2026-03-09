@@ -19,6 +19,14 @@ import psycopg2
 from psycopg2.extras import RealDictCursor, Json
 from flask import Flask, jsonify, request, Response, Blueprint
 from flask_cors import CORS
+from api_responses import (
+    success as api_success, error as api_error,
+    NOT_FOUND, VALIDATION_ERROR, CONFLICT, INVALID_TRANSITION, INTERNAL_ERROR
+)
+from lifecycle import (
+    MAJOR_FIELDS, VALID_TRANSITIONS, can_transition, validate_transition,
+    get_approval_blockers, should_auto_revert
+)
 
 # Database connection via URL (Render provides DATABASE_URL)
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -349,30 +357,27 @@ def _seed_reviewers():
     cur.close()
     conn.close()
 
-# ===== Lifecycle: Major vs Minor fields =====
-# Only edits to MAJOR_FIELDS (with actual value change) trigger Reviewed→Draft revert
-MAJOR_FIELDS = {
-    'Name_EN', 'Name_AR', 'Legal_Name', 'Category', 'Subcategory', 'Category_Level_3',
-    'Latitude', 'Longitude', 'Phone_Number', 'Email', 'Website', 'Social_Media',
-    'Working_Days', 'Working_Hours', 'Break_Time', 'Holidays',
-    'Building_Number', 'Floor_Number', 'Entrance_Location',
-    'Cuisine', 'Payment_Methods', 'Language', 'Commercial_License', 'Company_Status',
-    'Exterior_Photo_URL', 'Interior_Photo_URL', 'Menu_Photo_URL', 'Video_URL',
-    'Additional_Photo_URLs', 'License_Photo_URL', 'Menu_Barcode_URL',
-    'District_EN', 'District_AR',
-    'Menu', 'Drive_Thru', 'Dine_In', 'Only_Delivery', 'Reservation',
-    'Require_Ticket', 'Order_from_Car', 'Pickup_Point',
-    'WiFi', 'Music', 'Valet_Parking', 'Has_Parking_Lot', 'Wheelchair_Accessible',
-    'Family_Seating', 'Waiting_Area', 'Private_Dining', 'Smoking_Area',
-    'Children_Area', 'Shisha', 'Live_Sports', 'Is_Landmark', 'Is_Trending',
-    'Large_Groups', 'Women_Prayer_Room', 'Iftar_Tent', 'Iftar_Menu',
-    'Open_Suhoor', 'Free_Entry', 'Amenities',
-}
+# MAJOR_FIELDS imported from lifecycle.py
 
 # ===== Audit logging helper =====
-def log_audit(conn, global_id, poi_name, reviewer, action, changes_dict, old_data=None):
-    """Log field-level changes to poi_audit_log."""
+def log_audit(conn, global_id, poi_name, reviewer, action, changes_dict,
+              old_data=None, action_reason=None):
+    """Log field-level changes + action-level event to poi_audit_log.
+
+    action should be one of: edit, approve, reject, archive, unarchive, flag,
+    unflag, bulk_edit, create, delete, auto_revert
+    """
     cur = conn.cursor()
+    # 1) Always insert an action-level row (no field_name) for non-edit actions
+    if action != 'edit' and action != 'update':
+        cur.execute(
+            """INSERT INTO poi_audit_log
+               (global_id, poi_name, reviewer, action, field_name, old_value, new_value)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (global_id, poi_name or '', reviewer or 'unknown', action,
+             None, None, action_reason or '')
+        )
+    # 2) Field-level diff rows
     for field, new_val in changes_dict.items():
         if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
             continue
@@ -395,7 +400,40 @@ def get_pois():
     try:
         conn = get_db()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute('SELECT * FROM final_delivery ORDER BY "Name_EN";')
+
+        # Optional server-side filtering (no params = return all for backward compat)
+        where_clauses = []
+        params = []
+        status = request.args.get('status')
+        if status:
+            where_clauses.append('"Review_Status" = %s')
+            params.append(status)
+        flagged = request.args.get('flagged')
+        if flagged and flagged.lower() == 'true':
+            where_clauses.append('"flagged" = TRUE')
+        elif flagged and flagged.lower() == 'false':
+            where_clauses.append('("flagged" IS NULL OR "flagged" = FALSE)')
+        q = request.args.get('q', '').strip()
+        if q:
+            where_clauses.append('("Name_EN" ILIKE %s OR "Name_AR" ILIKE %s OR "GlobalID" ILIKE %s)')
+            params.extend([f'%{q}%', f'%{q}%', f'%{q}%'])
+
+        sql = 'SELECT * FROM final_delivery'
+        if where_clauses:
+            sql += ' WHERE ' + ' AND '.join(where_clauses)
+        sql += ' ORDER BY "Name_EN"'
+
+        # Optional pagination
+        page = request.args.get('page')
+        page_size = request.args.get('page_size', '50')
+        if page is not None:
+            try:
+                offset = int(page) * int(page_size)
+                sql += f' LIMIT {int(page_size)} OFFSET {offset}'
+            except ValueError:
+                pass
+
+        cur.execute(sql, params)
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -427,7 +465,7 @@ def get_pois():
         return resp
     except Exception as e:
         import traceback
-        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR, details=traceback.format_exc())
 
 # ===== API: Get single POI =====
 @api.route('/pois/<globalid>', methods=['GET'])
@@ -439,7 +477,7 @@ def get_poi(globalid):
     cur.close()
     conn.close()
     if not row:
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
     d = {k: (str(v) if k in ('created_at', 'updated_at', 'delivery_date') else (v or '')) for k, v in row.items()}
     return jsonify(d)
 
@@ -448,9 +486,10 @@ def get_poi(globalid):
 def update_poi(globalid):
     data = request.get_json()
     if not data:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     reviewer = data.pop('_reviewer', None) or request.headers.get('X-Reviewer', 'unknown')
+    expected_version = data.pop('_expected_version', None)
 
     conn = get_db()
     ensure_tables()
@@ -463,13 +502,29 @@ def update_poi(globalid):
 
     if not old_row:
         conn.close()
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
+
+    # Optimistic concurrency check
+    if expected_version is not None:
+        current_version = old_row.get('review_version', 0) or 0
+        if int(expected_version) != int(current_version):
+            conn.close()
+            return api_error('Modified by another user', 409, code=CONFLICT,
+                           details={'current_version': current_version, 'expected_version': int(expected_version)})
 
     cur = conn.cursor()
     sets = []
     vals = []
-    skip_keys = {'GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer'}
+    skip_keys = {'GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer', '_expected_version'}
     old_status = (old_row.get('Review_Status') or '').strip()
+
+    # Validate status transition if Review_Status is being changed
+    new_status = data.get('Review_Status')
+    if new_status and new_status != old_status:
+        ok, err_msg = validate_transition(old_status, new_status)
+        if not ok:
+            cur.close(); conn.close()
+            return api_error(err_msg, 422, code=INVALID_TRANSITION)
 
     # Check if any MAJOR field has an actual value change
     editing_major = any(
@@ -502,7 +557,11 @@ def update_poi(globalid):
     if not sets:
         cur.close()
         conn.close()
-        return jsonify({'error': 'No valid fields'}), 400
+        return api_error('No valid fields', 400, code=VALIDATION_ERROR)
+
+    # Always bump version on update (unless approval already does it)
+    if '"review_version" = COALESCE("review_version", 0) + 1' not in sets:
+        sets.append('"review_version" = COALESCE("review_version", 0) + 1')
 
     sets.append('"updated_at" = NOW()')
     vals.append(globalid)
@@ -511,45 +570,92 @@ def update_poi(globalid):
     cur.execute(sql, vals)
     updated = cur.rowcount
 
-    # Log audit
+    # Determine action type for audit
+    auto_reverted = (editing_major and old_status == 'Reviewed' and 'Review_Status' not in data)
+    if data.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed':
+        audit_action = 'approve'
+    elif auto_reverted:
+        audit_action = 'auto_revert'
+    else:
+        audit_action = 'edit'
+
+    # Log audit with action-level event
     poi_name = old_row.get('Name_EN') or old_row.get('Name_AR') or ''
-    log_audit(conn, globalid, poi_name, reviewer, 'update', data, old_data=old_row)
+    audit_changes = dict(data)
+    if auto_reverted:
+        audit_changes['Review_Status'] = 'Draft'
+        audit_changes['draft_reason'] = 'modified'
+    log_audit(conn, globalid, poi_name, reviewer, audit_action, audit_changes,
+              old_data=old_row,
+              action_reason='auto-revert: major field edited' if auto_reverted else None)
 
     conn.commit()
+
+    # Get new version + status for frontend
+    cur.execute('SELECT "review_version", "Review_Status", "draft_reason" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    new_row = cur.fetchone()
+    new_version = new_row[0] if new_row else 0
+    new_status_val = new_row[1] if new_row else None
+    new_draft_reason = new_row[2] if new_row else ''
     cur.close()
     conn.close()
 
+    # Build enriched response
+    changed_fields = [f for f in data.keys() if f not in skip_keys]
+    response = {
+        'updated': updated,
+        'globalid': globalid,
+        'review_version': new_version,
+        'review_status': new_status_val,
+        'changed_fields': changed_fields,
+    }
+    if auto_reverted:
+        response['auto_reverted'] = True
+        response['draft_reason'] = 'modified'
+
     sync_to_arcgis('update', globalid, data)
-    return jsonify({'ok': True, 'updated': updated, 'globalid': globalid})
+    return api_success(response)
 
 # ===== API: Bulk update =====
 @api.route('/pois/bulk', methods=['PATCH'])
 def bulk_update():
     data = request.get_json()
     if not data or not isinstance(data, list):
-        return jsonify({'error': 'Expected array of {GlobalID, ...fields}'}), 400
+        return api_error('Expected array of {GlobalID, ...fields}', 400, code=VALIDATION_ERROR)
 
     conn = get_db()
     cur = conn.cursor()
     updated = 0
+    conflicts = []
 
     cur2 = conn.cursor(cursor_factory=RealDictCursor)
     for item in data:
         gid = item.get('GlobalID')
         if not gid:
             continue
+        expected_version = item.pop('_expected_version', None)
+
         # Fetch current status for major/minor field check
-        cur2.execute('SELECT "Review_Status" FROM final_delivery WHERE "GlobalID" = %s', (gid,))
+        cur2.execute('SELECT "Review_Status", "review_version" FROM final_delivery WHERE "GlobalID" = %s', (gid,))
         current = cur2.fetchone()
         if not current:
             continue
+
+        # Per-item optimistic concurrency check
+        if expected_version is not None:
+            current_version = current.get('review_version', 0) or 0
+            if int(expected_version) != int(current_version):
+                conflicts.append({'GlobalID': gid, 'current_version': current_version})
+                continue
+
         old_status = (current.get('Review_Status') or '').strip()
 
         sets = []
         vals = []
         has_major = False
+        skip_bulk = {'GlobalID', 'created_at', 'updated_at', 'delivery_date', '_reviewer', '_expected_version'}
         for field, value in item.items():
-            if field in ('GlobalID', 'created_at', 'updated_at', 'delivery_date'):
+            if field in skip_bulk:
                 continue
             sets.append(f'"{field}" = %s')
             vals.append(value)
@@ -566,12 +672,14 @@ def bulk_update():
         # Approval metadata
         if item.get('Review_Status') == 'Reviewed' and old_status != 'Reviewed':
             sets.append('"last_reviewed_at" = NOW()')
-            sets.append('"review_version" = COALESCE("review_version", 0) + 1')
             sets.append('"draft_reason" = %s')
             vals.append('')
 
         if not sets:
             continue
+
+        # Always bump version
+        sets.append('"review_version" = COALESCE("review_version", 0) + 1')
         sets.append('"updated_at" = NOW()')
         vals.append(gid)
         cur.execute(f'UPDATE final_delivery SET {", ".join(sets)} WHERE "GlobalID" = %s', vals)
@@ -581,7 +689,10 @@ def bulk_update():
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'ok': True, 'updated': updated})
+    result = {'updated': updated}
+    if conflicts:
+        result['conflicts'] = conflicts
+    return api_success(result)
 
 # ===== API: Export as CSV =====
 @api.route('/pois/export', methods=['GET'])
@@ -654,9 +765,9 @@ def delete_poi(globalid):
     cur.close()
     conn.close()
     if deleted == 0:
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
     sync_to_arcgis('delete', globalid)
-    return jsonify({'ok': True, 'deleted': deleted})
+    return api_success({'deleted': deleted})
 
 # ===== API: Archive POI =====
 @api.route('/pois/<globalid>/archive', methods=['POST'])
@@ -668,7 +779,7 @@ def archive_poi(globalid):
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
 
     body = request.get_json(silent=True) or {}
     reviewer = body.get('reviewer', 'unknown')
@@ -683,10 +794,11 @@ def archive_poi(globalid):
     poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
     log_audit(conn, globalid, poi_name, reviewer, 'archive',
               {'Review_Status': 'Archived', 'archived_reason': reason},
-              old_data={'Review_Status': row.get('Review_Status', '')})
+              old_data={'Review_Status': row.get('Review_Status', '')},
+              action_reason=reason)
     conn.commit()
     cur.close(); cur2.close(); conn.close()
-    return jsonify({'ok': True, 'status': 'Archived', 'reason': reason})
+    return api_success({'status': 'Archived', 'reason': reason})
 
 # ===== API: Reject POI (terminal state) =====
 @api.route('/pois/<globalid>/reject', methods=['POST'])
@@ -698,18 +810,18 @@ def reject_poi(globalid):
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
 
     if (row.get('Review_Status') or '') == 'Rejected':
         cur.close(); conn.close()
-        return jsonify({'error': 'Already rejected'}), 400
+        return api_error('Already rejected', 400, code=VALIDATION_ERROR)
 
     body = request.get_json(silent=True) or {}
     reviewer = body.get('reviewer', 'unknown')
     reason = body.get('reason', '')
     if not reason:
         cur.close(); conn.close()
-        return jsonify({'error': 'Rejection reason is required'}), 400
+        return api_error('Rejection reason is required', 400, code=VALIDATION_ERROR)
 
     cur2 = conn.cursor()
     cur2.execute(
@@ -720,10 +832,11 @@ def reject_poi(globalid):
     poi_name = row.get('Name_EN') or row.get('Name_AR') or ''
     log_audit(conn, globalid, poi_name, reviewer, 'reject',
               {'Review_Status': 'Rejected', 'rejected_reason': reason},
-              old_data={'Review_Status': row.get('Review_Status', '')})
+              old_data={'Review_Status': row.get('Review_Status', '')},
+              action_reason=reason)
     conn.commit()
     cur.close(); cur2.close(); conn.close()
-    return jsonify({'ok': True, 'status': 'Rejected', 'reason': reason})
+    return api_success({'status': 'Rejected', 'reason': reason})
 
 # ===== API: Flag/Unflag POI (overlay, not status change) =====
 @api.route('/pois/<globalid>/flag', methods=['PATCH'])
@@ -735,7 +848,7 @@ def flag_poi_endpoint(globalid):
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
-        return jsonify({'error': 'Not found'}), 404
+        return api_error('Not found', 404, code=NOT_FOUND)
 
     body = request.get_json(silent=True) or {}
     reviewer = body.get('reviewer', 'unknown')
@@ -756,7 +869,26 @@ def flag_poi_endpoint(globalid):
               old_data={'flagged': str(row.get('flagged', False)), 'flag_reason': row.get('flag_reason', '')})
     conn.commit()
     cur.close(); cur2.close(); conn.close()
-    return jsonify({'ok': True, 'flagged': flagged, 'flag_reason': flag_reason})
+    return api_success({'flagged': flagged, 'flag_reason': flag_reason})
+
+# ===== API: Approval Check =====
+@api.route('/pois/<globalid>/approval-check', methods=['GET'])
+def approval_check(globalid):
+    """Check if a POI can be approved. Returns blockers list."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return api_error('Not found', 404, code=NOT_FOUND)
+    blockers = get_approval_blockers(dict(row))
+    return jsonify({
+        'can_approve': len(blockers) == 0,
+        'blockers': blockers,
+        'current_status': (row.get('Review_Status') or 'Draft').strip()
+    })
 
 # ===== API: ArcGIS Token Proxy =====
 @api.route('/arcgis-token', methods=['GET'])
@@ -774,9 +906,9 @@ def arcgis_token():
         d = r.json()
         if 'token' in d:
             return jsonify({'token': d['token']})
-        return jsonify({'error': d.get('error', {}).get('message', 'Unknown error')}), 401
+        return api_error(d.get('error', {}).get('message', 'Unknown error'), 401)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR)
 
 # ===== API: ArcGIS Image Proxy (HEIC → JPEG conversion) =====
 _agol_token_cache = {'token': None, 'expires': 0}
@@ -840,11 +972,11 @@ def arcgis_search_features():
     import requests as req
     q = request.args.get('q', '').strip()
     if not q or len(q) < 2:
-        return jsonify({'error': 'Query too short (min 2 chars)'}), 400
+        return api_error('Query too short (min 2 chars)', 400, code=VALIDATION_ERROR)
 
     token = _get_agol_token()
     if not token:
-        return jsonify({'error': 'Token failed'}), 500
+        return api_error('Token failed', 500, code=INTERNAL_ERROR)
 
     base = 'https://services5.arcgis.com/pYlVm2T6SvR7ytZv/arcgis/rest/services/survey123_1ed04c063d54418b893c165594e88840_results/FeatureServer/0'
 
@@ -860,7 +992,7 @@ def arcgis_search_features():
         data = r.json()
         features = data.get('features', [])
     except Exception as e:
-        return jsonify({'error': f'Query failed: {e}'}), 500
+        return api_error(f'Query failed: {e}', 500, code=INTERNAL_ERROR)
 
     if not features:
         return jsonify({'results': []})
@@ -934,7 +1066,7 @@ def survey123_to_poi(objectid):
     import requests as req
     token = _get_agol_token()
     if not token:
-        return jsonify({'error': 'ArcGIS token failed'}), 500
+        return api_error('ArcGIS token failed', 500, code=INTERNAL_ERROR)
 
     base = 'https://services5.arcgis.com/pYlVm2T6SvR7ytZv/arcgis/rest/services/survey123_1ed04c063d54418b893c165594e88840_results/FeatureServer/0'
 
@@ -950,10 +1082,10 @@ def survey123_to_poi(objectid):
         data = r.json()
         features = data.get('features', [])
     except Exception as e:
-        return jsonify({'error': f'Query failed: {e}'}), 500
+        return api_error(f'Query failed: {e}', 500, code=INTERNAL_ERROR)
 
     if not features:
-        return jsonify({'error': 'Feature not found in Survey123'}), 404
+        return api_error('Feature not found in Survey123', 404, code=NOT_FOUND)
 
     feat = features[0]
     attrs = feat.get('attributes', {})
@@ -988,7 +1120,8 @@ def survey123_to_poi(objectid):
         existing = cur.fetchone()
         if existing:
             cur.close(); conn.close()
-            return jsonify({'error': 'POI already exists', 'GlobalID': existing['GlobalID'], 'name': name_en}), 409
+            return api_error('POI already exists', 409, code=CONFLICT,
+                           details={'GlobalID': existing['GlobalID'], 'name': name_en})
 
     # Generate new GlobalID and insert
     gid = '{' + str(uuid.uuid4()).upper() + '}'
@@ -1019,18 +1152,18 @@ def survey123_to_poi(objectid):
         conn.commit()
     except Exception as e:
         conn.rollback(); cur.close(); conn.close()
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR)
 
     cur.close(); conn.close()
     sync_to_arcgis('create', gid, poi_data)
-    return jsonify({'ok': True, 'GlobalID': gid, 'data': poi_data}), 201
+    return api_success({'GlobalID': gid, 'data': poi_data}, status=201)
 
 # ===== API: Create new POI =====
 @api.route('/pois', methods=['POST'])
 def create_poi():
     data = request.get_json()
     if not data:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     gid = data.get('GlobalID') or '{' + str(uuid.uuid4()).upper() + '}'
 
@@ -1079,13 +1212,13 @@ def create_poi():
         conn.rollback()
         cur.close()
         conn.close()
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR)
 
     cur.close()
     conn.close()
     data['GlobalID'] = gid
     sync_to_arcgis('create', gid, data)
-    return jsonify({'ok': True, 'GlobalID': gid}), 201
+    return api_success({'GlobalID': gid}, status=201)
 
 # ===== API: Survey123 Webhook =====
 SURVEY123_FIELD_MAP = {
@@ -1126,7 +1259,7 @@ def _ensure_updates_table(conn):
 def survey123_webhook():
     payload = request.get_json(silent=True)
     if not payload:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     # Survey123 webhook can send: { feature: { attributes: {...}, geometry: {...} } }
     # or direct attributes, or eventType + feature
@@ -1155,7 +1288,7 @@ def survey123_webhook():
             mapped[s_field] = str(value) if value is not None else ''
 
     if not mapped:
-        return jsonify({'error': 'No mappable fields'}), 400
+        return api_error('No mappable fields', 400, code=VALIDATION_ERROR)
 
     conn = get_db()
     _ensure_updates_table(conn)
@@ -1199,7 +1332,7 @@ def survey123_webhook():
         cur.close()
         conn.close()
         sync_to_arcgis('update', gid, mapped)
-        return jsonify({'ok': True, 'action': 'updated', 'GlobalID': gid, 'fields': len(changed)})
+        return api_success({'action': 'updated', 'GlobalID': gid, 'fields': len(changed)})
     else:
         # INSERT new POI
         gid = '{' + str(uuid.uuid4()).upper() + '}'
@@ -1228,12 +1361,12 @@ def survey123_webhook():
             conn.rollback()
             cur.close()
             conn.close()
-            return jsonify({'error': str(e)}), 500
+            return api_error(str(e), 500, code=INTERNAL_ERROR)
 
         cur.close()
         conn.close()
         sync_to_arcgis('create', gid, mapped)
-        return jsonify({'ok': True, 'action': 'created', 'GlobalID': gid}), 201
+        return api_success({'action': 'created', 'GlobalID': gid}, status=201)
 
 # ===== API: Recent updates (for notifications) =====
 @api.route('/pois/recent-updates', methods=['GET'])
@@ -1268,7 +1401,7 @@ def ack_updates():
     count = cur.rowcount
     cur.close()
     conn.close()
-    return jsonify({'ok': True, 'acknowledged': count})
+    return api_success({'acknowledged': count})
 
 # ===== API: Category Migration =====
 _CAT_MAP = {
@@ -1399,7 +1532,7 @@ def migrate_categories():
             'summary': [{'mapping': k, 'count': v} for k, v in summary.most_common()],
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR)
 
 
 # ===== API: POI Validation (21-Error QA Pipeline) =====
@@ -1434,7 +1567,7 @@ def validate_poi():
     """Full QA validation for a single POI record. Returns corrected record + QA report."""
     poi = request.get_json()
     if not poi:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     corrected = dict(poi)
     blockers = []
@@ -1645,11 +1778,11 @@ def validate_poi():
 def reviewer_login():
     data = request.get_json()
     if not data:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
     if not username or not password:
-        return jsonify({'error': 'Username and password required'}), 400
+        return api_error('Username and password required', 400, code=VALIDATION_ERROR)
 
     conn = get_db()
     ensure_tables()
@@ -1660,10 +1793,9 @@ def reviewer_login():
     conn.close()
 
     if not user or user['password_hash'] != _hash_pw(password):
-        return jsonify({'error': 'Invalid credentials'}), 401
+        return api_error('Invalid credentials', 401)
 
-    return jsonify({
-        'ok': True,
+    return api_success({
         'username': user['username'],
         'display_name': user['display_name'],
         'role': user['role']
@@ -1839,7 +1971,7 @@ def import_drafts():
     """Bulk import draft POIs from CSV file."""
     ensure_tables()
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided. Use multipart form with key "file".'}), 400
+        return api_error('No file provided. Use multipart form with key "file".', 400, code=VALIDATION_ERROR)
 
     file = request.files['file']
     batch_id = str(uuid.uuid4())[:8]
@@ -1927,7 +2059,7 @@ def import_drafts():
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'ok': True, 'batch_id': batch_id, 'imported': imported, 'skipped': skipped, 'errors': errs[:50]})
+    return api_success({'batch_id': batch_id, 'imported': imported, 'skipped': skipped, 'errors': errs[:50]})
 
 
 @api.route('/drafts', methods=['GET'])
@@ -1996,7 +2128,7 @@ def update_draft(globalid):
     ensure_tables()
     data = request.get_json()
     if not data:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     conn = get_db()
     cur = conn.cursor()
@@ -2012,7 +2144,7 @@ def update_draft(globalid):
 
     if not sets:
         cur.close(); conn.close()
-        return jsonify({'error': 'No valid fields'}), 400
+        return api_error('No valid fields', 400, code=VALIDATION_ERROR)
 
     sets.append('"updated_at" = NOW()')
     vals.append(globalid)
@@ -2022,7 +2154,7 @@ def update_draft(globalid):
     conn.commit()
     cur.close()
     conn.close()
-    return jsonify({'ok': True, 'updated': updated})
+    return api_success({'updated': updated})
 
 
 @api.route('/drafts/<globalid>/confirm', methods=['POST'])
@@ -2039,10 +2171,10 @@ def confirm_draft(globalid):
     draft = cur.fetchone()
     if not draft:
         cur.close(); conn.close()
-        return jsonify({'error': 'Draft not found'}), 404
+        return api_error('Draft not found', 404, code=NOT_FOUND)
     if draft['Draft_Status'] != 'pending':
         cur.close(); conn.close()
-        return jsonify({'error': f'Draft already {draft["Draft_Status"]}'}), 400
+        return api_error(f'Draft already {draft["Draft_Status"]}', 400, code=VALIDATION_ERROR)
 
     # Duplicate name check
     name_en = (draft.get('Name_EN') or '').strip()
@@ -2051,7 +2183,7 @@ def confirm_draft(globalid):
         dup = cur.fetchone()
         if dup:
             cur.close(); conn.close()
-            return jsonify({'error': f'Duplicate: Name_EN "{name_en}" already exists (GID={dup["GlobalID"]}). Use ?force=true to override.'}), 409
+            return api_error(f'Duplicate: Name_EN "{name_en}" already exists (GID={dup["GlobalID"]}). Use ?force=true to override.', 409, code=CONFLICT)
 
     prod_gid = '{' + str(uuid.uuid4()).upper() + '}'
 
@@ -2098,7 +2230,7 @@ def confirm_draft(globalid):
         cur.execute(f'INSERT INTO final_delivery ({", ".join(cols)}) VALUES ({", ".join(placeholders)})', vals)
     except Exception as e:
         conn.rollback(); cur.close(); conn.close()
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500, code=INTERNAL_ERROR)
 
     reviewer = body.get('reviewer', 'unknown')
     cur.execute(
@@ -2111,7 +2243,7 @@ def confirm_draft(globalid):
     conn.close()
 
     sync_to_arcgis('create', prod_gid, dict(draft))
-    return jsonify({'ok': True, 'draft_gid': globalid, 'production_gid': prod_gid})
+    return api_success({'draft_gid': globalid, 'production_gid': prod_gid})
 
 
 @api.route('/drafts/<globalid>/reject', methods=['POST'])
@@ -2132,8 +2264,8 @@ def reject_draft(globalid):
     cur.close()
     conn.close()
     if not updated:
-        return jsonify({'error': 'Draft not found or already processed'}), 404
-    return jsonify({'ok': True})
+        return api_error('Draft not found or already processed', 404, code=NOT_FOUND)
+    return api_success()
 
 
 @api.route('/drafts/bulk-action', methods=['POST'])
@@ -2142,14 +2274,14 @@ def bulk_draft_action():
     ensure_tables()
     body = request.get_json()
     if not body:
-        return jsonify({'error': 'No data'}), 400
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
     action = body.get('action')
     gids = body.get('globalIds', [])
     reviewer = body.get('reviewer', 'unknown')
 
     if action not in ('confirm', 'reject') or not gids:
-        return jsonify({'error': 'Need action (confirm/reject) and globalIds array'}), 400
+        return api_error('Need action (confirm/reject) and globalIds array', 400, code=VALIDATION_ERROR)
 
     if action == 'reject':
         conn = get_db()
@@ -2166,7 +2298,7 @@ def bulk_draft_action():
         count = cur.rowcount
         cur.close()
         conn.close()
-        return jsonify({'ok': True, 'processed': len(gids)})
+        return api_success({'processed': len(gids)})
 
     # Bulk confirm — process each one
     results = []
@@ -2210,7 +2342,7 @@ def bulk_draft_action():
         except Exception as e:
             results.append({'gid': gid, 'ok': False, 'error': str(e)[:100]})
 
-    return jsonify({'ok': True, 'results': results})
+    return api_success({'results': results})
 
 
 @api.route('/drafts/stats', methods=['GET'])
