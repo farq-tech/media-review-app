@@ -218,6 +218,16 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; colo
 .tag.yes { background: #e8f5e9; color: #2e7d32; }
 .tag.no { background: #fafafa; color: #999; }
 
+/* Inline quick-action buttons in List & Table views */
+.qa-btn { width:22px; height:22px; border:none; border-radius:4px; cursor:pointer; font-size:12px; padding:0; margin:0 1px; opacity:0.6; transition:opacity 0.15s; vertical-align:middle; }
+.qa-btn:hover { opacity:1; }
+.qa-approve { background:#e8f5e9; color:#2e7d32; }
+.qa-reject { background:#ffebee; color:#c62828; }
+.qa-archive { background:#f5f5f5; color:#757575; }
+.qa-detail { background:#e3f2fd; color:#1565c0; }
+tr:hover .qa-btn { opacity:1; }
+.row-actions { white-space:nowrap; padding:2px 4px !important; }
+
 /* Detail actions */
 .detail-actions {
   padding: 10px 20px; background: #f5f5f5; border-top: 1px solid #eee;
@@ -542,12 +552,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     <div class="header-group">
       <button onclick="runValidation()" style="background:rgba(255,200,0,0.3);border-color:#ffca28;">Validate All</button>
       <button onclick="runDuplicateDetection()" style="background:rgba(255,100,100,0.3);border-color:#ef5350;">Detect Dups</button>
+      <button onclick="approveAllAndPush()" style="background:rgba(46,125,50,0.15);border-color:#2e7d32;color:#2e7d32;font-weight:600;">Approve All & Push</button>
     </div>
     <div class="header-group">
       <div class="export-dropdown-wrap">
         <button onclick="toggleExportMenu()">Export ▾</button>
         <div class="export-dropdown" id="exportMenu">
           <button onclick="exportCSV(); toggleExportMenu()">Export All CSV</button>
+          <button onclick="exportNaverDelivery(); toggleExportMenu()" style="color:#1565c0;font-weight:600;">Naver Delivery Package</button>
           <button onclick="exportEdits(); toggleExportMenu()">Export Edits Only</button>
           <button onclick="clearEdits(); toggleExportMenu()" style="color:#c62828;">Clear All Edits</button>
         </div>
@@ -612,9 +624,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   <div class="filter-summary" id="filterSummary" style="display:none;"></div>
   <div class="data-tabs" id="dataTabs">
     <div class="data-tab active" data-tab="all">All</div>
+    <div class="data-tab" data-tab="queue">My Queue</div>
     <div class="data-tab" data-tab="flagged">Flagged</div>
     <div class="data-tab" data-tab="lowqa">Low QA</div>
     <div class="data-tab" data-tab="reviewed">Reviewed</div>
+    <div class="data-tab" data-tab="rejected">Rejected</div>
+    <div class="data-tab" data-tab="archived">Archived</div>
     <div class="data-tab" data-tab="errors">With Errors</div>
   </div>
   <!-- Bulk Action Bar -->
@@ -1986,13 +2001,15 @@ const GATE_RULES = {
 // Field-level validators (non-GATE, MAJOR/MINOR severity)
 const FIELD_VALIDATORS = {
   Name_AR: [
-    { id:'NAR1', check: v => !v || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name' },
+    { id:'NAR1', check: v => !v || v==='UNAVAILABLE' || !/[a-zA-Z]{3,}/.test(v), severity:'MAJOR', msg:'Arabic name contains English text', fix:'Remove English from Arabic name' },
     { id:'NAR2', check: v => !v || v.length <= 100, severity:'MINOR', msg:'Arabic name too long (>100 chars)', fix:'Shorten name' },
+    { id:'NAR3', check: v => !v || v==='UNAVAILABLE' || /[\u0600-\u06FF]/.test(v), severity:'MAJOR', msg:'Arabic name has no Arabic characters (wrong language?)', fix:'Replace with actual Arabic name' },
   ],
   Name_EN: [
-    { id:'NEN1', check: v => !v || !/[\u0600-\u06FF]{2,}/.test(v), severity:'MAJOR', msg:'English name contains Arabic text', fix:'Remove Arabic from English name' },
+    { id:'NEN1', check: v => !v || v==='UNAVAILABLE' || !/[\u0600-\u06FF]{2,}/.test(v), severity:'MAJOR', msg:'English name contains Arabic text', fix:'Remove Arabic from English name' },
     { id:'NEN2', check: v => !v || !/\d{7,}/.test(v), severity:'MAJOR', msg:'Name contains phone number', fix:'Remove phone from name' },
     { id:'NEN3', check: v => !v || v.length <= 100, severity:'MINOR', msg:'English name too long', fix:'Shorten name' },
+    { id:'NEN4', check: v => !v || v==='UNAVAILABLE' || /[a-zA-Z]/.test(v), severity:'MAJOR', msg:'English name has no Latin characters (wrong language?)', fix:'Replace with actual English name' },
   ],
   Email: [
     { id:'EM1', check: v => !v || v==='UNAVAILABLE' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), severity:'MAJOR', msg:'Invalid email format', fix:'Correct email (user@domain.com)' },
@@ -2031,7 +2048,7 @@ function validatePoi(poi) {
   const errors = [];
   // GATE rules (all BLOCKER)
   for (const [ruleId, rule] of Object.entries(GATE_RULES)) {
-    const val = poi[rule.field] || '';
+    const val = String(poi[rule.field] ?? '');
     const pass = rule.check.length > 1 ? rule.check(val, poi) : rule.check(val);
     if (!pass) {
       errors.push({ column: rule.field, rule_id: ruleId, severity: 'BLOCKER', fail_reason: rule.msg, suggested_fix: rule.fix });
@@ -2039,7 +2056,7 @@ function validatePoi(poi) {
   }
   // Field validators (MAJOR/MINOR)
   for (const [field, rules] of Object.entries(FIELD_VALIDATORS)) {
-    const val = poi[field] || '';
+    const val = String(poi[field] ?? '');
     for (const rule of rules) {
       if (!rule.check(val)) {
         errors.push({ column: field, rule_id: rule.id, severity: rule.severity, fail_reason: rule.msg, suggested_fix: rule.fix });
@@ -2083,6 +2100,44 @@ function validatePoi(poi) {
   if (sub && !l3) {
     errors.push({ column: 'Category_Level_3', rule_id: 'CAT4', severity: 'MINOR', fail_reason: 'Category Level 3 is empty', suggested_fix: 'Add L3 classification' });
   }
+  // Cross-field: Category-Name mismatch detection
+  // Keywords in the name that strongly suggest a specific category
+  if (cat) {
+    const nameEn = (poi.Name_EN || '').toLowerCase();
+    const nameAr = (poi.Name_AR || '');
+    const CATEGORY_KEYWORDS = {
+      'Restaurants': { en: /\b(restaurant|مطعم|grill|steakhouse|bistro|diner|eatery|kitchen|burger|pizza|shawarma|kabab|kebab|broast|grills)\b/i, ar: /مطعم|مطاعم|مشويات|شاورما|كباب|برجر|بيتزا|بروست/ },
+      'Coffee Shops': { en: /\b(coffee|cafe|café|coffeehouse|espresso|latte|roastery)\b/i, ar: /قهوة|مقهى|كوفي|كافيه/ },
+      'Food and Beverages': { en: /\b(bakery|juice|ice cream|dessert|sweets|candy|chocolate|pastry|confectionery|snack|buffet|catering)\b/i, ar: /حلويات|عصير|آيس كريم|مخبز|حلوى|شوكولاتة/ },
+      'Health and Medical': { en: /\b(hospital|clinic|pharmacy|medical|dental|doctor|health|lab|laboratory|optician)\b/i, ar: /مستشفى|عيادة|صيدلية|طبي|طب|أسنان|مختبر/ },
+      'Education': { en: /\b(school|university|college|academy|institute|kindergarten|nursery|training center)\b/i, ar: /مدرسة|جامعة|كلية|أكاديمية|معهد|روضة|حضانة/ },
+      'Hotels and Lodging': { en: /\b(hotel|resort|motel|inn|lodge|hostel|suites|furnished apartments)\b/i, ar: /فندق|منتجع|شقق مفروشة|نُزل/ },
+      'Beauty and Spa': { en: /\b(salon|barbershop|barber|spa|beauty|nail|hair|massage)\b/i, ar: /صالون|حلاق|سبا|تجميل|أظافر|مساج/ },
+      'Automotive Services': { en: /\b(car wash|auto|mechanic|tire|garage|oil change|car repair|car dealer)\b/i, ar: /غسيل سيارات|ورشة|إطارات|ميكانيكي|تصليح سيارات/ },
+      'Shopping': { en: /\b(mall|supermarket|grocery|store|shop|market|hypermarket|retail)\b/i, ar: /مول|سوبرماركت|بقالة|متجر|سوق|هايبرماركت/ },
+      'Banks': { en: /\b(bank|atm|exchange|money transfer)\b/i, ar: /بنك|صراف|تحويل أموال/ },
+      'Mosques': { en: /\b(mosque|masjid|prayer|jami)\b/i, ar: /مسجد|جامع|مصلى/ },
+      'Government': { en: /\b(ministry|municipality|embassy|consulate|police|civil defense|court)\b/i, ar: /وزارة|بلدية|سفارة|قنصلية|شرطة|دفاع مدني|محكمة/ },
+      'Entertainment': { en: /\b(cinema|theater|park|playground|amusement|game|bowling|karting|zoo)\b/i, ar: /سينما|مسرح|حديقة|ملاهي|ألعاب|بولينج/ },
+      'Sports and Fitness': { en: /\b(gym|fitness|stadium|swimming|pool|sport|martial arts|yoga)\b/i, ar: /نادي رياضي|صالة رياضية|استاد|سباحة|مسبح|رياضة/ },
+    };
+    let suggestedCat = null;
+    for (const [kwCat, patterns] of Object.entries(CATEGORY_KEYWORDS)) {
+      if (kwCat === cat) continue; // skip if already matching
+      const enMatch = nameEn && patterns.en.test(nameEn);
+      const arMatch = nameAr && patterns.ar.test(nameAr);
+      if (enMatch || arMatch) {
+        suggestedCat = kwCat;
+        break;
+      }
+    }
+    if (suggestedCat) {
+      errors.push({ column: 'Category', rule_id: 'CNM1', severity: 'MAJOR',
+        fail_reason: `Name suggests "${suggestedCat}" but category is "${cat}"`,
+        suggested_fix: `Verify category — consider changing to "${suggestedCat}"` });
+    }
+  }
+
   // Cross-field: Dropdown fields should be valid values
   DROPDOWN_FIELDS.forEach(field => {
     const val = (poi[field] || '').trim();
@@ -2093,20 +2148,66 @@ function validatePoi(poi) {
   return errors;
 }
 
+// ===== QA SCORE CALCULATOR =====
+// Computes a 0-100 quality score per POI based on field completeness + validation penalties
+// Score = completeness base (0-70) + error-free bonus (0-30) - validation penalties
+
+const QA_SCORED_FIELDS = [
+  // {field, weight} — total weights should sum to ~70 for the completeness portion
+  {f:'Name_EN', w:6}, {f:'Name_AR', w:6}, {f:'Category', w:5}, {f:'Subcategory', w:3},
+  {f:'Latitude', w:5}, {f:'Longitude', w:5}, {f:'District_EN', w:3}, {f:'District_AR', w:3},
+  {f:'Exterior_Photo_URL', w:5}, {f:'Interior_Photo_URL', w:5}, {f:'Video_URL', w:4},
+  {f:'Working_Hours', w:4}, {f:'Working_Days', w:3}, {f:'Phone_Number', w:3},
+  {f:'Building_Number', w:2}, {f:'Floor_Number', w:1}, {f:'Website', w:2},
+  {f:'Commercial_License', w:2}, {f:'Menu_Photo_URL', w:2}, {f:'Email', w:1},
+]; // total = 70
+
+function calcQaScore(poi, errors) {
+  // Part 1: Field completeness (0-70 points)
+  let completeness = 0;
+  QA_SCORED_FIELDS.forEach(({f, w}) => {
+    const v = (poi[f] || '').trim();
+    if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE' && v !== 'N/A') {
+      completeness += w;
+    } else if (v === 'UNAVAILABLE') {
+      completeness += w * 0.3; // partial credit — data was checked but unavailable
+    }
+  });
+
+  // Part 2: Validation bonus (start at 30, subtract per error)
+  let validationScore = 30;
+  const blockers = errors.filter(e => e.severity === 'BLOCKER').length;
+  const majors   = errors.filter(e => e.severity === 'MAJOR').length;
+  const minors   = errors.filter(e => e.severity === 'MINOR').length;
+  validationScore -= blockers * 5;
+  validationScore -= majors * 3;
+  validationScore -= minors * 1;
+  validationScore = Math.max(0, validationScore);
+
+  return Math.max(0, Math.min(100, Math.round(completeness + validationScore)));
+}
+
 // Validate all POIs, returns Map<GlobalID, errors[]>
 let validationResults = new Map();
 function validateAllPois() {
   validationResults.clear();
+  validatePoi._catTree = null; // reset category tree cache
   let totalBlockers = 0, totalMajor = 0, totalMinor = 0;
   allPois.forEach(poi => {
-    const errs = validatePoi(poi);
-    if (errs.length > 0) {
-      validationResults.set(poi.GlobalID, errs);
-      errs.forEach(e => {
-        if (e.severity === 'BLOCKER') totalBlockers++;
-        else if (e.severity === 'MAJOR') totalMajor++;
-        else totalMinor++;
-      });
+    try {
+      const errs = validatePoi(poi);
+      poi.QA_Score = String(calcQaScore(poi, errs));
+      if (errs.length > 0) {
+        validationResults.set(poi.GlobalID, errs);
+        errs.forEach(e => {
+          if (e.severity === 'BLOCKER') totalBlockers++;
+          else if (e.severity === 'MAJOR') totalMajor++;
+          else totalMinor++;
+        });
+      }
+    } catch(e) {
+      console.error('Validation error for', poi.GlobalID, e);
+      poi.QA_Score = String(calcQaScore(poi, []));
     }
   });
   return { totalBlockers, totalMajor, totalMinor, poisWithErrors: validationResults.size };
@@ -2467,30 +2568,68 @@ async function init() {
 
 // Save single field to DB
 async function saveToDb(gid, field, value) {
-  if (!dbMode) return;
+  if (!dbMode) return true;
+  const poi = allPois.find(p => p.GlobalID === gid);
   const payload = { [field]: value };
   if (currentReviewer) payload._reviewer = currentReviewer.username;
+  if (poi && poi.review_version != null) payload._expected_version = poi.review_version;
   try {
-    await fetch('/api/pois/' + encodeURIComponent(gid), {
+    const resp = await fetch('/api/pois/' + encodeURIComponent(gid), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-  } catch(e) { console.warn('DB save failed:', e); }
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) {
+      if (resp.status === 409) { toast('Conflict: POI was modified by another user. Reload to see latest.', 'error'); return false; }
+      toast('Save failed: ' + (d.error || 'Unknown error'), 'error');
+      return false;
+    }
+    if (poi) {
+      if (d.review_version != null) poi.review_version = d.review_version;
+      // Handle auto-revert: backend reverted Reviewed → Draft on major field edit
+      if (d.auto_reverted && d.review_status) {
+        poi.Review_Status = d.review_status;
+        poi.draft_reason = d.draft_reason || 'modified';
+        if (edits[gid]) edits[gid].Review_Status = d.review_status;
+        renderTable(); buildStats();
+        toast('Edited approved POI — auto-reverted to Draft. Re-approve when ready.', 'error');
+      }
+    }
+    return true;
+  } catch(e) { toast('Save failed: ' + e.message, 'error'); return false; }
 }
 
 // Save multiple fields to DB
 async function saveFieldsToDb(gid, fields) {
-  if (!dbMode) return;
+  if (!dbMode) return true;
+  const poi = allPois.find(p => p.GlobalID === gid);
   const payload = {...fields};
   if (currentReviewer) payload._reviewer = currentReviewer.username;
+  if (poi && poi.review_version != null) payload._expected_version = poi.review_version;
   try {
-    await fetch('/api/pois/' + encodeURIComponent(gid), {
+    const resp = await fetch('/api/pois/' + encodeURIComponent(gid), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-  } catch(e) { console.warn('DB save failed:', e); }
+    const d = await resp.json();
+    if (!resp.ok || !d.ok) {
+      if (resp.status === 409) { toast('Conflict: POI was modified by another user. Reload to see latest.', 'error'); return false; }
+      toast('Save failed: ' + (d.error || 'Unknown error'), 'error');
+      return false;
+    }
+    if (poi) {
+      if (d.review_version != null) poi.review_version = d.review_version;
+      if (d.auto_reverted && d.review_status) {
+        poi.Review_Status = d.review_status;
+        poi.draft_reason = d.draft_reason || 'modified';
+        renderTable(); buildStats();
+        toast('Edited approved POI — reverted to Draft. Re-approve when ready.', 'error');
+      }
+    }
+    return true;
+  } catch(e) { toast('Save failed: ' + e.message, 'error'); return false; }
 }
 
 function parseCSVLine(line) {
@@ -2516,7 +2655,6 @@ function buildUI() {
   const distAR = [...new Set(allPois.map(p => p.District_AR).filter(Boolean))].sort();
   FIELD_DROPDOWN_OPTIONS.District_EN = [...distEN, 'UNAVAILABLE'];
   FIELD_DROPDOWN_OPTIONS.District_AR = [...distAR, 'UNAVAILABLE'];
-  validateAllPois();
   buildStats(); buildCategoryFilter(); applyFilters();
   document.getElementById('headerInfo').textContent = `${allPois.length} POIs | ${Object.keys(edits).length} edited`;
   document.querySelectorAll('.data-tab').forEach(t => {
@@ -2527,7 +2665,11 @@ function buildUI() {
   });
 }
 
-function buildStats() {
+function buildStats(skipValidation) {
+  // Recalculate QA scores from current validation state
+  if (!skipValidation) {
+    try { validateAllPois(); } catch(e) { console.error('validateAllPois error:', e); }
+  }
   const t = allPois.length;
   const fl = allPois.filter(p => p.flagged).length;
   const rv = allPois.filter(p => p.Review_Status === 'Reviewed').length;
@@ -2568,7 +2710,7 @@ function buildStats() {
 
 function runValidation() {
   const { totalBlockers, totalMajor, totalMinor, poisWithErrors } = validateAllPois();
-  buildStats();
+  buildStats(true);
   applyFilters();
   // Re-render excel view if active
   if (document.getElementById('excelView').classList.contains('active')) renderExcelTable();
@@ -2643,6 +2785,9 @@ function applyFilters() {
     if (currentDataTab === 'flagged' && !p.flagged) return false;
     if (currentDataTab === 'lowqa' && (parseInt(p.QA_Score)||0) >= 60) return false;
     if (currentDataTab === 'reviewed' && p.Review_Status !== 'Reviewed') return false;
+    if (currentDataTab === 'rejected' && p.Review_Status !== 'Rejected') return false;
+    if (currentDataTab === 'archived' && p.Review_Status !== 'Archived') return false;
+    if (currentDataTab === 'queue' && (p.Review_Status === 'Reviewed' || p.Review_Status === 'Rejected' || p.Review_Status === 'Archived')) return false;
     if (currentDataTab === 'errors' && !validationResults.has(p.GlobalID)) return false;
     if (search) { const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase(); if (!s.includes(search)) return false; }
     if (cat && p.Category !== cat) return false;
@@ -2663,7 +2808,7 @@ function applyFilters() {
   // Build filter summary chips
   const fs = document.getElementById('filterSummary');
   const chips = [];
-  const tabLabels = {all:'All',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',errors:'Errors'};
+  const tabLabels = {all:'All',queue:'My Queue',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',rejected:'Rejected',archived:'Archived',errors:'Errors'};
   if (currentDataTab && currentDataTab !== 'all') chips.push({label:tabLabels[currentDataTab]||currentDataTab, clear:()=>{document.querySelector('.data-tab.active')?.click(); setDataTab('all');}});
   if (search) chips.push({label:'Search: "'+search+'"', clear:()=>{document.getElementById('searchInput').value=''; applyFilters();}});
   if (cat) chips.push({label:'Category: '+cat, clear:()=>{document.getElementById('filterCategory').value=''; applyFilters();}});
@@ -2699,9 +2844,14 @@ function renderTable() {
     return;
   }
 
-  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Phone</th><th>Ext</th><th>Int</th><th>QA</th><th>Status</th><th>Flag</th><th>Valid</th></tr></thead><tbody>`;
+  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Phone</th><th>Ext</th><th>Int</th><th>QA</th><th>Status</th><th>Flag</th><th>Valid</th><th>Actions</th></tr></thead><tbody>`;
   rows.forEach((p, i) => {
     const idx = start + i;
+    // Always compute QA score live from field data
+    try {
+      const _errs = validationResults.get(p.GlobalID) || [];
+      p.QA_Score = String(calcQaScore(p, _errs));
+    } catch(e) { /* QA calc fallback */ }
     const qs = parseInt(p.QA_Score)||0;
     const qc = qs>=80?'qa-high':qs>=60?'qa-mid':'qa-low';
     const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Rejected'?'status-rejected':p.Review_Status==='Archived'?'status-pending':p.flagged?'status-flagged':'status-pending';
@@ -2719,7 +2869,8 @@ function renderTable() {
       <td>${photoLink(p.Exterior_Photo_URL)}</td><td>${photoLink(p.Interior_Photo_URL)}</td>
       <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
       <td title="${esc(p.flag_reason||p.Review_Flag||'')}">${esc(trunc(p.flag_reason||p.Review_Flag,20))}</td>
-      <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td></tr>`;
+      <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td>
+      <td class="row-actions" onclick="event.stopPropagation()"><button onclick="quickApprove('${p.GlobalID}')" title="Approve" class="qa-btn qa-approve">&check;</button><button onclick="quickReject('${p.GlobalID}')" title="Reject" class="qa-btn qa-reject">&times;</button><button onclick="quickArchive('${p.GlobalID}')" title="Archive" class="qa-btn qa-archive">&#9644;</button><button onclick="openDetail(${idx})" title="Open detail" class="qa-btn qa-detail">&ctdot;</button></td></tr>`;
   });
   h += '</tbody></table>';
   document.getElementById('tableContainer').innerHTML = h;
@@ -2791,6 +2942,62 @@ function bulkApprove() {
   toast('Approved ' + count + ' POIs');
 }
 
+async function approveAllAndPush() {
+  if (!dbMode) { toast('Not connected to DB', 'error'); return; }
+  const pending = allPois.filter(p => {
+    const st = (p.Review_Status || '').trim();
+    return st !== 'Reviewed' && st !== 'Rejected' && st !== 'Archived';
+  });
+  if (!pending.length) { toast('No POIs to approve — all already reviewed/rejected/archived'); return; }
+  if (!confirm(`Approve ${pending.length} POIs and push to database?\n\n(Rejected: ${allPois.filter(p=>(p.Review_Status||'').trim()==='Rejected').length} and Archived: ${allPois.filter(p=>(p.Review_Status||'').trim()==='Archived').length} will be skipped)`)) return;
+
+  const reviewer = currentReviewer?.username || 'dashboard';
+  const BATCH = 50;
+  let total = 0, errors = 0;
+  toast(`Approving ${pending.length} POIs...`);
+
+  for (let i = 0; i < pending.length; i += BATCH) {
+    const batch = pending.slice(i, i + BATCH).map(poi => ({
+      GlobalID: poi.GlobalID,
+      Review_Status: 'Reviewed',
+      flagged: false,
+      flag_reason: '',
+      draft_reason: '',
+      Review_Flag: '',
+      _reviewer: reviewer,
+      _expected_version: poi.review_version || 0,
+    }));
+    try {
+      const resp = await fetch('/api/pois/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch)
+      });
+      const d = await resp.json();
+      if (resp.ok && d.data) {
+        total += d.data.updated || 0;
+        if (d.data.conflicts) errors += d.data.conflicts.length;
+      } else { errors += batch.length; }
+    } catch(e) { errors += batch.length; }
+    // Update progress
+    const pct = Math.round((i + batch.length) / pending.length * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent = `Approving... ${pct}%`;
+  }
+
+  // Update local state
+  pending.forEach(poi => {
+    poi.Review_Status = 'Reviewed';
+    poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = ''; poi.Review_Flag = '';
+    poi.review_version = (parseInt(poi.review_version) || 0) + 1;
+    poi.last_reviewed_at = new Date().toISOString();
+    poi.last_reviewed_by = reviewer;
+  });
+
+  buildStats(); renderTable();
+  toast(`Approved & pushed: ${total} POIs to DB` + (errors ? ` (${errors} errors)` : ''));
+}
+
 function bulkFlag() {
   const flag = document.getElementById('bulkFlagSelect').value;
   if (!flag) { toast('Select a flag first'); return; }
@@ -2828,7 +3035,7 @@ function renderExcelTable() {
   if (isFullMode && ps > 25) ps = 25;
 
   let data = allPois;
-  if (search) data = data.filter(p => ALL_FIELDS.some(f => (p[f]||'').toLowerCase().includes(search)));
+  if (search) data = data.filter(p => ALL_FIELDS.some(f => String(p[f]??'').toLowerCase().includes(search)));
 
   // Sort
   if (excelSortCol) {
@@ -2852,7 +3059,7 @@ function renderExcelTable() {
     const sc = excelSortCol===col ? (excelSortAsc?'sorted-asc':'sorted-desc') : '';
     h += `<th class="${sc}" onclick="excelSort('${col}')">${col.replace(/_/g,' ')}</th>`;
   });
-  h += '</tr></thead><tbody>';
+  h += '<th>Actions</th></tr></thead><tbody>';
 
   pageData.forEach((p, i) => {
     const rowNum = excelPage * ps + i + 1;
@@ -2860,7 +3067,7 @@ function renderExcelTable() {
     h += `<tr class="${isEdited}"><td class="row-num" onclick="openDetailByGid('${p.GlobalID}')" title="Click to open detail">${rowNum}</td>`;
     const poiEdits = edits[p.GlobalID];
     cols.forEach(col => {
-      const val = p[col] || '';
+      const val = String(p[col] ?? '');
       const isRO = READONLY_FIELDS.has(col);
       const isAr = col === 'Name_AR' || col === 'District_AR';
       const hasEdit = poiEdits && poiEdits[col] !== undefined;
@@ -2904,7 +3111,7 @@ function renderExcelTable() {
         h += `<td style="${cellBg}"${cellTitle}><input class="excel-cell${changed}${isAr?' ar':''}" value="${esc(val)}" data-gid="${p.GlobalID}" data-field="${col}" onchange="excelEdit(this)"${isAr?' dir="rtl"':''}></td>`;
       }
     });
-    h += '</tr>';
+    h += `<td class="row-actions"><button onclick="quickApprove('${p.GlobalID}')" title="Approve" class="qa-btn qa-approve">&check;</button><button onclick="quickReject('${p.GlobalID}')" title="Reject" class="qa-btn qa-reject">&times;</button><button onclick="quickArchive('${p.GlobalID}')" title="Archive" class="qa-btn qa-archive">&#9644;</button><button onclick="openDetailByGid('${p.GlobalID}')" title="Open detail" class="qa-btn qa-detail">&ctdot;</button></td></tr>`;
   });
 
   h += '</tbody></table>';
@@ -2982,10 +3189,81 @@ function renderDetailBody() {
   const poi = filteredPois[currentPoiIdx];
   if (!poi) return;
   const body = document.getElementById('detailBody');
+  let bannerHtml = _renderStatusBanner(poi);
   let mapHtml = renderMiniMap(poi);
-  if (detailViewMode === 'excel') body.innerHTML = mapHtml + renderDetailExcel(poi);
-  else if (detailViewMode === 'photos') body.innerHTML = mapHtml + renderDetailPhotos(poi);
-  else body.innerHTML = mapHtml + renderDetailCards(poi);
+  if (detailViewMode === 'excel') body.innerHTML = bannerHtml + mapHtml + renderDetailExcel(poi);
+  else if (detailViewMode === 'photos') body.innerHTML = bannerHtml + mapHtml + renderDetailPhotos(poi);
+  else body.innerHTML = bannerHtml + mapHtml + renderDetailCards(poi);
+  _checkApprovalBlockers(poi);
+
+  // Lock rejected POIs — disable all editing controls
+  const isRejected = (poi.Review_Status || '').trim() === 'Rejected';
+  const actionsDiv = document.querySelector('.detail-actions');
+  if (isRejected && actionsDiv) {
+    actionsDiv.querySelectorAll('input, select, button').forEach(el => {
+      el.disabled = true; el.style.opacity = '0.4'; el.style.cursor = 'not-allowed';
+    });
+  }
+  if (isRejected) {
+    body.querySelectorAll('input, select, textarea').forEach(el => {
+      el.disabled = true; el.style.opacity = '0.6';
+    });
+  }
+}
+
+function _renderStatusBanner(poi) {
+  const status = (poi.Review_Status || 'Draft').trim();
+  const flagged = poi.flagged;
+  let html = '';
+  if (status === 'Rejected') {
+    let rejectInfo = '<b>REJECTED</b>';
+    if (poi.rejected_reason) rejectInfo += ' — ' + esc(poi.rejected_reason);
+    if (poi.last_reviewed_by) rejectInfo += ' <span style="opacity:0.8;font-size:11px;">by ' + esc(poi.last_reviewed_by) + '</span>';
+    if (poi.last_reviewed_at) rejectInfo += ' <span style="opacity:0.7;font-size:10px;">(' + new Date(poi.last_reviewed_at).toLocaleDateString() + ')</span>';
+    rejectInfo += '<br><span style="font-size:11px;opacity:0.9;">This record is locked. No edits allowed.</span>';
+    html += '<div style="background:#c62828;color:#fff;padding:10px 16px;font-size:13px;border-radius:6px;margin:8px 20px 0;">' +
+      rejectInfo + '</div>';
+  } else if (status === 'Archived') {
+    html += '<div style="background:#f57f17;color:#fff;padding:8px 16px;font-size:13px;border-radius:6px;margin:8px 20px 0;">' +
+      '<b>ARCHIVED</b>' + (poi.archived_reason ? ' — ' + esc(poi.archived_reason) : '') +
+      ' <span style="cursor:pointer;text-decoration:underline;margin-left:12px;" onclick="restoreFromArchive()">Restore to Draft</span></div>';
+  }
+  if (flagged) {
+    html += '<div style="background:#e65100;color:#fff;padding:6px 16px;font-size:12px;border-radius:6px;margin:6px 20px 0;">' +
+      'FLAGGED: ' + esc(poi.flag_reason || 'No reason') + '</div>';
+  }
+  // Blocker placeholder (filled async)
+  html += '<div id="blockerBanner" style="display:none;background:#fff3e0;color:#e65100;padding:6px 16px;font-size:12px;border-radius:6px;margin:6px 20px 0;"></div>';
+  return html;
+}
+
+function _checkApprovalBlockers(poi) {
+  if (!dbMode || !poi.GlobalID) return;
+  fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/approval-check')
+    .then(r => r.json())
+    .then(d => {
+      const banner = document.getElementById('blockerBanner');
+      if (!banner) return;
+      if (d.blockers && d.blockers.length > 0) {
+        banner.innerHTML = '<b>Cannot approve:</b> ' + d.blockers.map(b => esc(b)).join('; ');
+        banner.style.display = 'block';
+        // Disable approve buttons
+        document.querySelectorAll('[onclick*="approvePoi"],[onclick*="approveAndNext"]').forEach(btn => {
+          btn.style.opacity = '0.5'; btn.title = d.blockers.join(', ');
+        });
+      }
+    }).catch(() => {});
+}
+
+function restoreFromArchive() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  poi.Review_Status = 'Draft'; poi.archived_reason = ''; poi.draft_reason = 'restored';
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
+  Object.assign(edits[poi.GlobalID], {Review_Status: 'Draft', archived_reason: '', draft_reason: 'restored'});
+  saveEditsToStorage();
+  saveFieldsToDb(poi.GlobalID, {Review_Status: 'Draft', archived_reason: '', draft_reason: 'restored'});
+  renderDetailBody(); renderTable(); buildStats();
+  toast('Restored to Draft');
 }
 
 function renderMiniMap(poi) {
@@ -3064,7 +3342,7 @@ function renderDetailExcel(poi) {
     h += `<tr class="section-row" onclick="toggleSection(this,${si})"><td colspan="3">${section.title}${issueHtml}<span class="section-toggle">${toggleIcon}</span></td></tr>`;
     section.fields.forEach(field => {
       n++;
-      const val = poi[field] || '';
+      const val = String(poi[field] ?? '');
       const isRO = READONLY_FIELDS.has(field);
       const isAr = field === 'Name_AR' || field === 'District_AR';
       const hasEdit = edits[poi.GlobalID] && edits[poi.GlobalID][field] !== undefined;
@@ -3097,6 +3375,8 @@ function renderDetailExcel(poi) {
         h += `<td class="field-value"${vStyle}>${renderCompanyStatusDropdown(val, poi.GlobalID, hasEdit, 'detailEdit')}</td>`;
       } else if (FIELD_DROPDOWN_OPTIONS[field]) {
         h += `<td class="field-value"${vStyle}>${renderFieldDropdown(val, poi.GlobalID, field, FIELD_DROPDOWN_OPTIONS[field], hasEdit, 'detailEdit')}</td>`;
+      } else if (['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs'].includes(field)) {
+        h += `<td class="field-value"${vStyle}>${renderExcelMediaCell(poi, field, val, hasEdit)}</td>`;
       } else if (field === 'Amenities' || field.includes('URL')) {
         h += `<td class="field-value"${vStyle}><textarea rows="${val.length > 100 ? 3 : 1}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl"':''}>${esc(val)}</textarea></td>`;
       } else if (field === 'Review_Flag') {
@@ -3186,9 +3466,13 @@ function renderDetailPhotos(poi) {
     urls.forEach((url,i) => {
       const num = urls.length > 1 ? ` ${i+1}/${urls.length}` : '';
       const uid = 'ph-' + Math.random().toString(36).substr(2,6);
+      const rmKey = '_rm_' + Math.random().toString(36).substr(2,8);
+      _pendingRemove[rmKey] = {gid: poi.GlobalID, field: k, url: url};
+      const rmBtn = '<span onclick="_doRemoveMedia(\'' + rmKey + '\')" style="position:absolute;top:4px;right:4px;background:rgba(198,40,40,0.85);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;z-index:2;line-height:1;" title="Remove (duplicate)">&times;</span>';
       if (k==='Video_URL') {
         const vSrc = url.includes('arcgis.com') ? arcVid(url) : url;
-        h += `<div class="photo-card">
+        h += `<div class="photo-card" style="position:relative;">
+          ${rmBtn}
           <video controls preload="metadata" style="width:100%;height:180px;background:#000;" src="${esc(vSrc)}"></video>
           <div class="photo-label">${l}${num} <a href="${esc(url)}" target="_blank" style="float:right;font-size:9px;">Open</a></div>
         </div>`;
@@ -3197,7 +3481,8 @@ function renderDetailPhotos(poi) {
         const cached = _imgCache[url];
         const thumbSrc = cached || (url.includes('arcgis.com') ? arcThumb(url, 400) : url);
         const fullSrc = url.includes('arcgis.com') ? arcImg(url) : url;
-        h += `<div class="photo-card">
+        h += `<div class="photo-card" style="position:relative;">
+          ${rmBtn}
           <div id="${uid}" style="width:100%;height:180px;overflow:hidden;background:#f0f0f0;display:flex;align-items:center;justify-content:center;">
             <img src="${esc(thumbSrc)}" loading="eager" style="width:100%;height:180px;object-fit:cover;cursor:pointer;"
               onclick="openLightbox('${esc(fullSrc)}')"
@@ -3214,6 +3499,66 @@ function renderDetailPhotos(poi) {
   // Preload next POI images
   if (currentPoiIdx + 1 < filteredPois.length) preloadPoiImages(currentPoiIdx + 1);
   return h;
+}
+
+const _pendingRemove = {};
+async function _doRemoveMedia(key) {
+  const d = _pendingRemove[key]; if (!d) return;
+  if (!confirm('Remove this media? (mark as duplicate)')) return;
+  await removeMediaUrl(d.gid, d.field, d.url);
+}
+
+async function removeMediaUrl(gid, field, urlToRemove) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const original = poi[field] || '';
+  const current = original.split(',').map(u => u.trim()).filter(Boolean);
+  const updated = current.filter(u => u !== urlToRemove);
+  const newValue = updated.length ? updated.join(', ') : 'UNAVAILABLE';
+  poi[field] = newValue;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid][field] = newValue;
+  saveEditsToStorage();
+  const ok = await saveToDb(gid, field, newValue);
+  if (!ok) { poi[field] = original; edits[gid][field] = original; saveEditsToStorage(); }
+  renderDetailBody(); renderTable();
+  toast(ok ? 'Media removed' : 'Remove failed — reverted');
+}
+
+function renderExcelMediaCell(poi, field, val, hasEdit) {
+  if (!val || val === 'UNAVAILABLE' || val === 'UNAPPLICABLE') {
+    return `<span style="color:#bbb;font-size:11px;">N/A</span>`;
+  }
+  const urls = val.split(',').map(u => u.trim()).filter(Boolean);
+  if (!urls.length) return `<span style="color:#bbb;font-size:11px;">N/A</span>`;
+  const isVideo = field === 'Video_URL';
+  let out = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;">`;
+  urls.forEach((url, i) => {
+    const rmKey = '_rm_' + Math.random().toString(36).substr(2, 8);
+    _pendingRemove[rmKey] = { gid: poi.GlobalID, field: field, url: url };
+    const rmBtn = `<span onclick="_doRemoveMedia('${rmKey}')" style="position:absolute;top:2px;right:2px;background:rgba(198,40,40,0.85);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;z-index:2;line-height:1;" title="Remove">&times;</span>`;
+    if (isVideo) {
+      const vSrc = url.includes('arcgis.com') ? arcVid(url) : url;
+      out += `<div style="position:relative;width:120px;flex-shrink:0;">
+        ${rmBtn}
+        <video controls preload="metadata" style="width:120px;height:80px;background:#000;border-radius:4px;" src="${esc(vSrc)}"></video>
+      </div>`;
+    } else {
+      const uid = 'exm-' + Math.random().toString(36).substr(2, 6);
+      const cached = _imgCache[url];
+      const thumbSrc = cached || (url.includes('arcgis.com') ? arcThumb(url, 200) : url);
+      const fullSrc = url.includes('arcgis.com') ? arcImg(url) : url;
+      out += `<div style="position:relative;width:100px;flex-shrink:0;" id="${uid}">
+        ${rmBtn}
+        <img src="${esc(thumbSrc)}" loading="lazy" style="width:100px;height:70px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #e0e0e0;"
+          onclick="openLightbox('${esc(fullSrc)}')"
+          onload="_imgCache['${esc(url)}']='${esc(thumbSrc)}'"
+          onerror="tryHeicConvert('${uid}','${esc(url)}',this)">
+      </div>`;
+    }
+  });
+  out += `</div>`;
+  return out;
 }
 
 function tryHeicConvert(containerId, url, imgEl) {
@@ -3244,13 +3589,13 @@ function renderDetailCards(poi) {
   DETAIL_SECTIONS.forEach(section => {
     h += `<div class="detail-section"><h3>${section.title}</h3><div class="attr-grid">`;
     section.fields.forEach(field => {
-      const val = poi[field]||'';
+      const val = String(poi[field] ?? '');
       const isRO = READONLY_FIELDS.has(field);
       const isAr = field==='Name_AR'||field==='District_AR';
       const label = field.replace(/_/g,' ');
       const isFull = val.length > 50 || field.includes('URL') || field==='Working_Hours' || field==='Amenities';
       h += `<div class="attr-item${isFull?' full':''}"><div class="attr-label">${label}</div>`;
-      if (val==='UNAVAILABLE'||val==='UNAPPLICABLE'||!val) h += `<div class="attr-value unavailable">${val||'empty'}</div>`;
+      if (val==='UNAVAILABLE'||val==='UNAPPLICABLE'||val==='false'||!val) h += `<div class="attr-value unavailable">${val||'empty'}</div>`;
       else if (val.startsWith('http')) h += `<div class="attr-value"><a href="${esc(val)}" target="_blank">${esc(trunc(val,60))}</a></div>`;
       else h += `<div class="attr-value"${isAr?' style="direction:rtl;text-align:right;font-size:14px;"':''}>${esc(val)}</div>`;
       h += '</div>';
@@ -3279,41 +3624,61 @@ function flagPoi() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ flagged: true, flag_reason: flag, reviewer: currentReviewer?.username || 'dashboard' })
-    }).catch(e => console.warn('Flag failed:', e));
+    }).then(r => r.json()).then(d => {
+      if (!d.ok) toast('Flag save failed: ' + (d.error || 'Unknown error'), 'error');
+    }).catch(e => toast('Flag save failed: ' + e.message, 'error'));
     if (note) saveFieldsToDb(poi.GlobalID, { Review_Notes: note });
   }
   renderTable(); buildStats(); renderDetailBody();
   toast('Flagged: ' + trunc(poi.Name_EN,30) + ' (status: ' + (poi.Review_Status||'Draft') + ')');
 }
 
-function _doApprove() {
+async function _doApprove() {
   const poi = filteredPois[currentPoiIdx]; if (!poi) return null;
+
+  // Block approval if POI has unresolved flags
+  if (poi.flagged) {
+    toast('Cannot approve — unresolved flag: ' + (poi.flag_reason || poi.Review_Flag || 'unknown') + '. Unflag first.', 'error');
+    return null;
+  }
+
   const prevStatus = poi.Review_Status || 'Draft';
-  const prevFlagged = poi.flagged;
-  const prevFlagReason = poi.flag_reason;
+  const prevNotes = poi.Review_Notes || '';
   const note = document.getElementById('noteInput').value;
-  poi.Review_Status='Reviewed'; poi.Review_Notes=note; poi.Review_Flag='';
-  poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = '';
-  poi.review_version = (parseInt(poi.review_version) || 0) + 1;
+
+  // Optimistically update in-memory (flags stay untouched)
+  poi.Review_Status='Reviewed'; poi.Review_Notes=note;
+  poi.draft_reason = '';
   poi.last_reviewed_by = currentReviewer?.username || 'dashboard';
   poi.last_reviewed_at = new Date().toISOString();
   if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
-  const fields = {Review_Status:'Reviewed',Review_Notes:note,Review_Flag:'',flagged:false,flag_reason:'',draft_reason:''};
+  const fields = {Review_Status:'Reviewed', Review_Notes:note, draft_reason:''};
   Object.assign(edits[poi.GlobalID], fields);
-  saveEditsToStorage(); saveFieldsToDb(poi.GlobalID, fields);
+  saveEditsToStorage();
+
+  // Save to DB and revert on failure
+  const ok = await saveFieldsToDb(poi.GlobalID, fields);
+  if (!ok) {
+    poi.Review_Status = prevStatus; poi.Review_Notes = prevNotes;
+    Object.assign(edits[poi.GlobalID], {Review_Status: prevStatus, Review_Notes: prevNotes});
+    saveEditsToStorage();
+    renderTable(); buildStats();
+    return null;
+  }
+
   renderTable(); buildStats();
-  return { gid: poi.GlobalID, name: poi.Name_EN, version: poi.review_version, prevStatus, prevFlagged, prevFlagReason };
+  return { gid: poi.GlobalID, name: poi.Name_EN, version: poi.review_version, prevStatus };
 }
 
-function approvePoi() {
-  const result = _doApprove();
+async function approvePoi() {
+  const result = await _doApprove();
   if (!result) return;
   renderDetailBody();
-  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus, result.prevFlagged, result.prevFlagReason);
+  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus);
 }
 
-function approveAndNext() {
-  const result = _doApprove();
+async function approveAndNext() {
+  const result = await _doApprove();
   if (!result) return;
   if (currentPoiIdx + 1 < filteredPois.length) {
     openDetail(currentPoiIdx + 1);
@@ -3321,7 +3686,7 @@ function approveAndNext() {
     renderDetailBody();
     toast('End of queue — all filtered POIs reviewed!');
   }
-  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus, result.prevFlagged, result.prevFlagReason);
+  undoToast('Approved: ' + trunc(result.name, 30), result.gid, result.prevStatus);
 }
 
 function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
@@ -3403,6 +3768,84 @@ async function rejectPoi() {
   toast('Rejected: ' + trunc(name, 30) + ' (' + reason + ')');
 }
 
+// ===== QUICK ACTIONS (inline from List/Table views) =====
+async function quickApprove(gid) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || gid;
+  const prevStatus = poi.Review_Status || 'Draft';
+  if (prevStatus === 'Rejected') { toast('Cannot approve — POI is rejected (terminal)', 'error'); return; }
+  if (prevStatus === 'Reviewed') { toast('Already reviewed'); return; }
+  if (poi.flagged) { toast('Cannot approve — unresolved flag: ' + (poi.flag_reason || 'unknown') + '. Unflag first.', 'error'); return; }
+
+  poi.Review_Status = 'Reviewed'; poi.draft_reason = '';
+  poi.last_reviewed_by = currentReviewer?.username || 'dashboard';
+  poi.last_reviewed_at = new Date().toISOString();
+  if (!edits[gid]) edits[gid] = {};
+  const fields = { Review_Status: 'Reviewed', draft_reason: '' };
+  Object.assign(edits[gid], fields);
+  saveEditsToStorage();
+
+  const ok = await saveFieldsToDb(gid, fields);
+  if (!ok) {
+    poi.Review_Status = prevStatus;
+    edits[gid].Review_Status = prevStatus;
+    saveEditsToStorage();
+  }
+  renderTable(); renderExcelTable(); buildStats();
+  toast(ok ? 'Approved: ' + trunc(name, 30) : 'Approve failed — reverted', ok ? undefined : 'error');
+}
+
+async function quickReject(gid) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || gid;
+  if ((poi.Review_Status || '') === 'Rejected') { toast('Already rejected'); return; }
+  const reason = prompt('Reject "' + name + '"?\nCodes: DUP, IMG-NOT-POI, NAME-MISM, NON-COM, CAT-MISM, MISS-FLD, IMG-QUAL, FAKE');
+  if (!reason) return;
+  if (dbMode) {
+    try {
+      const resp = await fetch('/api/pois/' + encodeURIComponent(gid) + '/reject', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: currentReviewer?.username || 'dashboard', reason })
+      });
+      const r = await resp.json();
+      if (!r.ok) { toast('Reject failed: ' + (r.error || 'Unknown'), 'error'); return; }
+    } catch(e) { toast('Reject failed: ' + e.message, 'error'); return; }
+  }
+  poi.Review_Status = 'Rejected'; poi.rejected_reason = reason;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid].Review_Status = 'Rejected'; edits[gid].rejected_reason = reason;
+  saveEditsToStorage();
+  renderTable(); renderExcelTable(); buildStats();
+  toast('Rejected: ' + trunc(name, 30) + ' (' + reason + ')');
+}
+
+async function quickArchive(gid) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const name = poi.Name_EN || poi.Name_AR || gid;
+  if ((poi.Review_Status || '') === 'Rejected') { toast('Cannot archive — POI is rejected (terminal)', 'error'); return; }
+  const reason = prompt('Archive "' + name + '"?\nReason: closed, inactive, out_of_scope, duplicate');
+  if (!reason) return;
+  if (dbMode) {
+    try {
+      const resp = await fetch('/api/pois/' + encodeURIComponent(gid) + '/archive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewer: currentReviewer?.username || 'dashboard', reason })
+      });
+      const r = await resp.json();
+      if (!r.ok) { toast('Archive failed: ' + (r.error || 'Unknown'), 'error'); return; }
+    } catch(e) { toast('Archive failed: ' + e.message, 'error'); return; }
+  }
+  poi.Review_Status = 'Archived'; poi.archived_reason = reason;
+  if (!edits[gid]) edits[gid] = {};
+  edits[gid].Review_Status = 'Archived'; edits[gid].archived_reason = reason;
+  saveEditsToStorage();
+  renderTable(); renderExcelTable(); buildStats();
+  toast('Archived: ' + trunc(name, 30) + ' (' + reason + ')');
+}
+
 function saveEditsToStorage() {
   localStorage.setItem('poi_review_edits', JSON.stringify(edits));
   document.getElementById('headerInfo').textContent = `${allPois.length} POIs | ${Object.keys(edits).length} edited`;
@@ -3449,18 +3892,198 @@ function download(csv, fn) {
   a.download = fn; a.click();
 }
 
+// ===== NAVER INNOVATION DELIVERY EXPORT =====
+function exportNaverDelivery() {
+  if (!allPois.length) return;
+  validateAllPois();
+
+  // Reverse column mapping: DB name → Naver CSV name
+  const DB_TO_NAVER = {
+    'GlobalID':'GlobalID','Name_AR':'Name (AR)','Name_EN':'Name (EN)','Legal_Name':'Legal Name',
+    'Exterior_Photo_URL':'exterior photo URL','Interior_Photo_URL':'interior photo URL',
+    'Menu_Photo_URL':'menu photo URL','Video_URL':'video','Category':'Category',
+    'Subcategory':'Secondary Category','Category_Level_3':'Category Level 3',
+    'Company_Status':'Company Status','Latitude':'Latitude','Longitude':'Longitude',
+    'Google_Map_URL':'Google Map URL','Building_Number':'Building Number','Floor_Number':'Floor Number',
+    'Entrance_Location':'Entrance Location','Phone_Number':'Phone Number','Email':'Email',
+    'Website':'Website','Social_Media':'Social Media','Working_Days':'Working Days',
+    'Working_Hours':'Working Hours for Each Day','Break_Time':'Break Time for Each Day',
+    'Holidays':'Holidays','Menu_Barcode_URL':'Menu Barcode URL','Language':'Language',
+    'Cuisine':'Cuisine','Payment_Methods':'Accepted Payment Methods',
+    'Commercial_License':'Commercial License Number','Menu':'Menu','Drive_Thru':'Drive Thru',
+    'Dine_In':'Dine In','Only_Delivery':'Only Delivery','Reservation':'Reservation',
+    'Require_Ticket':'Require Ticket','Order_from_Car':'Order from Car',
+    'Pickup_Point':'Pickup Point Exists','WiFi':'WiFi','Music':'Music',
+    'Valet_Parking':'Valet Parking','Has_Parking_Lot':'Has Parking Lot',
+    'Wheelchair_Accessible':'Is Wheelchair Accessible','Family_Seating':'Has Family Seating',
+    'Waiting_Area':'Has a Waiting Area','Private_Dining':'Has Separate Rooms for Dining',
+    'Smoking_Area':'Has Smoking Area','Children_Area':'Children Area','Shisha':'Shisha',
+    'Live_Sports':'Live Sport Broadcasting','Is_Landmark':'Is Landmark','Is_Trending':'Is Trending',
+    'Large_Groups':'Large Groups Can Be Seated','Women_Prayer_Room':'Has Women-Only Prayer Room',
+    'Iftar_Tent':'Provides Iftar Tent','Iftar_Menu':'Offers Iftar Menu',
+    'Open_Suhoor':'Is Open During Suhoor','Free_Entry':'Is Free Entry',
+    'Num_Additional_Photos':'Number of Additional Photos','District_AR':'District (AR)',
+    'District_EN':'District (EN)','Source':'Agent',
+  };
+
+  // Extra columns added by review process
+  const REVIEW_COLS = {
+    'Review_Status':'Review Status','QA_Score':'QA Score','Review_Flag':'Review Flag',
+    'Review_Notes':'Review Notes',
+  };
+
+  // Deliverable POIs: exclude Rejected and Archived
+  const deliverable = allPois.filter(p => {
+    const st = (p.Review_Status || '').trim();
+    return st !== 'Rejected' && st !== 'Archived';
+  });
+
+  const rejected = allPois.filter(p => (p.Review_Status||'').trim() === 'Rejected');
+  const archived = allPois.filter(p => (p.Review_Status||'').trim() === 'Archived');
+
+  // Build CSV with Naver column names + review columns
+  const dbFields = Object.keys(DB_TO_NAVER);
+  const reviewFields = Object.keys(REVIEW_COLS);
+  const allHeaders = [...dbFields.map(f => DB_TO_NAVER[f]), ...reviewFields.map(f => REVIEW_COLS[f])];
+
+  let csv = allHeaders.map(ce).join(',') + '\n';
+  deliverable.forEach(p => {
+    const row = [
+      ...dbFields.map(f => ce(p[f] || '')),
+      ...reviewFields.map(f => ce(p[f] || '')),
+    ];
+    csv += row.join(',') + '\n';
+  });
+
+  const today = new Date().toISOString().slice(0,10);
+  download(csv, `Naver_POI_Delivery_${today}.csv`);
+
+  // Generate QA Summary Report
+  const reviewed = deliverable.filter(p => p.Review_Status === 'Reviewed').length;
+  const draft = deliverable.filter(p => !p.Review_Status || p.Review_Status === 'Draft').length;
+  const flagged = deliverable.filter(p => p.flagged).length;
+  const avgQa = deliverable.length ? Math.round(deliverable.reduce((s,p) => s + (parseInt(p.QA_Score)||0), 0) / deliverable.length) : 0;
+  const qaHigh = deliverable.filter(p => parseInt(p.QA_Score) >= 80).length;
+  const qaMid = deliverable.filter(p => { const q = parseInt(p.QA_Score)||0; return q >= 60 && q < 80; }).length;
+  const qaLow = deliverable.filter(p => parseInt(p.QA_Score) < 60).length;
+
+  // Validation stats
+  let totalBlockers = 0, totalMajors = 0, totalMinors = 0;
+  deliverable.forEach(p => {
+    const errs = validationResults.get(p.GlobalID) || [];
+    errs.forEach(e => {
+      if (e.severity === 'BLOCKER') totalBlockers++;
+      else if (e.severity === 'MAJOR') totalMajors++;
+      else totalMinors++;
+    });
+  });
+
+  // Invoice value
+  const grandTotal = deliverable.reduce((s, p) => s + calcPoiValue(p, 'all').total, 0);
+
+  // Category breakdown
+  const catCounts = {};
+  deliverable.forEach(p => { const c = p.Category || 'Unknown'; catCounts[c] = (catCounts[c]||0) + 1; });
+  const catRows = Object.entries(catCounts).sort((a,b) => b[1]-a[1]);
+
+  const reportHtml = `<!DOCTYPE html><html><head><title>Naver Innovation — POI Delivery Report</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;padding:40px;color:#333;max-width:900px;margin:0 auto;font-size:13px;}
+  h1{font-size:22px;color:#1565c0;margin:0 0 4px;} h2{font-size:15px;color:#333;margin:24px 0 8px;border-bottom:2px solid #1565c0;padding-bottom:4px;}
+  .meta{color:#666;font-size:12px;margin-bottom:24px;}
+  .cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+  .card{flex:1;min-width:120px;border:1px solid #e0e0e0;border-radius:8px;padding:12px;text-align:center;}
+  .card .lbl{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;}
+  .card .val{font-size:22px;font-weight:700;margin-top:2px;}
+  .green{color:#2e7d32;} .orange{color:#e65100;} .red{color:#c62828;} .blue{color:#1565c0;}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+  th{background:#f5f5f5;padding:7px 10px;text-align:left;border-bottom:2px solid #ddd;font-size:11px;}
+  td{padding:6px 10px;border-bottom:1px solid #eee;}
+  .right{text-align:right;} .center{text-align:center;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;}
+  .badge-ok{background:#e8f5e9;color:#2e7d32;} .badge-warn{background:#fff3e0;color:#e65100;} .badge-err{background:#ffebee;color:#c62828;}
+  .footer{margin-top:30px;padding-top:12px;border-top:1px solid #ddd;font-size:10px;color:#999;}
+  @media print{body{padding:15px;} @page{margin:12mm;size:A4;}}
+</style></head><body>
+<h1>Naver Innovation — POI Data Delivery Report</h1>
+<div class="meta">Date: ${today} | Prepared by: POI Review Dashboard | Project: Neom POI Collection</div>
+
+<h2>Delivery Summary</h2>
+<div class="cards">
+  <div class="card"><div class="lbl">Total Delivered</div><div class="val blue">${deliverable.length}</div></div>
+  <div class="card"><div class="lbl">Reviewed</div><div class="val green">${reviewed}</div></div>
+  <div class="card"><div class="lbl">Draft</div><div class="val orange">${draft}</div></div>
+  <div class="card"><div class="lbl">Rejected</div><div class="val red">${rejected.length}</div></div>
+  <div class="card"><div class="lbl">Archived</div><div class="val">${archived.length}</div></div>
+  <div class="card"><div class="lbl">Flagged</div><div class="val ${flagged?'red':''}">${flagged}</div></div>
+</div>
+
+<h2>Quality Score</h2>
+<div class="cards">
+  <div class="card"><div class="lbl">Average QA</div><div class="val ${avgQa>=80?'green':avgQa>=60?'orange':'red'}">${avgQa}</div></div>
+  <div class="card"><div class="lbl">QA >= 80</div><div class="val green">${qaHigh}</div></div>
+  <div class="card"><div class="lbl">QA 60-79</div><div class="val orange">${qaMid}</div></div>
+  <div class="card"><div class="lbl">QA < 60</div><div class="val red">${qaLow}</div></div>
+</div>
+
+<h2>Validation Errors</h2>
+<div class="cards">
+  <div class="card"><div class="lbl">POIs with Errors</div><div class="val ${validationResults.size?'red':''}">${validationResults.size}</div></div>
+  <div class="card"><div class="lbl">Blockers</div><div class="val red">${totalBlockers}</div></div>
+  <div class="card"><div class="lbl">Major</div><div class="val orange">${totalMajors}</div></div>
+  <div class="card"><div class="lbl">Minor</div><div class="val">${totalMinors}</div></div>
+</div>
+
+<h2>Invoice Value</h2>
+<div class="cards">
+  <div class="card"><div class="lbl">Total Value</div><div class="val green">${grandTotal.toLocaleString('en',{minimumFractionDigits:2})} SAR</div></div>
+  <div class="card"><div class="lbl">Budget</div><div class="val">${INVOICE_BUDGET.toLocaleString()} SAR</div></div>
+  <div class="card"><div class="lbl">Remaining</div><div class="val ${(INVOICE_BUDGET-grandTotal)>=0?'green':'red'}">${(INVOICE_BUDGET-grandTotal).toLocaleString('en',{minimumFractionDigits:2})} SAR</div></div>
+  <div class="card"><div class="lbl">Avg / POI</div><div class="val">${(deliverable.length?(grandTotal/deliverable.length):0).toFixed(2)} SAR</div></div>
+</div>
+
+<h2>Category Breakdown</h2>
+<table><thead><tr><th>Category</th><th class="center">Count</th><th class="center">%</th></tr></thead><tbody>
+${catRows.map(([c, n]) => `<tr><td>${esc(c)}</td><td class="center">${n}</td><td class="center">${(n/deliverable.length*100).toFixed(1)}%</td></tr>`).join('')}
+<tr style="background:#f5f5f5;font-weight:700;"><td>Total</td><td class="center">${deliverable.length}</td><td class="center">100%</td></tr>
+</tbody></table>
+
+${rejected.length ? `<h2>Rejected POIs (${rejected.length})</h2>
+<table><thead><tr><th>#</th><th>GlobalID</th><th>Name (EN)</th><th>Category</th><th>Reason</th></tr></thead><tbody>
+${rejected.slice(0,50).map((p,i) => `<tr><td>${i+1}</td><td>${esc(p.GlobalID)}</td><td>${esc(p.Name_EN)}</td><td>${esc(p.Category)}</td><td>${esc(p.rejected_reason||p.Review_Notes||'')}</td></tr>`).join('')}
+</tbody></table>` : ''}
+
+${archived.length ? `<h2>Archived POIs (${archived.length})</h2>
+<table><thead><tr><th>#</th><th>GlobalID</th><th>Name (EN)</th><th>Reason</th></tr></thead><tbody>
+${archived.slice(0,50).map((p,i) => `<tr><td>${i+1}</td><td>${esc(p.GlobalID)}</td><td>${esc(p.Name_EN)}</td><td>${esc(p.archived_reason||'')}</td></tr>`).join('')}
+</tbody></table>` : ''}
+
+<div class="footer">
+  Naver Innovation POI Delivery Report | Generated ${today} | ${deliverable.length} POIs delivered | ${rejected.length} rejected | ${archived.length} archived
+</div>
+</body></html>`;
+
+  // Open report in new tab
+  const win = window.open('', '_blank');
+  win.document.write(reportHtml);
+  win.document.close();
+
+  toast(`Naver Delivery: ${deliverable.length} POIs exported (${rejected.length} rejected, ${archived.length} archived excluded)`);
+}
+
 // ===== UTILS =====
 function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : ''; }
 function ce(v) { if (v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; }
 function trunc(s,n) { return s&&s.length>n ? s.substring(0,n)+'...' : (s||''); }
 function openLightbox(url) { document.getElementById('lightboxImg').src=url; document.getElementById('lightbox').classList.add('active'); }
 let _toastTimer = null;
-function toast(msg) {
+function toast(msg, type) {
   const t=document.getElementById('toast');
   t.innerHTML = esc(msg);
+  t.style.background = type === 'error' ? '#c62828' : '#333';
   t.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(()=>t.classList.remove('show'),2500);
+  _toastTimer = setTimeout(()=>t.classList.remove('show'), type === 'error' ? 4000 : 2500);
 }
 
 // ── Undo System ──
@@ -4834,7 +5457,10 @@ const MAX_PER_POI = PRICING_MAP.reduce((s, g) => s + g.price, 0); // 52.20
 function isFieldFilled(val) {
   if (val === null || val === undefined || val === '') return false;
   const v = String(val).trim().toUpperCase();
-  if (v === '' || v === 'UNAVAILABLE' || v === 'UNAPPLICABLE' || v === 'N/A' || v === 'NA') return false;
+  if (v === '') return false;
+  // UNAVAILABLE counts as filled (work was done to determine it)
+  // UNAPPLICABLE does NOT count (field doesn't apply to this POI)
+  if (v === 'UNAPPLICABLE' || v === 'N/A' || v === 'NA') return false;
   return true;
 }
 
