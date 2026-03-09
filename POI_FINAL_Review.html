@@ -526,6 +526,22 @@ body.density-compact .data-tab { padding:4px 10px; font-size:11px; }
 .filter-chip .remove { cursor:pointer; font-size:14px; color:#1565c0; opacity:0.6; }
 .filter-chip .remove:hover { opacity:1; }
 
+/* ── Timeline ── */
+.tl-event { position:relative; padding:0 0 16px 28px; border-left:2px solid #e0e0e0; margin-left:10px; }
+.tl-event:last-child { border-left-color:transparent; }
+.tl-dot { position:absolute; left:-7px; top:2px; width:12px; height:12px; border-radius:50%; border:2px solid #fff; }
+.tl-dot.edit { background:#1565c0; } .tl-dot.approve { background:#2e7d32; } .tl-dot.reject { background:#c62828; }
+.tl-dot.archive { background:#757575; } .tl-dot.flag { background:#e65100; } .tl-dot.unflag { background:#ff9800; }
+.tl-dot.auto_fix { background:#7b1fa2; } .tl-dot.create { background:#00695c; } .tl-dot.auto_revert { background:#ad1457; }
+.tl-head { font-size:12px; font-weight:600; color:#333; margin-bottom:2px; }
+.tl-meta { font-size:10px; color:#999; margin-bottom:4px; }
+.tl-changes { font-size:11px; color:#555; }
+.tl-change { margin:2px 0; padding:2px 8px; background:#f5f5f5; border-radius:3px; display:flex; gap:6px; align-items:baseline; }
+.tl-field { font-weight:600; color:#1a237e; min-width:120px; }
+.tl-old { color:#c62828; text-decoration:line-through; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tl-new { color:#2e7d32; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tl-arrow { color:#999; }
+
 /* ── Accessibility ── */
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid #1a237e; outline-offset: 2px;
@@ -592,18 +608,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 <div class="view-tabs" id="viewTabs">
   <div class="tab-group">
     <span class="tab-group-label">REVIEW</span>
-    <div class="view-tab active" onclick="switchView('card')">List</div>
-    <div class="view-tab" onclick="switchView('excel')">Table</div>
+    <div class="view-tab active" onclick="switchView('card')">Review Queue</div>
+    <div class="view-tab" onclick="switchView('excel')">Bulk Edit</div>
     <div class="view-tab" onclick="switchView('arcgis')">Media <span class="badge" id="arcgisBadge" style="display:none;background:#22c55e;">0</span></div>
   </div>
   <div class="tab-group">
     <span class="tab-group-label">ANALYSIS</span>
     <div class="view-tab" onclick="switchView('map')">Map</div>
-    <div class="view-tab" onclick="switchView('duplicates')">Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
-    <div class="view-tab" onclick="switchView('audit')">Audit</div>
+    <div class="view-tab" onclick="switchView('duplicates')">Possible Duplicates <span class="badge" id="dupBadge" style="display:none;">0</span></div>
+    <div class="view-tab" onclick="switchView('audit')">Activity</div>
   </div>
   <div class="tab-group">
     <span class="tab-group-label">OPERATIONS</span>
+    <div class="view-tab" onclick="switchView('dashboard')">Dashboard</div>
     <div class="view-tab" onclick="switchView('drafts')">Drafts <span class="badge" id="draftsBadge" style="display:none;background:#9c27b0;">0</span></div>
     <div class="view-tab" onclick="switchView('invoice')">Invoice <span class="badge" id="invoiceBadge" style="display:none;background:#f59e0b;">0</span></div>
   </div>
@@ -804,6 +821,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   </div>
 </div>
 
+<!-- DASHBOARD VIEW -->
+<div id="dashboardView" class="view-content">
+  <div id="dashboardContent" style="padding:20px 30px;"></div>
+</div>
+
 <!-- DRAFTS VIEW -->
 <div id="draftsView" class="view-content">
   <div class="drafts-toolbar">
@@ -868,6 +890,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     <button class="active" onclick="setDetailView(this,'excel')">Excel Table</button>
     <button onclick="setDetailView(this,'cards')">Card View</button>
     <button onclick="setDetailView(this,'photos')">Photos</button>
+    <button onclick="setDetailView(this,'timeline')">Timeline</button>
   </div>
   <div class="detail-body" id="detailBody"></div>
   <div class="detail-actions">
@@ -958,6 +981,43 @@ const DRAFT_PAGE_SIZE = 50;
 let selectedDrafts = new Set();
 let draftStatsCache = null;
 let draftCurrentIdx = -1;
+
+// ===== SESSION MEMORY =====
+function _sessionKey() {
+  return 'poi_session_' + (currentReviewer ? currentReviewer.username : 'guest');
+}
+function saveSessionState() {
+  try {
+    const state = {
+      dataTab: currentDataTab,
+      search: document.getElementById('searchInput')?.value || '',
+      category: document.getElementById('filterCategory')?.value || '',
+      severity: document.getElementById('filterSeverity')?.value || '',
+      status: document.getElementById('filterStatus')?.value || '',
+      viewMode: document.querySelector('.view-tab.active')?.textContent?.trim() || 'Review Queue',
+      detailViewMode: detailViewMode
+    };
+    localStorage.setItem(_sessionKey(), JSON.stringify(state));
+  } catch(e) {}
+}
+function restoreSessionState() {
+  try {
+    const raw = localStorage.getItem(_sessionKey());
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (state.dataTab) {
+      currentDataTab = state.dataTab;
+      document.querySelectorAll('.data-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === state.dataTab);
+      });
+    }
+    if (state.search) document.getElementById('searchInput').value = state.search;
+    if (state.category) document.getElementById('filterCategory').value = state.category;
+    if (state.severity) document.getElementById('filterSeverity').value = state.severity;
+    if (state.status) document.getElementById('filterStatus').value = state.status;
+    if (state.detailViewMode) detailViewMode = state.detailViewMode;
+  } catch(e) {}
+}
 
 const REVIEW_FLAGS = [
   "Business name is incorrect","Image and Text's Phone Number is Different",
@@ -2229,29 +2289,44 @@ const QA_SCORED_FIELDS = [
   {f:'Website', w:2}, {f:'Commercial_License', w:1}, {f:'Menu_Photo_URL', w:1}, {f:'Email', w:1},
 ]; // total = 70
 
-function calcQaScore(poi, errors) {
-  // Part 1: Field completeness (0-70 points)
-  let completeness = 0;
-  QA_SCORED_FIELDS.forEach(({f, w}) => {
+function calcQaScores(poi, errors) {
+  // Completeness (0-100): 14 required fields weighted, UNAVAILABLE = 30% credit
+  const REQUIRED_FIELDS = [
+    {f:'Name_EN',w:10},{f:'Name_AR',w:10},{f:'Category',w:9},{f:'Subcategory',w:5},
+    {f:'Latitude',w:8},{f:'Longitude',w:8},{f:'District_EN',w:5},
+    {f:'Phone_Number',w:6},{f:'Working_Hours',w:6},{f:'Working_Days',w:5},
+    {f:'Exterior_Photo_URL',w:8},{f:'Interior_Photo_URL',w:7},{f:'Video_URL',w:5},
+    {f:'Building_Number',w:4},{f:'Floor_Number',w:4}
+  ]; // total = 100
+  let compRaw = 0;
+  REQUIRED_FIELDS.forEach(({f,w}) => {
     const v = (poi[f] || '').trim();
-    if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE' && v !== 'N/A') {
-      completeness += w;
-    } else if (v === 'UNAVAILABLE') {
-      completeness += w * 0.3; // partial credit — data was checked but unavailable
-    }
+    if (v && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE' && v !== 'N/A') compRaw += w;
+    else if (v === 'UNAVAILABLE') compRaw += w * 0.3;
   });
+  const completeness = Math.round(Math.max(0, Math.min(100, compRaw)));
 
-  // Part 2: Validation bonus (start at 30, subtract per error)
-  let validationScore = 30;
+  // Validity (0-100): 100 - penalties, clamped
   const blockers = errors.filter(e => e.severity === 'BLOCKER').length;
   const majors   = errors.filter(e => e.severity === 'MAJOR').length;
   const minors   = errors.filter(e => e.severity === 'MINOR').length;
-  validationScore -= blockers * 4;
-  validationScore -= majors * 2;
-  validationScore -= minors * 0.5;
-  validationScore = Math.max(0, validationScore);
+  const validity = Math.round(Math.max(0, Math.min(100, 100 - blockers*12 - majors*5 - minors*1)));
 
-  return Math.max(0, Math.min(100, Math.round(completeness + validationScore)));
+  // Readiness: Ready / Blocked / Needs Review
+  const status = poi.Review_Status || 'Draft';
+  let readiness;
+  if (status === 'Reviewed' && blockers === 0 && !poi.flagged) readiness = 'Ready';
+  else if (blockers > 0 || status === 'Rejected') readiness = 'Blocked';
+  else readiness = 'Needs Review';
+
+  // Composite (backward-compatible 0-100)
+  const composite = Math.round(Math.max(0, Math.min(100, completeness * 0.7 + validity * 0.3)));
+
+  return { completeness, validity, readiness, composite };
+}
+
+function calcQaScore(poi, errors) {
+  return calcQaScores(poi, errors).composite;
 }
 
 // Validate all POIs, returns Map<GlobalID, errors[]>
@@ -2263,7 +2338,11 @@ function validateAllPois() {
   allPois.forEach(poi => {
     try {
       const errs = validatePoi(poi);
-      poi.QA_Score = String(calcQaScore(poi, errs));
+      const scores = calcQaScores(poi, errs);
+      poi.QA_Score = String(scores.composite);
+      poi._qa_completeness = scores.completeness;
+      poi._qa_validity = scores.validity;
+      poi._qa_readiness = scores.readiness;
       if (errs.length > 0) {
         validationResults.set(poi.GlobalID, errs);
         errs.forEach(e => {
@@ -2598,6 +2677,64 @@ function logoutReviewer() {
   document.getElementById('loginOverlay').style.display = 'flex';
 }
 
+// ===== REVIEWER DIGEST =====
+function showReviewerDigest() {
+  if (!allPois.length) return;
+  const name = currentReviewer ? currentReviewer.display_name : 'Guest';
+  const total = allPois.length;
+  const drafts = allPois.filter(p => !p.Review_Status || p.Review_Status === 'Draft').length;
+  const reviewed = allPois.filter(p => p.Review_Status === 'Reviewed').length;
+  const flagged = allPois.filter(p => p.flagged).length;
+  const withErrors = validationResults.size;
+  const blocked = allPois.filter(p => {
+    const s = p.Review_Status || 'Draft';
+    if (s !== 'Draft' && s !== '') return false;
+    const errs = validationResults.get(p.GlobalID) || [];
+    return errs.some(e => e.severity === 'BLOCKER');
+  }).length;
+  const ready = allPois.filter(p => p._qa_readiness === 'Ready').length;
+  const pct = total ? Math.round(reviewed / total * 100) : 0;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'digestOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="font-size:18px;font-weight:700;color:#1a237e;margin-bottom:4px;">Welcome back, ${esc(name)}</div>
+    <div style="font-size:12px;color:#888;margin-bottom:16px;">${total} POIs in database</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div style="background:#e8f5e9;border-radius:8px;padding:10px;text-align:center;cursor:pointer;" onclick="document.getElementById('digestOverlay').remove();document.querySelectorAll('.data-tab').forEach(t=>{t.classList.remove('active');if(t.dataset.tab==='reviewed')t.classList.add('active')});currentDataTab='reviewed';applyFilters();">
+        <div style="font-size:24px;font-weight:700;color:#2e7d32;">${reviewed}</div>
+        <div style="font-size:10px;color:#666;">Reviewed</div>
+      </div>
+      <div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center;cursor:pointer;" onclick="document.getElementById('digestOverlay').remove();document.querySelectorAll('.data-tab').forEach(t=>{t.classList.remove('active');if(t.dataset.tab==='needs_approval')t.classList.add('active')});currentDataTab='needs_approval';applyFilters();">
+        <div style="font-size:24px;font-weight:700;color:#e65100;">${drafts}</div>
+        <div style="font-size:10px;color:#666;">Pending</div>
+      </div>
+      <div style="background:#ffebee;border-radius:8px;padding:10px;text-align:center;cursor:pointer;" onclick="document.getElementById('digestOverlay').remove();document.querySelectorAll('.data-tab').forEach(t=>{t.classList.remove('active');if(t.dataset.tab==='blocked')t.classList.add('active')});currentDataTab='blocked';applyFilters();">
+        <div style="font-size:24px;font-weight:700;color:#c62828;">${blocked}</div>
+        <div style="font-size:10px;color:#666;">Blocked</div>
+      </div>
+    </div>
+    <div style="background:#f5f5f5;border-radius:8px;padding:10px 14px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:4px;">
+        <span>Review Progress</span><span>${pct}% complete</span>
+      </div>
+      <div style="height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#4caf50,#2e7d32);border-radius:4px;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#999;margin-top:4px;">
+        <span>${flagged} flagged</span><span>${withErrors} with errors</span><span>${ready} delivery-ready</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="document.getElementById('digestOverlay').remove();document.querySelectorAll('.data-tab').forEach(t=>{t.classList.remove('active');if(t.dataset.tab==='needs_approval')t.classList.add('active')});currentDataTab='needs_approval';applyFilters();" style="flex:1;padding:10px;background:#1a237e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;">Start Reviewing</button>
+      <button onclick="document.getElementById('digestOverlay').remove()" style="padding:10px 16px;background:#f5f5f5;color:#666;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;">Dismiss</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
 // ===== AUDIT LOG =====
 let auditPage = 0;
 const AUDIT_PAGE_SIZE = 100;
@@ -2725,6 +2862,7 @@ async function init() {
     toast('Connected to PostgreSQL database');
     checkForUpdates();
   }
+  showReviewerDigest();
 }
 
 // Save single field to DB
@@ -2822,7 +2960,7 @@ function buildUI() {
   const distAR = [...new Set(allPois.map(p => p.District_AR).filter(Boolean))].sort();
   FIELD_DROPDOWN_OPTIONS.District_EN = [...distEN, 'UNAVAILABLE'];
   FIELD_DROPDOWN_OPTIONS.District_AR = [...distAR, 'UNAVAILABLE'];
-  buildStats(); buildCategoryFilter(); applyFilters();
+  buildStats(); buildCategoryFilter(); restoreSessionState(); applyFilters();
   document.getElementById('headerInfo').textContent = `${allPois.length} POIs | ${Object.keys(edits).length} edited`;
   document.querySelectorAll('.data-tab').forEach(t => {
     t.onclick = function() {
@@ -2945,8 +3083,8 @@ function buildCategoryFilter() {
 }
 
 // ===== VIEWS =====
-const VIEW_MAP = {card:0, excel:1, arcgis:2, map:3, duplicates:4, audit:5, drafts:6, invoice:7};
-const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', invoice:'invoiceView', drafts:'draftsView'};
+const VIEW_MAP = {card:0, excel:1, arcgis:2, map:3, duplicates:4, audit:5, dashboard:6, drafts:7, invoice:8};
+const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', dashboard:'dashboardView', invoice:'invoiceView', drafts:'draftsView'};
 function switchView(view) {
   document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
@@ -2960,6 +3098,7 @@ function switchView(view) {
   else if (view === 'invoice') renderInvoice();
   else if (view === 'audit') loadAuditLog();
   else if (view === 'drafts') loadDrafts();
+  else if (view === 'dashboard') renderDashboard();
 }
 
 // ===== FILTERING =====
@@ -3118,6 +3257,7 @@ function applyFilters() {
     window._chipClearFns = chips.map(c=>c.clear);
     window._clearChip = function(i) { if(window._chipClearFns[i]) window._chipClearFns[i](); };
   } else { fs.style.display = 'none'; fs.innerHTML = ''; }
+  saveSessionState();
 }
 
 // ===== CARD TABLE =====
@@ -3141,16 +3281,21 @@ function renderTable() {
     return;
   }
 
-  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Decision</th><th>QA</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
+  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Decision</th><th>Quality</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
   rows.forEach((p, i) => {
     const idx = start + i;
-    // Always compute QA score live from field data
+    // Always compute QA scores live from field data
     try {
       const _errs = validationResults.get(p.GlobalID) || [];
-      p.QA_Score = String(calcQaScore(p, _errs));
+      const _scores = calcQaScores(p, _errs);
+      p.QA_Score = String(_scores.composite);
+      p._qa_completeness = _scores.completeness;
+      p._qa_validity = _scores.validity;
+      p._qa_readiness = _scores.readiness;
     } catch(e) { /* QA calc fallback */ }
     const qs = parseInt(p.QA_Score)||0;
     const qc = qs>=80?'qa-high':qs>=60?'qa-mid':'qa-low';
+    const _rdyDot = p._qa_readiness === 'Ready' ? '#4caf50' : p._qa_readiness === 'Blocked' ? '#c62828' : '#ff9800';
     const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Rejected'?'status-rejected':p.Review_Status==='Archived'?'status-pending':p.flagged?'status-flagged':'status-pending';
     const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Status==='Rejected'?'rejected':p.flagged?'flagged':'';
     const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
@@ -3164,7 +3309,7 @@ function renderTable() {
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Category||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer"><span style="background:${ds.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;" title="${ds.action||''}">${ds.icon} ${ds.label}</span></td>
-      <td><span class="${qc}">${qs}</span></td>
+      <td style="white-space:nowrap;font-size:11px;" title="Completeness: ${p._qa_completeness||0}% | Validity: ${p._qa_validity||0}% | ${p._qa_readiness||''}"><span style="font-weight:600;">${p._qa_completeness||0}</span><span style="color:#999;margin:0 1px;">/</span><span style="font-weight:600;">${p._qa_validity||0}</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${_rdyDot};margin-left:4px;vertical-align:middle;" title="${p._qa_readiness||''}"></span></td>
       <td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
       <td class="row-actions" onclick="event.stopPropagation()"><button onclick="quickApprove('${p.GlobalID}')" title="Approve" class="qa-btn qa-approve">&check;</button><button onclick="quickReject('${p.GlobalID}')" title="Reject" class="qa-btn qa-reject">&times;</button><button onclick="quickArchive('${p.GlobalID}')" title="Archive" class="qa-btn qa-archive">&#9644;</button><button onclick="openDetail(${idx})" title="Open detail" class="qa-btn qa-detail">&ctdot;</button></td></tr>`;
   });
@@ -3523,6 +3668,7 @@ function renderDetailBody() {
   let mapHtml = renderMiniMap(poi);
   if (detailViewMode === 'excel') body.innerHTML = bannerHtml + mapHtml + renderDetailExcel(poi);
   else if (detailViewMode === 'photos') body.innerHTML = bannerHtml + mapHtml + renderDetailPhotos(poi);
+  else if (detailViewMode === 'timeline') { body.innerHTML = bannerHtml + '<div id="timelineContainer" style="padding:12px 16px;"><div style="text-align:center;color:#888;padding:30px;">Loading timeline...</div></div>'; loadPoiTimeline(poi.GlobalID); }
   else body.innerHTML = bannerHtml + mapHtml + renderDetailCards(poi);
   _checkApprovalBlockers(poi);
 
@@ -3701,6 +3847,27 @@ function renderDetailExcel(poi) {
     h += `<div style="margin:10px 12px;padding:8px 14px;border-radius:6px;background:#e8f5e9;border:1px solid #c8e6c9;font-size:12px;color:#2e7d32;">All validations passed</div>`;
   }
 
+  // Quality sub-scores card
+  const _qs = calcQaScores(poi, errs);
+  const _compColor = _qs.completeness >= 80 ? '#2e7d32' : _qs.completeness >= 60 ? '#e65100' : '#c62828';
+  const _valColor = _qs.validity >= 80 ? '#2e7d32' : _qs.validity >= 60 ? '#e65100' : '#c62828';
+  const _rdyColor = _qs.readiness === 'Ready' ? '#2e7d32' : _qs.readiness === 'Blocked' ? '#c62828' : '#e65100';
+  const _rdyBg = _qs.readiness === 'Ready' ? '#e8f5e9' : _qs.readiness === 'Blocked' ? '#ffebee' : '#fff3e0';
+  h += `<div style="margin:6px 12px 10px;display:flex;gap:8px;">
+    <div style="flex:1;background:#f5f5f5;border-radius:6px;padding:8px 12px;text-align:center;border:1px solid #e0e0e0;">
+      <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Completeness</div>
+      <div style="font-size:22px;font-weight:700;color:${_compColor};">${_qs.completeness}%</div>
+    </div>
+    <div style="flex:1;background:#f5f5f5;border-radius:6px;padding:8px 12px;text-align:center;border:1px solid #e0e0e0;">
+      <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Validity</div>
+      <div style="font-size:22px;font-weight:700;color:${_valColor};">${_qs.validity}%</div>
+    </div>
+    <div style="flex:1;background:${_rdyBg};border-radius:6px;padding:8px 12px;text-align:center;border:1px solid #e0e0e0;">
+      <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Readiness</div>
+      <div style="font-size:16px;font-weight:700;color:${_rdyColor};">${_qs.readiness}</div>
+    </div>
+  </div>`;
+
   // Build per-section issue counts
   const sectionIssues = {};
   DETAIL_SECTIONS.forEach(section => {
@@ -3839,6 +4006,63 @@ function isHeicUrl(url) {
   // ArcGIS attachment URLs are often HEIC, detect by trying to load and checking
   // We'll use onerror to trigger HEIC conversion attempt
   return false; // We handle via onerror fallback
+}
+
+// ===== TIMELINE =====
+function _timeAgo(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+  if (d > 30) return new Date(iso).toLocaleDateString();
+  if (d > 0) return d + 'd ago';
+  if (h > 0) return h + 'h ago';
+  if (m > 0) return m + 'm ago';
+  return 'just now';
+}
+
+const ACTION_LABELS = {edit:'Edited',approve:'Approved',reject:'Rejected',archive:'Archived',unarchive:'Restored',flag:'Flagged',unflag:'Unflagged',auto_fix:'Auto-fixed',create:'Created',auto_revert:'Auto-reverted',bulk_edit:'Bulk edited'};
+
+function renderTimeline(events) {
+  if (!events || !events.length) return '<div style="text-align:center;color:#999;padding:40px;font-size:13px;">No activity recorded yet</div>';
+  let h = '<div style="padding:8px 4px;">';
+  events.forEach(ev => {
+    const label = ACTION_LABELS[ev.action] || ev.action;
+    const dotClass = ev.action.replace(/[^a-z_]/g, '') || 'edit';
+    const fieldChanges = ev.changes.filter(c => c.field);
+    h += `<div class="tl-event">`;
+    h += `<div class="tl-dot ${dotClass}"></div>`;
+    h += `<div class="tl-head">${esc(label)}</div>`;
+    h += `<div class="tl-meta">${esc(ev.reviewer || 'system')} &middot; ${_timeAgo(ev.timestamp)}</div>`;
+    if (fieldChanges.length) {
+      h += '<div class="tl-changes">';
+      fieldChanges.slice(0, 10).forEach(c => {
+        const fname = (c.field || '').replace(/_/g, ' ');
+        h += `<div class="tl-change"><span class="tl-field">${esc(fname)}</span>`;
+        if (c.old_value) h += `<span class="tl-old" title="${esc(c.old_value)}">${esc(trunc(c.old_value,30))}</span> <span class="tl-arrow">&rarr;</span> `;
+        h += `<span class="tl-new" title="${esc(c.new_value||'')}">${esc(trunc(c.new_value||'(empty)',30))}</span></div>`;
+      });
+      if (fieldChanges.length > 10) h += `<div style="font-size:10px;color:#999;margin-top:4px;">+${fieldChanges.length-10} more changes</div>`;
+      h += '</div>';
+    } else if (ev.changes.length && ev.changes[0].new_value) {
+      h += `<div class="tl-changes"><div class="tl-change" style="color:#666;">${esc(trunc(ev.changes[0].new_value,80))}</div></div>`;
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+async function loadPoiTimeline(gid) {
+  const container = document.getElementById('timelineContainer');
+  if (!container) return;
+  try {
+    const resp = await fetch(API_BASE + '/pois/' + encodeURIComponent(gid) + '/timeline');
+    const data = await resp.json();
+    if (data.events) container.innerHTML = renderTimeline(data.events);
+    else container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">No timeline data</div>';
+  } catch(e) {
+    container.innerHTML = '<div style="text-align:center;color:#c62828;padding:40px;">Failed to load timeline</div>';
+  }
 }
 
 function renderDetailPhotos(poi) {
@@ -5924,6 +6148,158 @@ function calcPoiValue(poi, filter) {
     total += earned;
   }
   return { total, breakdown };
+}
+
+// ===== DELIVERY READINESS DASHBOARD =====
+function renderDashboard() {
+  const el = document.getElementById('dashboardContent');
+  if (!el) return;
+  const t = allPois.length;
+  if (!t) { el.innerHTML = '<div style="text-align:center;color:#999;padding:60px;">No data loaded</div>'; return; }
+
+  const reviewed = allPois.filter(p => p.Review_Status === 'Reviewed').length;
+  const drafts = allPois.filter(p => !p.Review_Status || p.Review_Status === 'Draft').length;
+  const rejected = allPois.filter(p => p.Review_Status === 'Rejected').length;
+  const archived = allPois.filter(p => p.Review_Status === 'Archived').length;
+  const flagged = allPois.filter(p => p.flagged).length;
+  const ready = allPois.filter(p => p._qa_readiness === 'Ready').length;
+  const blocked = allPois.filter(p => p._qa_readiness === 'Blocked').length;
+  const needsReview = allPois.filter(p => p._qa_readiness === 'Needs Review').length;
+  const withErrors = validationResults.size;
+  const pctReviewed = Math.round(reviewed / t * 100);
+  const pctReady = Math.round(ready / t * 100);
+
+  // Avg scores
+  let sumComp = 0, sumVal = 0;
+  allPois.forEach(p => { sumComp += p._qa_completeness || 0; sumVal += p._qa_validity || 0; });
+  const avgComp = Math.round(sumComp / t);
+  const avgVal = Math.round(sumVal / t);
+
+  // Category breakdown
+  const catMap = {};
+  allPois.forEach(p => {
+    const cat = p.Category || 'Uncategorized';
+    if (!catMap[cat]) catMap[cat] = {total:0,reviewed:0,ready:0,blocked:0,avgComp:0};
+    catMap[cat].total++;
+    if (p.Review_Status === 'Reviewed') catMap[cat].reviewed++;
+    if (p._qa_readiness === 'Ready') catMap[cat].ready++;
+    if (p._qa_readiness === 'Blocked') catMap[cat].blocked++;
+    catMap[cat].avgComp += p._qa_completeness || 0;
+  });
+  const cats = Object.entries(catMap).sort((a,b) => b[1].total - a[1].total);
+  cats.forEach(([,v]) => { v.avgComp = Math.round(v.avgComp / v.total); });
+
+  // District breakdown
+  const distMap = {};
+  allPois.forEach(p => {
+    const d = p.District_EN || 'Unknown';
+    if (!distMap[d]) distMap[d] = {total:0,reviewed:0,ready:0};
+    distMap[d].total++;
+    if (p.Review_Status === 'Reviewed') distMap[d].reviewed++;
+    if (p._qa_readiness === 'Ready') distMap[d].ready++;
+  });
+  const dists = Object.entries(distMap).sort((a,b) => b[1].total - a[1].total);
+
+  // Blocker breakdown
+  const blockerMap = {};
+  validationResults.forEach((errs) => {
+    errs.filter(e => e.severity === 'BLOCKER').forEach(e => {
+      const k = e.fail_reason || e.rule_id;
+      blockerMap[k] = (blockerMap[k] || 0) + 1;
+    });
+  });
+  const blockers = Object.entries(blockerMap).sort((a,b) => b[1] - a[1]);
+
+  let h = '';
+  // Summary cards row
+  h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;">
+    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Total POIs</div>
+      <div style="font-size:28px;font-weight:700;color:#1a237e;">${t}</div>
+    </div>
+    <div style="background:#e8f5e9;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Delivery Ready</div>
+      <div style="font-size:28px;font-weight:700;color:#2e7d32;">${ready}</div>
+      <div style="font-size:11px;color:#2e7d32;">${pctReady}%</div>
+    </div>
+    <div style="background:#fff3e0;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Needs Review</div>
+      <div style="font-size:28px;font-weight:700;color:#e65100;">${needsReview}</div>
+    </div>
+    <div style="background:#ffebee;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Blocked</div>
+      <div style="font-size:28px;font-weight:700;color:#c62828;">${blocked}</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Avg Completeness</div>
+      <div style="font-size:28px;font-weight:700;color:${avgComp>=80?'#2e7d32':avgComp>=60?'#e65100':'#c62828'};">${avgComp}%</div>
+    </div>
+    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+      <div style="font-size:10px;color:#888;text-transform:uppercase;">Avg Validity</div>
+      <div style="font-size:28px;font-weight:700;color:${avgVal>=80?'#2e7d32':avgVal>=60?'#e65100':'#c62828'};">${avgVal}%</div>
+    </div>
+  </div>`;
+
+  // Progress bars
+  h += `<div style="background:#fff;border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:20px;">
+    <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#1a237e;">Review Progress</div>
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px;"><span>Reviewed</span><span>${reviewed}/${t} (${pctReviewed}%)</span></div>
+      <div style="height:12px;background:#e0e0e0;border-radius:6px;overflow:hidden;">
+        <div style="height:100%;width:${pctReviewed}%;background:linear-gradient(90deg,#4caf50,#2e7d32);border-radius:6px;transition:width 0.4s;"></div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px;"><span>Delivery Ready</span><span>${ready}/${t} (${pctReady}%)</span></div>
+      <div style="height:12px;background:#e0e0e0;border-radius:6px;overflow:hidden;">
+        <div style="height:100%;width:${pctReady}%;background:linear-gradient(90deg,#1565c0,#0d47a1);border-radius:6px;transition:width 0.4s;"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:#888;">
+      <span>Draft: ${drafts}</span><span>Reviewed: ${reviewed}</span><span>Archived: ${archived}</span><span>Rejected: ${rejected}</span><span>Flagged: ${flagged}</span>
+    </div>
+  </div>`;
+
+  // Two-column layout for tables
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">';
+
+  // Category table
+  h += `<div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);max-height:400px;overflow-y:auto;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#1a237e;">By Category (${cats.length})</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <tr style="background:#f5f5f5;"><th style="padding:4px 8px;text-align:left;">Category</th><th style="padding:4px;text-align:center;">Total</th><th style="padding:4px;text-align:center;">Ready</th><th style="padding:4px;text-align:center;">Blocked</th><th style="padding:4px;text-align:center;">Comp%</th></tr>`;
+  cats.forEach(([cat, v]) => {
+    const rdyPct = Math.round(v.ready / v.total * 100);
+    h += `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:4px 8px;">${esc(cat)}</td><td style="text-align:center;">${v.total}</td><td style="text-align:center;color:#2e7d32;font-weight:600;">${v.ready}</td><td style="text-align:center;color:${v.blocked?'#c62828':'#999'};">${v.blocked}</td><td style="text-align:center;">${v.avgComp}%</td></tr>`;
+  });
+  h += '</table></div>';
+
+  // District table
+  h += `<div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);max-height:400px;overflow-y:auto;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#1a237e;">By District (${dists.length})</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <tr style="background:#f5f5f5;"><th style="padding:4px 8px;text-align:left;">District</th><th style="padding:4px;text-align:center;">Total</th><th style="padding:4px;text-align:center;">Ready</th><th style="padding:4px;text-align:center;">%</th></tr>`;
+  dists.forEach(([dist, v]) => {
+    const pct = Math.round(v.ready / v.total * 100);
+    h += `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:4px 8px;">${esc(dist)}</td><td style="text-align:center;">${v.total}</td><td style="text-align:center;color:#2e7d32;font-weight:600;">${v.ready}</td><td style="text-align:center;">${pct}%</td></tr>`;
+  });
+  h += '</table></div>';
+  h += '</div>';
+
+  // Blocker breakdown
+  if (blockers.length) {
+    h += `<div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#c62828;">Top Blockers (${blockers.length} types across ${withErrors} POIs)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <tr style="background:#ffebee;"><th style="padding:4px 8px;text-align:left;">Blocker</th><th style="padding:4px 8px;text-align:right;">Count</th></tr>`;
+    blockers.slice(0, 15).forEach(([reason, count]) => {
+      const pct = Math.round(count / t * 100);
+      h += `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:4px 8px;">${esc(reason)}</td><td style="padding:4px 8px;text-align:right;"><span style="background:#ffcdd2;padding:2px 8px;border-radius:10px;font-weight:600;color:#c62828;">${count}</span> <span style="color:#999;font-size:10px;">(${pct}%)</span></td></tr>`;
+    });
+    h += '</table></div>';
+  }
+
+  el.innerHTML = h;
 }
 
 function renderInvoice() {

@@ -955,6 +955,60 @@ def bulk_apply_safe_fixes():
     return api_success({'total_fixes': total_fixes, 'results': results},
                        message=str(total_fixes) + ' fixes applied across ' + str(len(results)) + ' POIs')
 
+# ===== API: POI Timeline =====
+@api.route('/pois/<globalid>/timeline', methods=['GET'])
+def poi_timeline(globalid):
+    """Return grouped audit entries for a single POI, newest first."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        """SELECT id, action, field_name, old_value, new_value, reviewer,
+                  created_at
+           FROM poi_audit_log
+           WHERE global_id = %s
+           ORDER BY created_at DESC, id DESC
+           LIMIT 200""",
+        (globalid,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    # Group consecutive rows with same (action, reviewer, timestamp bucket)
+    events = []
+    for r in rows:
+        ts = r['created_at']
+        if isinstance(ts, datetime.datetime):
+            ts = ts.isoformat()
+        entry = {
+            'id': r['id'],
+            'action': r['action'] or 'edit',
+            'field': r['field_name'],
+            'old_value': r['old_value'],
+            'new_value': r['new_value'],
+            'reviewer': r['reviewer'] or '',
+            'timestamp': ts
+        }
+        # Group into same event if same action+reviewer within 2 seconds
+        if events and events[-1]['action'] == entry['action'] and events[-1]['reviewer'] == entry['reviewer']:
+            last_ts = events[-1]['timestamp']
+            try:
+                t1 = datetime.datetime.fromisoformat(last_ts.replace('Z', '+00:00')) if isinstance(last_ts, str) else last_ts
+                t2 = datetime.datetime.fromisoformat(ts.replace('Z', '+00:00')) if isinstance(ts, str) else ts
+                if abs((t1 - t2).total_seconds()) < 2:
+                    events[-1]['changes'].append(entry)
+                    continue
+            except Exception:
+                pass
+        events.append({
+            'action': entry['action'],
+            'reviewer': entry['reviewer'],
+            'timestamp': ts,
+            'changes': [entry]
+        })
+
+    return api_success({'events': events, 'total': len(rows)})
+
 # ===== API: Delete POI =====
 @api.route('/pois/<globalid>', methods=['DELETE'])
 def delete_poi(globalid):
