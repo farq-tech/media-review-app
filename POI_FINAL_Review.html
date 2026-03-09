@@ -503,6 +503,15 @@ body.density-compact .filter-bar { padding:8px 20px 0; }
 body.density-compact .view-tab { padding:8px 12px; font-size:11px; }
 body.density-compact .data-tab { padding:4px 10px; font-size:11px; }
 
+/* ── Queue Count Badges ── */
+.q-count { font-size:10px; background:#e0e0e0; color:#555; padding:1px 6px; border-radius:8px; margin-left:4px; font-weight:600; }
+.q-count:empty { display:none; }
+.q-count.q-green { background:#c8e6c9; color:#2e7d32; }
+.q-count.q-red { background:#ffcdd2; color:#c62828; }
+.q-count.q-orange { background:#ffe0b2; color:#e65100; }
+.q-count.q-blue { background:#bbdefb; color:#1565c0; }
+.q-count.q-gray { background:#e0e0e0; color:#616161; }
+
 /* ── View States ── */
 .view-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:#888; }
 .view-state .icon { font-size:48px; margin-bottom:12px; opacity:0.4; }
@@ -603,7 +612,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 <!-- CARD VIEW -->
 <div id="cardView" class="view-content active">
   <div class="filter-bar">
-    <input type="text" id="searchInput" placeholder="Search name, ID, category, flag..." oninput="applyFilters()">
+    <input type="text" id="searchInput" placeholder="Search name, ID... or status:draft flagged:true missing:Exterior_Photo_URL" oninput="applyFilters()">
     <select id="filterCategory" onchange="applyFilters()"><option value="">All Categories</option></select>
     <select id="filterSeverity" onchange="applyFilters()">
       <option value="">All QA</option>
@@ -623,15 +632,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   </div>
   <div class="filter-summary" id="filterSummary" style="display:none;"></div>
   <div class="data-tabs" id="dataTabs">
-    <div class="data-tab active" data-tab="all">All</div>
-    <div class="data-tab" data-tab="queue">My Queue</div>
-    <div class="data-tab" data-tab="flagged">Flagged</div>
-    <div class="data-tab" data-tab="lowqa">Low QA</div>
-    <div class="data-tab" data-tab="reviewed">Reviewed</div>
-    <div class="data-tab" data-tab="rejected">Rejected</div>
-    <div class="data-tab" data-tab="archived">Archived</div>
-    <div class="data-tab" data-tab="errors">With Errors</div>
-    <div class="data-tab" data-tab="unavailable">UNAVAILABLE</div>
+    <div class="data-tab active" data-tab="all">All <span class="q-count" id="qAll"></span></div>
+    <div class="data-tab" data-tab="needs_approval">Needs Approval <span class="q-count q-green" id="qApproval"></span></div>
+    <div class="data-tab" data-tab="blocked">Blocked <span class="q-count q-red" id="qBlocked"></span></div>
+    <div class="data-tab" data-tab="flagged">Flagged <span class="q-count q-orange" id="qFlagged"></span></div>
+    <div class="data-tab" data-tab="needs_media">Needs Media <span class="q-count q-gray" id="qMedia"></span></div>
+    <div class="data-tab" data-tab="recently_updated">Recent <span class="q-count q-blue" id="qRecent"></span></div>
+    <div class="data-tab" data-tab="reviewed">Reviewed <span class="q-count" id="qReviewed"></span></div>
+    <div class="data-tab" data-tab="errors">Errors <span class="q-count q-red" id="qErrors"></span></div>
+    <div class="data-tab" data-tab="rejected">Rejected <span class="q-count" id="qRejected"></span></div>
+    <div class="data-tab" data-tab="archived">Archived <span class="q-count" id="qArchived"></span></div>
   </div>
   <!-- Bulk Action Bar -->
   <div id="bulkBar" class="bulk-bar">
@@ -642,6 +652,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       <option value="">-- Select Flag --</option>
     </select>
     <button class="btn btn-warn btn-sm" onclick="bulkFlag()">Flag Selected</button>
+    <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="bulkApplySafeFixes()">Auto-Fix Selected</button>
     <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="bulkClear()">Clear</button>
     <button class="btn btn-sm" onclick="bulkSelectPage()">Select Page</button>
     <button class="btn btn-sm" onclick="bulkSelectAll()">Select All</button>
@@ -2241,6 +2252,52 @@ function getValidationTooltip(gid, field) {
   return errs.filter(e => e.column === field).map(e => `[${e.severity}] ${e.fail_reason}`).join(' | ');
 }
 
+// ===== DECISION ENGINE =====
+function _countSafeFixes(poi) {
+  let count = 0;
+  ['Name_EN','Name_AR','Legal_Name','Phone_Number','Email','Website','Social_Media','District_EN','District_AR','Building_Number'].forEach(f => {
+    const v = poi[f] || ''; if (typeof v === 'string' && v !== v.trim() && v.trim()) count++;
+  });
+  const boolFields = ['Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Iftar_Menu','Open_Suhoor','Free_Entry'];
+  boolFields.forEach(f => {
+    const v = String(poi[f] || '').trim(); const vl = v.toLowerCase();
+    if (!v) return;
+    if (['yes','no','unavailable','unapplicable'].includes(vl)) { if (v !== 'Yes' && v !== 'No' && v !== 'UNAVAILABLE' && v !== 'UNAPPLICABLE') count++; }
+    else count++;
+  });
+  const ws = (poi.Website || '').toLowerCase();
+  if (ws && (ws.includes('maps.google') || ws.includes('maps.app') || ws.includes('goo.gl/maps'))) count++;
+  if ((poi.Phone_Number || '').toLowerCase().includes('e+')) count++;
+  const em = poi.Email || '';
+  if (em && em !== 'UNAVAILABLE' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) count++;
+  const fl = (poi.Floor_Number || '').trim();
+  if (fl && !['G','B1','1','2','3','4','5','UNAVAILABLE','UNAPPLICABLE',''].includes(fl)) count++;
+  const urls = {}; let dupes = 0;
+  ['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL'].forEach(f => {
+    const v = (poi[f] || '').trim();
+    if (v && v !== 'UNAVAILABLE' && v.startsWith('http')) { if (urls[v]) dupes++; else urls[v] = f; }
+  });
+  count += dupes;
+  return count;
+}
+
+function getDecisionState(poi) {
+  const status = (poi.Review_Status || 'Draft').trim();
+  const errs = validationResults.get(poi.GlobalID) || [];
+  const blockers = errs.filter(e => e.severity === 'BLOCKER');
+  const warnings = errs.filter(e => e.severity === 'MAJOR' || e.severity === 'MINOR');
+  const safeFixes = _countSafeFixes(poi);
+
+  if (status === 'Rejected') return { state:'rejected', label:'Rejected', color:'#c62828', icon:'&times;', blockers:[], warnings:[], safeFixes:0, action:null };
+  if (status === 'Archived') return { state:'archived', label:'Archived', color:'#757575', icon:'&#9644;', blockers:[], warnings:[], safeFixes:0, action:null };
+  if (status === 'Reviewed') return { state:'reviewed', label:'Approved', color:'#2e7d32', icon:'&check;', blockers:[], warnings, safeFixes, action:null };
+  if (poi.flagged) return { state:'flagged', label:'Flagged', color:'#e65100', icon:'&#9873;', blockers, warnings, safeFixes, action:'Resolve flag before approval' };
+  if (blockers.length > 0) return { state:'blocked', label:blockers.length+' Blocker'+(blockers.length>1?'s':''), color:'#c62828', icon:'&#9888;', blockers, warnings, safeFixes, action:'Fix blockers to unlock approval' };
+  if (safeFixes > 0) return { state:'fixable', label:safeFixes+' Auto-fix', color:'#1565c0', icon:'&#9881;', blockers:[], warnings, safeFixes, action:'Apply safe fixes, then approve' };
+  if (warnings.length > 0) return { state:'warnings', label:warnings.length+' Warning'+(warnings.length>1?'s':''), color:'#f57f17', icon:'&#9888;', blockers:[], warnings, safeFixes, action:'Review warnings, then approve' };
+  return { state:'ready', label:'Ready', color:'#2e7d32', icon:'&check;', blockers:[], warnings:[], safeFixes:0, action:'Approve now' };
+}
+
 // ===== SMART DROPDOWNS =====
 function renderCategoryDropdown(val, gid, hasEdit, onchangeFn) {
   const changed = hasEdit ? 'background:#e8f5e9;' : '';
@@ -2723,6 +2780,48 @@ function buildStats(skipValidation) {
   const pct = t ? Math.round(rv / t * 100) : 0;
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('progressLabel').textContent = `${pct}% Reviewed (${rv}/${t})`;
+  loadQueueCounts();
+}
+
+async function loadQueueCounts() {
+  // Client-side counts (blocked = Draft + has BLOCKER errors)
+  const blocked = allPois.filter(p => {
+    const s = (p.Review_Status || 'Draft');
+    if (s !== 'Draft' && s !== '') return false;
+    const errs = validationResults.get(p.GlobalID) || [];
+    return errs.some(e => e.severity === 'BLOCKER');
+  }).length;
+  const errCount = validationResults.size;
+
+  const el = id => document.getElementById(id);
+  if (el('qAll')) el('qAll').textContent = allPois.length || '';
+  if (el('qBlocked')) el('qBlocked').textContent = blocked || '';
+  if (el('qErrors')) el('qErrors').textContent = errCount || '';
+
+  if (dbMode) {
+    try {
+      const r = await fetch('/api/queues/summary').then(r => r.json());
+      if (el('qApproval')) el('qApproval').textContent = r.needs_approval || '';
+      if (el('qFlagged')) el('qFlagged').textContent = r.flagged || '';
+      if (el('qRecent')) el('qRecent').textContent = r.recently_updated || '';
+      if (el('qMedia')) el('qMedia').textContent = r.needs_media || '';
+      if (el('qReviewed')) el('qReviewed').textContent = r.reviewed || '';
+      if (el('qRejected')) el('qRejected').textContent = r.rejected || '';
+      if (el('qArchived')) el('qArchived').textContent = r.archived || '';
+    } catch(e) { /* fallback below */ }
+  }
+  if (!dbMode) {
+    if (el('qApproval')) el('qApproval').textContent = allPois.filter(p => (!p.Review_Status || p.Review_Status === 'Draft') && !p.flagged).length || '';
+    if (el('qFlagged')) el('qFlagged').textContent = allPois.filter(p => p.flagged).length || '';
+    if (el('qMedia')) el('qMedia').textContent = allPois.filter(p => {
+      const ext = (p.Exterior_Photo_URL||'').trim(), int_ = (p.Interior_Photo_URL||'').trim();
+      return !ext || ext === 'UNAVAILABLE' || !int_ || int_ === 'UNAVAILABLE';
+    }).length || '';
+    if (el('qReviewed')) el('qReviewed').textContent = allPois.filter(p => p.Review_Status === 'Reviewed').length || '';
+    if (el('qRejected')) el('qRejected').textContent = allPois.filter(p => p.Review_Status === 'Rejected').length || '';
+    if (el('qArchived')) el('qArchived').textContent = allPois.filter(p => p.Review_Status === 'Archived').length || '';
+    if (el('qRecent')) el('qRecent').textContent = '';
+  }
 }
 
 function runValidation() {
@@ -2806,21 +2905,86 @@ function _hasUnavailableFields(p) {
   });
 }
 
+function parseSearchOperators(query) {
+  const ops = { hasOperators: false, text: '' };
+  const parts = query.match(/(\w+:[^\s]+|\S+)/g) || [];
+  const textParts = [];
+  parts.forEach(part => {
+    const m = part.match(/^(\w+):(.+)$/);
+    if (m) {
+      ops.hasOperators = true;
+      const key = m[1].toLowerCase(), val = m[2];
+      if (key === 'status') ops.status = val;
+      else if (key === 'category') ops.category = val;
+      else if (key === 'district') ops.district = val;
+      else if (key === 'flagged') ops.flagged = val.toLowerCase() === 'true';
+      else if (key === 'reviewer') ops.reviewer = val;
+      else if (key === 'missing') ops.missing = val;
+      else textParts.push(part);
+    } else {
+      textParts.push(part);
+    }
+  });
+  ops.text = textParts.join(' ').toLowerCase();
+  return ops;
+}
+
 function applyFilters() {
   const search = document.getElementById('searchInput').value.toLowerCase();
   const cat = document.getElementById('filterCategory').value;
   const qa = document.getElementById('filterSeverity').value;
   const status = document.getElementById('filterStatus').value;
   filteredPois = allPois.filter(p => {
+    // Smart queue tabs
+    if (currentDataTab === 'needs_approval') {
+      const s = p.Review_Status || 'Draft';
+      if (s !== 'Draft' && s !== '') return false;
+      if (p.flagged) return false;
+      const errs = validationResults.get(p.GlobalID) || [];
+      if (errs.some(e => e.severity === 'BLOCKER')) return false;
+    }
+    if (currentDataTab === 'blocked') {
+      const s = p.Review_Status || 'Draft';
+      if (s !== 'Draft' && s !== '') return false;
+      const errs = validationResults.get(p.GlobalID) || [];
+      if (!errs.some(e => e.severity === 'BLOCKER')) return false;
+    }
     if (currentDataTab === 'flagged' && !p.flagged) return false;
+    if (currentDataTab === 'needs_media') {
+      const ext = (p.Exterior_Photo_URL || '').trim();
+      const int_ = (p.Interior_Photo_URL || '').trim();
+      if (ext && ext !== 'UNAVAILABLE' && int_ && int_ !== 'UNAVAILABLE') return false;
+    }
+    if (currentDataTab === 'recently_updated') {
+      const updated = p.updated_at || p.last_reviewed_at;
+      if (!updated) return false;
+      if (Date.now() - new Date(updated).getTime() > 24*60*60*1000) return false;
+    }
     if (currentDataTab === 'lowqa' && (parseInt(p.QA_Score)||0) >= 60) return false;
     if (currentDataTab === 'reviewed' && p.Review_Status !== 'Reviewed') return false;
     if (currentDataTab === 'rejected' && p.Review_Status !== 'Rejected') return false;
     if (currentDataTab === 'archived' && p.Review_Status !== 'Archived') return false;
-    if (currentDataTab === 'queue' && (p.Review_Status === 'Reviewed' || p.Review_Status === 'Rejected' || p.Review_Status === 'Archived')) return false;
     if (currentDataTab === 'errors' && !validationResults.has(p.GlobalID)) return false;
     if (currentDataTab === 'unavailable' && !_hasUnavailableFields(p)) return false;
-    if (search) { const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase(); if (!s.includes(search)) return false; }
+    // Search with operator support
+    if (search) {
+      const ops = parseSearchOperators(search);
+      if (ops.hasOperators) {
+        if (ops.status && (p.Review_Status || 'Draft').toLowerCase() !== ops.status.toLowerCase()) return false;
+        if (ops.category && (p.Category || '').toLowerCase() !== ops.category.toLowerCase()) return false;
+        if (ops.district && !(p.District_EN || '').toLowerCase().includes(ops.district.toLowerCase())) return false;
+        if (ops.flagged !== undefined && !!p.flagged !== ops.flagged) return false;
+        if (ops.reviewer && (p.last_reviewed_by || '').toLowerCase() !== ops.reviewer.toLowerCase()) return false;
+        if (ops.missing) { const mv = p[ops.missing]; if (mv != null && mv !== '' && mv !== 'UNAVAILABLE') return false; }
+        if (ops.text) {
+          const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase();
+          if (!s.includes(ops.text)) return false;
+        }
+      } else {
+        const s = [p.GlobalID,p.Name_AR,p.Name_EN,p.Category,p.Review_Flag,p.District_EN,p.Phone_Number].join(' ').toLowerCase();
+        if (!s.includes(search)) return false;
+      }
+    }
     if (cat && p.Category !== cat) return false;
     const qs = parseInt(p.QA_Score)||0;
     if (qa==='high'&&qs<80) return false; if (qa==='mid'&&(qs<60||qs>=80)) return false; if (qa==='low'&&qs>=60) return false;
@@ -2839,11 +3003,11 @@ function applyFilters() {
   // Build filter summary chips
   const fs = document.getElementById('filterSummary');
   const chips = [];
-  const tabLabels = {all:'All',queue:'My Queue',flagged:'Flagged',lowqa:'Low QA',reviewed:'Reviewed',rejected:'Rejected',archived:'Archived',errors:'Errors',unavailable:'UNAVAILABLE'};
+  const tabLabels = {all:'All',needs_approval:'Needs Approval',blocked:'Blocked',flagged:'Flagged',needs_media:'Needs Media',recently_updated:'Recent',lowqa:'Low QA',reviewed:'Reviewed',rejected:'Rejected',archived:'Archived',errors:'Errors',unavailable:'UNAVAILABLE'};
   if (currentDataTab && currentDataTab !== 'all') chips.push({label:tabLabels[currentDataTab]||currentDataTab, clear:()=>{document.querySelector('.data-tab.active')?.click(); setDataTab('all');}});
   if (search) chips.push({label:'Search: "'+search+'"', clear:()=>{document.getElementById('searchInput').value=''; applyFilters();}});
   if (cat) chips.push({label:'Category: '+cat, clear:()=>{document.getElementById('filterCategory').value=''; applyFilters();}});
-  if (qa) chips.push({label:'QA: '+(qa==='high'?'≥80':qa==='mid'?'60-79':'<60'), clear:()=>{document.getElementById('filterSeverity').value=''; applyFilters();}});
+  if (qa) chips.push({label:'QA: '+(qa==='high'?'>=80':qa==='mid'?'60-79':'<60'), clear:()=>{document.getElementById('filterSeverity').value=''; applyFilters();}});
   if (status) chips.push({label:'Status: '+status, clear:()=>{document.getElementById('filterStatus').value=''; applyFilters();}});
   if (chips.length) {
     fs.style.display = '';
@@ -2875,7 +3039,7 @@ function renderTable() {
     return;
   }
 
-  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Phone</th><th>Ext</th><th>Int</th><th>QA</th><th>Status</th><th>Flag</th><th>Valid</th><th>Actions</th></tr></thead><tbody>`;
+  let h = `<table class="poi-table"><thead><tr><th style="width:30px"><input type="checkbox" onchange="togglePageCheckbox(this)" title="Select page"></th><th>#</th><th>Name EN</th><th>Name AR</th><th>Category</th><th>District</th><th>Decision</th><th>QA</th><th>Status</th><th>Actions</th></tr></thead><tbody>`;
   rows.forEach((p, i) => {
     const idx = start + i;
     // Always compute QA score live from field data
@@ -2889,6 +3053,7 @@ function renderTable() {
     const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Status==='Rejected'?'rejected':p.flagged?'flagged':'';
     const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
     const chk = selectedPois.has(p.GlobalID)?'checked':'';
+    const ds = getDecisionState(p);
     h += `<tr class="${rc}"${ed} onmouseenter="showPreview(event,${idx})" onmouseleave="hidePreview()">
       <td onclick="event.stopPropagation()"><input type="checkbox" ${chk} onchange="toggleSelect('${p.GlobalID}',this)"></td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${idx+1}</td>
@@ -2896,11 +3061,9 @@ function renderTable() {
       <td class="ar-text" onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Name_AR||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Category||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
-      <td>${esc(trunc(p.Phone_Number,15))}</td>
-      <td>${photoLink(p.Exterior_Photo_URL)}</td><td>${photoLink(p.Interior_Photo_URL)}</td>
-      <td><span class="${qc}">${qs}</span></td><td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
-      <td title="${esc(p.flag_reason||p.Review_Flag||'')}">${esc(trunc(p.flag_reason||p.Review_Flag,20))}</td>
-      <td>${validationResults.has(p.GlobalID) ? '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">'+validationResults.get(p.GlobalID).length+'</span>' : '<span style="color:#4caf50;font-size:10px;">OK</span>'}</td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer"><span style="background:${ds.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;" title="${ds.action||''}">${ds.icon} ${ds.label}</span></td>
+      <td><span class="${qc}">${qs}</span></td>
+      <td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
       <td class="row-actions" onclick="event.stopPropagation()"><button onclick="quickApprove('${p.GlobalID}')" title="Approve" class="qa-btn qa-approve">&check;</button><button onclick="quickReject('${p.GlobalID}')" title="Reject" class="qa-btn qa-reject">&times;</button><button onclick="quickArchive('${p.GlobalID}')" title="Archive" class="qa-btn qa-archive">&#9644;</button><button onclick="openDetail(${idx})" title="Open detail" class="qa-btn qa-detail">&ctdot;</button></td></tr>`;
   });
   h += '</tbody></table>';
@@ -3298,7 +3461,27 @@ function _renderStatusBanner(poi) {
     html += '<div style="background:#e65100;color:#fff;padding:6px 16px;font-size:12px;border-radius:6px;margin:6px 20px 0;">' +
       'FLAGGED: ' + esc(poi.flag_reason || 'No reason') + '</div>';
   }
-  // Blocker placeholder (filled async)
+  // Smart decision banner
+  const ds = getDecisionState(poi);
+  if (ds.state === 'ready') {
+    html += '<div style="background:#e8f5e9;color:#2e7d32;padding:8px 16px;font-size:13px;border-radius:6px;margin:8px 20px 0;display:flex;justify-content:space-between;align-items:center;">' +
+      '<span><b>&#10003; Ready for Approval</b></span>' +
+      '<button class="btn btn-success btn-sm" onclick="approveAndNext()" style="margin:0;padding:4px 14px;">Approve &amp; Next</button></div>';
+  } else if (ds.state === 'blocked' && status !== 'Rejected') {
+    html += '<div style="background:#ffebee;color:#c62828;padding:8px 16px;font-size:12px;border-radius:6px;margin:8px 20px 0;">' +
+      '<b>&#9888; Blocked:</b> ' + ds.blockers.map(b => esc(b.column.replace(/_/g,' ') + ': ' + b.fail_reason)).join(' | ') + '</div>';
+  } else if (ds.state === 'fixable') {
+    html += '<div style="background:#e3f2fd;color:#1565c0;padding:8px 16px;font-size:13px;border-radius:6px;margin:8px 20px 0;display:flex;justify-content:space-between;align-items:center;">' +
+      '<span><b>&#9881; ' + ds.safeFixes + ' safe fix' + (ds.safeFixes > 1 ? 'es' : '') + ' available</b></span>' +
+      '<button class="btn btn-sm" style="background:#1565c0;color:#fff;margin:0;padding:4px 14px;" onclick="applySafeFixes()">Apply Fixes</button></div>';
+  } else if (ds.state === 'warnings') {
+    html += '<div style="background:#fff8e1;color:#f57f17;padding:8px 16px;font-size:12px;border-radius:6px;margin:8px 20px 0;">' +
+      '<b>&#9888; ' + ds.warnings.length + ' warning' + (ds.warnings.length > 1 ? 's' : '') + '</b> — review before approving</div>';
+  }
+  if (ds.action) {
+    html += '<div style="padding:4px 20px;font-size:11px;color:#888;"><b>Suggested:</b> ' + ds.action + '</div>';
+  }
+  // Blocker placeholder (filled async from server)
   html += '<div id="blockerBanner" style="display:none;background:#fff3e0;color:#e65100;padding:6px 16px;font-size:12px;border-radius:6px;margin:6px 20px 0;"></div>';
   return html;
 }
@@ -3408,9 +3591,15 @@ function renderDetailExcel(poi) {
   h += '<table class="detail-excel"><thead><tr><th style="width:30px">#</th><th>Field</th><th>Value</th></tr></thead><tbody>';
   let n = 0;
 
-  // Default expanded: IDENTITY, LOCATION, and any section with issues
-  const defaultExpanded = new Set(['IDENTITY', 'LOCATION']);
+  // Default expanded: IDENTITY, LOCATION, MEDIA always; others only if they have issues
+  const defaultExpanded = new Set(['IDENTITY', 'LOCATION', 'MEDIA']);
   DETAIL_SECTIONS.forEach(s => { if (sectionIssues[s.title] > 0) defaultExpanded.add(s.title); });
+  // Category-aware: expand FNB-relevant sections for restaurant categories
+  const catLower = (poi.Category || '').toLowerCase();
+  const isFNB = catLower.includes('restaurant') || catLower.includes('coffee') || catLower.includes('food') || catLower.includes('beverage');
+  const isMosque = catLower.includes('mosque');
+  if (isFNB) defaultExpanded.add('CONTACT'); // cuisine, menu-related
+  if (isMosque) defaultExpanded.add('AMENITIES & SERVICES'); // mosque-specific fields
 
   DETAIL_SECTIONS.forEach((section, si) => {
     const iCnt = sectionIssues[section.title] || 0;
@@ -3768,6 +3957,52 @@ async function approveAndNext() {
 }
 
 function saveEdits() { saveEditsToStorage(); renderTable(); buildStats(); toast(dbMode ? 'Saved to PostgreSQL' : 'Saved to browser'); }
+
+// ===== SAFE AUTO-FIX =====
+async function applySafeFixes() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  if (!dbMode) { toast('Safe fixes require database connection', 'error'); return; }
+  try {
+    const resp = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/apply-safe-fixes', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reviewer: currentReviewer?.username || 'dashboard' })
+    });
+    const d = await resp.json();
+    if (!d.ok) { toast('Auto-fix failed: ' + (d.error || 'Unknown'), 'error'); return; }
+    d.applied.forEach(fix => { poi[fix.field] = fix.new; });
+    if (d.count > 0) {
+      // Re-fetch version
+      try { const fr = await fetch('/api/pois/' + encodeURIComponent(poi.GlobalID)).then(r=>r.json()); if (fr.review_version != null) poi.review_version = fr.review_version; } catch(_){}
+      validateAllPois(); buildStats(true);
+      renderDetailBody(); renderTable();
+      toast(d.count + ' safe fix' + (d.count > 1 ? 'es' : '') + ' applied');
+    } else { toast('No fixes needed'); }
+  } catch(e) { toast('Auto-fix failed: ' + e.message, 'error'); }
+}
+
+async function bulkApplySafeFixes() {
+  if (!dbMode) { toast('Safe fixes require database connection', 'error'); return; }
+  if (selectedPois.size === 0) { toast('No POIs selected'); return; }
+  const gids = [...selectedPois];
+  toast('Applying safe fixes to ' + gids.length + ' POIs...');
+  try {
+    const resp = await fetch('/api/pois/bulk/apply-safe-fixes', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ globalids: gids, reviewer: currentReviewer?.username || 'dashboard' })
+    });
+    const d = await resp.json();
+    if (!d.ok) { toast('Bulk auto-fix failed: ' + (d.error || 'Unknown'), 'error'); return; }
+    // Refresh all POIs data for affected ones
+    for (const r of (d.results || [])) {
+      const poi = allPois.find(p => p.GlobalID === r.globalid);
+      if (poi) {
+        try { const fr = await fetch('/api/pois/' + encodeURIComponent(r.globalid)).then(r=>r.json()); Object.assign(poi, fr); } catch(_){}
+      }
+    }
+    validateAllPois(); buildStats(true); renderTable();
+    toast(d.total_fixes + ' fixes applied across ' + (d.results||[]).length + ' POIs');
+  } catch(e) { toast('Bulk auto-fix failed: ' + e.message, 'error'); }
+}
 
 async function deletePoi() {
   const poi = filteredPois[currentPoiIdx];
@@ -6699,8 +6934,28 @@ document.addEventListener('keydown', function(e) {
     case 'a': case 'A':
       if (detailOpen && !e.ctrlKey && !e.metaKey) { approveAndNext(); e.preventDefault(); }
       break;
-    case 'f': case 'F':
-      if (detailOpen && !e.ctrlKey && !e.metaKey) { document.getElementById('flagSelect').focus(); e.preventDefault(); }
+    case 'f':
+      if (detailOpen && !e.ctrlKey && !e.metaKey && !e.shiftKey) { document.getElementById('flagSelect').focus(); e.preventDefault(); }
+      break;
+    case 'F':
+      if (detailOpen && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+        // Shift+F: Flag & Next
+        e.preventDefault();
+        flagPoi();
+        setTimeout(() => { if (currentPoiIdx + 1 < filteredPois.length) navPoi(1); }, 300);
+      } else if (detailOpen && !e.ctrlKey && !e.metaKey) { document.getElementById('flagSelect').focus(); e.preventDefault(); }
+      break;
+    case 'r':
+      if (detailOpen && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+        // Shift+R: Reject (already advances to next on success)
+        e.preventDefault(); rejectPoi();
+      }
+      break;
+    case 'R':
+      if (detailOpen && !e.ctrlKey && !e.metaKey && e.shiftKey) { e.preventDefault(); rejectPoi(); }
+      break;
+    case 'x': case 'X':
+      if (detailOpen && !e.ctrlKey && !e.metaKey) { e.preventDefault(); applySafeFixes(); }
       break;
     case 's': case 'S':
       if (detailOpen && !e.ctrlKey && !e.metaKey) { saveEdits(); e.preventDefault(); }
@@ -6721,10 +6976,11 @@ document.addEventListener('keydown', function(e) {
       toggleShortcutHelp();
       break;
     case '1': if (!detailOpen) { setDataTab('all'); e.preventDefault(); } break;
-    case '2': if (!detailOpen) { setDataTab('flagged'); e.preventDefault(); } break;
-    case '3': if (!detailOpen) { setDataTab('lowqa'); e.preventDefault(); } break;
-    case '4': if (!detailOpen) { setDataTab('reviewed'); e.preventDefault(); } break;
-    case '5': if (!detailOpen) { setDataTab('errors'); e.preventDefault(); } break;
+    case '2': if (!detailOpen) { setDataTab('needs_approval'); e.preventDefault(); } break;
+    case '3': if (!detailOpen) { setDataTab('blocked'); e.preventDefault(); } break;
+    case '4': if (!detailOpen) { setDataTab('flagged'); e.preventDefault(); } break;
+    case '5': if (!detailOpen) { setDataTab('reviewed'); e.preventDefault(); } break;
+    case '6': if (!detailOpen) { setDataTab('errors'); e.preventDefault(); } break;
   }
 });
 

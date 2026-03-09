@@ -7,6 +7,7 @@ import csv
 import io
 import os
 import sys
+import re
 import uuid
 import time
 import datetime
@@ -789,6 +790,170 @@ def get_stats():
         'archived': archived, 'rejected': rejected, 'flagged': flagged,
         'avg_qa': round(float(avg_qa or 0), 1)
     })
+
+# ===== API: Queue Summary =====
+@api.route('/queues/summary', methods=['GET'])
+def queue_summary():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            COUNT(*) FILTER (WHERE ("Review_Status" = 'Draft' OR "Review_Status" IS NULL OR "Review_Status" = '')
+                             AND ("flagged" IS NOT TRUE)) AS needs_approval,
+            COUNT(*) FILTER (WHERE "flagged" = TRUE) AS flagged,
+            COUNT(*) FILTER (WHERE "updated_at" >= NOW() - INTERVAL '24 hours') AS recently_updated,
+            COUNT(*) FILTER (WHERE ("Exterior_Photo_URL" IS NULL OR "Exterior_Photo_URL" = '' OR "Exterior_Photo_URL" = 'UNAVAILABLE')
+                             OR ("Interior_Photo_URL" IS NULL OR "Interior_Photo_URL" = '' OR "Interior_Photo_URL" = 'UNAVAILABLE')) AS needs_media,
+            COUNT(*) FILTER (WHERE "Review_Status" = 'Reviewed') AS reviewed,
+            COUNT(*) FILTER (WHERE "Review_Status" = 'Rejected') AS rejected,
+            COUNT(*) FILTER (WHERE "Review_Status" = 'Archived') AS archived
+        FROM final_delivery
+    """)
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify({
+        'needs_approval': row[0], 'flagged': row[1],
+        'recently_updated': row[2], 'needs_media': row[3],
+        'reviewed': row[4], 'rejected': row[5], 'archived': row[6]
+    })
+
+# ===== API: Safe Auto-Fix =====
+@api.route('/pois/<globalid>/apply-safe-fixes', methods=['POST'])
+def apply_safe_fixes(globalid):
+    ensure_tables()
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        return api_error('POI not found', 404, code=NOT_FOUND)
+
+    reviewer = (request.json or {}).get('reviewer', 'system')
+    fixes = []
+    updates = {}
+
+    # 1. Trim whitespace on text fields
+    text_fields = ['Name_EN', 'Name_AR', 'Legal_Name', 'Phone_Number', 'Email', 'Website',
+                   'Social_Media', 'District_EN', 'District_AR', 'Building_Number']
+    for f in text_fields:
+        v = row.get(f) or ''
+        if isinstance(v, str) and v != v.strip() and v.strip():
+            updates[f] = v.strip()
+            fixes.append({'field': f, 'old': v, 'new': v.strip(), 'reason': 'trimmed whitespace'})
+
+    # 2. Normalize boolean fields
+    bool_fields = ['Menu', 'Drive_Thru', 'Dine_In', 'Only_Delivery', 'Reservation', 'Require_Ticket',
+                   'Order_from_Car', 'Pickup_Point', 'WiFi', 'Music', 'Valet_Parking', 'Has_Parking_Lot',
+                   'Wheelchair_Accessible', 'Family_Seating', 'Waiting_Area', 'Private_Dining',
+                   'Smoking_Area', 'Children_Area', 'Shisha', 'Live_Sports', 'Is_Landmark', 'Is_Trending',
+                   'Large_Groups', 'Women_Prayer_Room', 'Iftar_Tent', 'Iftar_Menu', 'Open_Suhoor', 'Free_Entry']
+    for f in bool_fields:
+        v = str(row.get(f) or '').strip()
+        vl = v.lower()
+        if vl in ('yes', 'y', 'true', '1') and v != 'Yes':
+            updates[f] = 'Yes'
+            fixes.append({'field': f, 'old': v, 'new': 'Yes', 'reason': 'normalized to Yes'})
+        elif vl in ('no', 'n', 'false', '0') and v != 'No':
+            updates[f] = 'No'
+            fixes.append({'field': f, 'old': v, 'new': 'No', 'reason': 'normalized to No'})
+        elif vl in ('n/a', 'na', 'unavailable', 'none', 'null', '') and v and v != 'UNAVAILABLE':
+            updates[f] = 'UNAVAILABLE'
+            fixes.append({'field': f, 'old': v, 'new': 'UNAVAILABLE', 'reason': 'normalized to UNAVAILABLE'})
+        elif v and vl not in ('yes', 'no', 'unavailable', 'unapplicable', ''):
+            updates[f] = 'UNAVAILABLE'
+            fixes.append({'field': f, 'old': v, 'new': 'UNAVAILABLE', 'reason': 'invalid value set to UNAVAILABLE'})
+
+    # 3. Move Google Maps URL from Website to Google_Map_URL
+    website = str(row.get('Website') or '')
+    gmap = str(row.get('Google_Map_URL') or '')
+    if website and ('maps.google' in website.lower() or 'maps.app' in website.lower() or 'goo.gl/maps' in website.lower()):
+        if not gmap or gmap == 'UNAVAILABLE':
+            updates['Google_Map_URL'] = website
+            fixes.append({'field': 'Google_Map_URL', 'old': gmap, 'new': website, 'reason': 'moved from Website'})
+        updates['Website'] = 'UNAVAILABLE'
+        fixes.append({'field': 'Website', 'old': website, 'new': 'UNAVAILABLE', 'reason': 'was Google Maps link'})
+
+    # 4. Fix scientific notation phone
+    phone = str(row.get('Phone_Number') or '')
+    if phone and ('e+' in phone.lower() or 'E+' in phone):
+        updates['Phone_Number'] = 'UNAVAILABLE'
+        fixes.append({'field': 'Phone_Number', 'old': phone, 'new': 'UNAVAILABLE', 'reason': 'scientific notation'})
+
+    # 5. Fix invalid email
+    email_val = str(row.get('Email') or '')
+    if email_val and email_val != 'UNAVAILABLE':
+        if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email_val):
+            updates['Email'] = 'UNAVAILABLE'
+            fixes.append({'field': 'Email', 'old': email_val, 'new': 'UNAVAILABLE', 'reason': 'invalid email format'})
+
+    # 6. Fix invalid floor
+    floor = str(row.get('Floor_Number') or '').strip()
+    allowed_floors = ['G', 'B1', '1', '2', '3', '4', '5', 'UNAVAILABLE', 'UNAPPLICABLE', '']
+    if floor and floor not in allowed_floors:
+        updates['Floor_Number'] = 'UNAVAILABLE'
+        fixes.append({'field': 'Floor_Number', 'old': floor, 'new': 'UNAVAILABLE', 'reason': 'invalid floor value'})
+
+    # 7. Deduplicate media URLs
+    media_fields = ['Exterior_Photo_URL', 'Interior_Photo_URL', 'Menu_Photo_URL', 'Video_URL', 'License_Photo_URL']
+    seen_urls = {}
+    for f in media_fields:
+        v = str(row.get(f) or '')
+        if v and v != 'UNAVAILABLE' and v.startswith('http'):
+            if v in seen_urls:
+                updates[f] = 'UNAVAILABLE'
+                fixes.append({'field': f, 'old': v, 'new': 'UNAVAILABLE', 'reason': 'duplicate of ' + seen_urls[v]})
+            else:
+                seen_urls[v] = f
+
+    if not fixes:
+        cur.close()
+        conn.close()
+        return api_success({'applied': [], 'count': 0}, message='No safe fixes needed')
+
+    # Apply updates
+    set_clauses = ['"' + k + '" = %s' for k in updates.keys()]
+    set_clauses.append('"review_version" = COALESCE("review_version", 0) + 1')
+    set_clauses.append('"updated_at" = NOW()')
+    vals = list(updates.values()) + [globalid]
+    cur.execute('UPDATE final_delivery SET ' + ', '.join(set_clauses) + ' WHERE "GlobalID" = %s', vals)
+
+    log_audit(conn, globalid, row.get('Name_EN') or row.get('Name_AR') or '',
+              reviewer, 'auto_fix', updates, old_data=dict(row))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return api_success({'applied': fixes, 'count': len(fixes)},
+                       message=str(len(fixes)) + ' safe fixes applied')
+
+# ===== API: Bulk Safe Auto-Fix =====
+@api.route('/pois/bulk/apply-safe-fixes', methods=['POST'])
+def bulk_apply_safe_fixes():
+    data = request.json or {}
+    globalids = data.get('globalids', [])
+    reviewer = data.get('reviewer', 'system')
+    if not globalids:
+        return api_error('No globalids provided', 400, code=VALIDATION_ERROR)
+
+    total_fixes = 0
+    results = []
+    for gid in globalids:
+        with app.test_request_context(json={'reviewer': reviewer}):
+            resp = apply_safe_fixes(gid)
+            if isinstance(resp, tuple):
+                resp_data = resp[0].get_json()
+            else:
+                resp_data = resp.get_json()
+            count = resp_data.get('count', 0)
+            total_fixes += count
+            if count > 0:
+                results.append({'globalid': gid, 'count': count})
+
+    return api_success({'total_fixes': total_fixes, 'results': results},
+                       message=str(total_fixes) + ' fixes applied across ' + str(len(results)) + ' POIs')
 
 # ===== API: Delete POI =====
 @api.route('/pois/<globalid>', methods=['DELETE'])
