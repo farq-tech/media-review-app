@@ -501,7 +501,7 @@ def update_poi(globalid):
         return api_error('No data', 400, code=VALIDATION_ERROR)
 
     reviewer = data.pop('_reviewer', None) or request.headers.get('X-Reviewer', 'unknown')
-    expected_version = data.pop('_expected_version', None)
+    data.pop('_expected_version', None)  # ignored — conflict check removed
 
     conn = get_db()
     ensure_tables()
@@ -515,14 +515,6 @@ def update_poi(globalid):
     if not old_row:
         conn.close()
         return api_error('Not found', 404, code=NOT_FOUND)
-
-    # Optimistic concurrency check
-    if expected_version is not None:
-        current_version = old_row.get('review_version', 0) or 0
-        if int(expected_version) != int(current_version):
-            conn.close()
-            return api_error('Modified by another user', 409, code=CONFLICT,
-                           details={'current_version': current_version, 'expected_version': int(expected_version)})
 
     cur = conn.cursor()
     sets = []
@@ -574,10 +566,6 @@ def update_poi(globalid):
         conn.close()
         return api_error('No valid fields', 400, code=VALIDATION_ERROR)
 
-    # Always bump version on update (unless approval already does it)
-    if '"review_version" = COALESCE("review_version", 0) + 1' not in sets:
-        sets.append('"review_version" = COALESCE("review_version", 0) + 1')
-
     sets.append('"updated_at" = NOW()')
     vals.append(globalid)
 
@@ -606,12 +594,10 @@ def update_poi(globalid):
 
     conn.commit()
 
-    # Get new version + status for frontend
-    cur.execute('SELECT "review_version", "Review_Status", "draft_reason" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
+    # Get new status for frontend
+    cur.execute('SELECT "Review_Status", "draft_reason" FROM final_delivery WHERE "GlobalID" = %s', (globalid,))
     new_row = cur.fetchone()
-    new_version = new_row[0] if new_row else 0
-    new_status_val = new_row[1] if new_row else None
-    new_draft_reason = new_row[2] if new_row else ''
+    new_status_val = new_row[0] if new_row else None
     cur.close()
     conn.close()
 
@@ -620,7 +606,6 @@ def update_poi(globalid):
     response = {
         'updated': updated,
         'globalid': globalid,
-        'review_version': new_version,
         'review_status': new_status_val,
         'changed_fields': changed_fields,
     }
@@ -644,27 +629,19 @@ def bulk_update():
     conn = get_db()
     cur = conn.cursor()
     updated = 0
-    conflicts = []
 
     cur2 = conn.cursor(cursor_factory=RealDictCursor)
     for item in data:
         gid = item.get('GlobalID')
         if not gid:
             continue
-        expected_version = item.pop('_expected_version', None)
+        item.pop('_expected_version', None)  # ignored — conflict check removed
 
         # Fetch current status for major/minor field check
-        cur2.execute('SELECT "Review_Status", "review_version" FROM final_delivery WHERE "GlobalID" = %s', (gid,))
+        cur2.execute('SELECT "Review_Status" FROM final_delivery WHERE "GlobalID" = %s', (gid,))
         current = cur2.fetchone()
         if not current:
             continue
-
-        # Per-item optimistic concurrency check
-        if expected_version is not None:
-            current_version = current.get('review_version', 0) or 0
-            if int(expected_version) != int(current_version):
-                conflicts.append({'GlobalID': gid, 'current_version': current_version})
-                continue
 
         old_status = (current.get('Review_Status') or '').strip()
 
@@ -696,8 +673,6 @@ def bulk_update():
         if not sets:
             continue
 
-        # Always bump version
-        sets.append('"review_version" = COALESCE("review_version", 0) + 1')
         sets.append('"updated_at" = NOW()')
         vals.append(gid)
         cur.execute(f'UPDATE final_delivery SET {", ".join(sets)} WHERE "GlobalID" = %s', vals)
@@ -707,10 +682,7 @@ def bulk_update():
     conn.commit()
     cur.close()
     conn.close()
-    result = {'updated': updated}
-    if conflicts:
-        result['conflicts'] = conflicts
-    return api_success(result)
+    return api_success({'updated': updated})
 
 # ===== API: Export as CSV =====
 @api.route('/pois/export', methods=['GET'])

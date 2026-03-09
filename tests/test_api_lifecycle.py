@@ -200,21 +200,9 @@ class TestLifecycleAPI:
         assert d['can_approve'] == False
         assert len(d['blockers']) > 0
 
-    def test_version_increments_on_update(self, client):
+    def test_save_without_version_succeeds(self, client):
         gid = self._create_poi(client)
         resp = client.patch(f'/api/pois/{gid}', json={'Review_Notes': 'edit 1'})
-        v1 = resp.get_json().get('review_version', 0)
+        assert resp.get_json()['ok']
         resp2 = client.patch(f'/api/pois/{gid}', json={'Review_Notes': 'edit 2'})
-        v2 = resp2.get_json().get('review_version', 0)
-        assert v2 > v1
-
-    def test_conflict_detection(self, client):
-        gid = self._create_poi(client)
-        # First update
-        resp1 = client.patch(f'/api/pois/{gid}', json={'Review_Notes': 'edit 1'})
-        # Try with stale version
-        resp2 = client.patch(f'/api/pois/{gid}', json={
-            'Review_Notes': 'edit 2',
-            '_expected_version': 0  # Stale version
-        })
-        assert resp2.status_code == 409
+        assert resp2.get_json()['ok']
