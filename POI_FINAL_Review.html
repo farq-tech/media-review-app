@@ -5482,13 +5482,19 @@ const PRICING_MAP = [
 const INVOICE_BUDGET = 50000;
 const MAX_PER_POI = PRICING_MAP.reduce((s, g) => s + g.price, 0); // 52.20
 
+function isFieldUnapplicable(val) {
+  if (val === null || val === undefined || val === '') return false;
+  const v = String(val).trim().toUpperCase();
+  return v === 'UNAPPLICABLE' || v === 'N/A' || v === 'NA';
+}
+
 function isFieldFilled(val) {
   if (val === null || val === undefined || val === '') return false;
   const v = String(val).trim().toUpperCase();
   if (v === '') return false;
   // UNAVAILABLE counts as filled (work was done to determine it)
   // UNAPPLICABLE does NOT count (field doesn't apply to this POI)
-  if (v === 'UNAPPLICABLE' || v === 'N/A' || v === 'NA') return false;
+  if (isFieldUnapplicable(val)) return false;
   return true;
 }
 
@@ -5497,11 +5503,16 @@ function calcPoiValue(poi, filter) {
   const breakdown = {};
   const groups = filter === 'mandatory' ? PRICING_MAP.filter(g => g.mandatory) : PRICING_MAP;
   for (const group of groups) {
+    // Skip UNAPPLICABLE fields — only check applicable ones
+    const applicable = group.fields.filter(f => !isFieldUnapplicable(poi[f]));
     let filled;
-    if (group.anyFilled) {
-      filled = group.fields.some(f => isFieldFilled(poi[f]));
+    if (applicable.length === 0) {
+      // All fields unapplicable — no payment for this group
+      filled = false;
+    } else if (group.anyFilled) {
+      filled = applicable.some(f => isFieldFilled(poi[f]));
     } else {
-      filled = group.fields.every(f => isFieldFilled(poi[f]));
+      filled = applicable.every(f => isFieldFilled(poi[f]));
     }
     breakdown[group.id] = filled;
     if (filled) total += group.price;
