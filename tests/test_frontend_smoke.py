@@ -93,9 +93,8 @@ class TestJSFunctions:
 class TestJSConstants:
     """Verify critical constants and config."""
 
-    def test_view_map_defined(self):
+    def test_view_ids_defined(self):
         html = _read_html()
-        assert 'VIEW_MAP' in html
         assert 'VIEW_IDS' in html
 
     def test_media_types_defined(self):
