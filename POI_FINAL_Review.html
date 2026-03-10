@@ -1066,6 +1066,7 @@ table { font-feature-settings: "tnum"; }
       <select id="flagSelect"><option value="">-- Flag --</option></select>
       <input type="text" id="noteInput" placeholder="Review note...">
       <button class="btn btn-warn" onclick="flagPoi()">Flag</button>
+      <button class="btn" id="unflagBtn" onclick="unflagPoi()" style="background:#FB923C;color:#fff;display:none;">Unflag</button>
     </div>
     <div class="action-group">
       <button class="btn btn-primary" onclick="openPoiForm('edit')">Edit</button>
@@ -4173,6 +4174,10 @@ function renderDetailBody() {
   else body.innerHTML = bannerHtml + mapHtml + renderDetailCards(poi);
   _checkApprovalBlockers(poi);
 
+  // Show/hide unflag button based on flag state
+  const unflagBtn = document.getElementById('unflagBtn');
+  if (unflagBtn) unflagBtn.style.display = poi.flagged ? '' : 'none';
+
   // Lock rejected POIs — disable all editing controls
   const isRejected = (poi.Review_Status || '').trim() === 'Rejected';
   const actionsDiv = document.querySelector('.detail-actions');
@@ -4753,6 +4758,26 @@ function flagPoi() {
   }
   renderTable(); buildStats(); renderDetailBody();
   toast('Flagged: ' + trunc(poi.Name_EN,30) + ' (status: ' + (poi.Review_Status||'Draft') + ')');
+}
+
+function unflagPoi() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  poi.flagged = false;
+  poi.flag_reason = '';
+  if (!edits[poi.GlobalID]) edits[poi.GlobalID]={};
+  Object.assign(edits[poi.GlobalID], { flagged: false, flag_reason: '' });
+  saveEditsToStorage();
+  if (dbMode) {
+    fetch('/api/pois/' + encodeURIComponent(poi.GlobalID) + '/flag', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flagged: false, flag_reason: '', reviewer: currentReviewer?.username || 'dashboard' })
+    }).then(r => r.json()).then(d => {
+      if (!d.ok) toast('Unflag save failed: ' + (d.error || 'Unknown error'), 'error');
+    }).catch(e => toast('Unflag save failed: ' + e.message, 'error'));
+  }
+  renderTable(); buildStats(); renderDetailBody();
+  toast('Unflagged: ' + trunc(poi.Name_EN,30));
 }
 
 async function _doApprove() {
