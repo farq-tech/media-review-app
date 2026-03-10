@@ -1009,6 +1009,75 @@ def poi_timeline(globalid):
 
     return api_success({'events': events, 'total': len(rows)})
 
+# ===== API: Delivery Readiness Stats =====
+@api.route('/stats/delivery-readiness', methods=['GET'])
+def delivery_readiness():
+    """Aggregate delivery-readiness metrics across all POIs."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT "Review_Status", "Category", "District_EN", flagged,
+               "Name_AR", "Name_EN", "Latitude", "Longitude",
+               "Phone_Number", "District_AR",
+               "Exterior_Photo_URL", "Interior_Photo_URL"
+        FROM final_delivery
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    total = len(rows)
+    draft = reviewed = rejected = archived = flagged_cnt = missing_media = 0
+    cats = {}
+    dists = {}
+    for r in rows:
+        st = r.get('Review_Status') or 'Draft'
+        if st == 'Draft':
+            draft += 1
+        elif st == 'Reviewed':
+            reviewed += 1
+        elif st == 'Rejected':
+            rejected += 1
+        elif st == 'Archived':
+            archived += 1
+        if r.get('flagged'):
+            flagged_cnt += 1
+        ext = r.get('Exterior_Photo_URL') or ''
+        intr = r.get('Interior_Photo_URL') or ''
+        if (not ext or ext == 'UNAVAILABLE') and (not intr or intr == 'UNAVAILABLE'):
+            missing_media += 1
+        cat = r.get('Category') or 'Uncategorized'
+        if cat not in cats:
+            cats[cat] = {'total': 0, 'reviewed': 0, 'draft': 0}
+        cats[cat]['total'] += 1
+        if st == 'Reviewed':
+            cats[cat]['reviewed'] += 1
+        if st == 'Draft':
+            cats[cat]['draft'] += 1
+        dist = r.get('District_EN') or 'Unknown'
+        if dist not in dists:
+            dists[dist] = {'total': 0, 'reviewed': 0, 'draft': 0}
+        dists[dist]['total'] += 1
+        if st == 'Reviewed':
+            dists[dist]['reviewed'] += 1
+        if st == 'Draft':
+            dists[dist]['draft'] += 1
+
+    cat_list = [{'name': k, **v} for k, v in sorted(cats.items(), key=lambda x: -x[1]['total'])]
+    dist_list = [{'name': k, **v} for k, v in sorted(dists.items(), key=lambda x: -x[1]['total'])]
+
+    return api_success({
+        'total': total,
+        'draft': draft,
+        'reviewed': reviewed,
+        'rejected': rejected,
+        'archived': archived,
+        'flagged': flagged_cnt,
+        'missing_media': missing_media,
+        'categories': cat_list,
+        'districts': dist_list
+    })
+
 # ===== API: Delete POI =====
 @api.route('/pois/<globalid>', methods=['DELETE'])
 def delete_poi(globalid):
