@@ -3024,10 +3024,8 @@ async function init() {
   const saved = localStorage.getItem('poi_review_edits');
   if (saved) try { edits = JSON.parse(saved); } catch(e) {}
   const sel = document.getElementById('flagSelect');
-  const bulkSel = document.getElementById('bulkFlagSelect');
   REVIEW_FLAGS.forEach(f => {
     const o = document.createElement('option'); o.value = f; o.textContent = f; sel.appendChild(o);
-    const o2 = document.createElement('option'); o2.value = f; o2.textContent = f; bulkSel.appendChild(o2);
   });
 
   // Try API first (PostgreSQL), fallback to static JSON
