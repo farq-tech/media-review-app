@@ -1075,6 +1075,7 @@ table { font-feature-settings: "tnum"; }
     <div class="action-group" style="border-right:none;">
       <button class="btn btn-success btn-approve" onclick="approveAndNext()" title="Approve & advance to next (A)">Approve & Next</button>
       <button class="btn btn-success-subtle" onclick="approvePoi()" title="Approve without advancing">Approve</button>
+      <button class="btn" id="forceApproveBtn" onclick="forceApprove()" style="background:#b45309;color:#fff;display:none;" title="Override QA score check and approve">Force Approve</button>
       <button class="btn" onclick="archivePoi()" style="background:var(--text-muted);color:#fff;">Archive</button>
       <button class="btn btn-danger-subtle" onclick="rejectPoi()">Reject</button>
       <div class="overflow-menu-wrap">
@@ -4177,6 +4178,10 @@ function renderDetailBody() {
   // Show/hide unflag button based on flag state
   const unflagBtn = document.getElementById('unflagBtn');
   if (unflagBtn) unflagBtn.style.display = poi.flagged ? '' : 'none';
+  // Reset force approve button on POI switch
+  const forceBtn = document.getElementById('forceApproveBtn');
+  if (forceBtn) forceBtn.style.display = 'none';
+  if (poi._qaOverride) delete poi._qaOverride;
 
   // Lock rejected POIs — disable all editing controls
   const isRejected = (poi.Review_Status || '').trim() === 'Rejected';
@@ -4780,6 +4785,14 @@ function unflagPoi() {
   toast('Unflagged: ' + trunc(poi.Name_EN,30));
 }
 
+function forceApprove() {
+  const poi = filteredPois[currentPoiIdx]; if (!poi) return;
+  poi._qaOverride = true;
+  const forceBtn = document.getElementById('forceApproveBtn');
+  if (forceBtn) forceBtn.style.display = 'none';
+  approvePoi();
+}
+
 async function _doApprove() {
   const poi = filteredPois[currentPoiIdx]; if (!poi) return null;
 
@@ -4789,11 +4802,13 @@ async function _doApprove() {
     return null;
   }
 
-  // Block approval if QA score below delivery threshold
+  // Warn if QA score below delivery threshold (can be overridden)
   const _approvalErrs = validationResults.get(poi.GlobalID) || validatePoi(poi);
   const _approvalScores = calcQaScores(poi, _approvalErrs);
-  if (_approvalScores.composite < 95) {
-    toast(`Cannot approve — QA score ${_approvalScores.composite}/100 (minimum 95). Fix validation errors first.`, 'error');
+  if (_approvalScores.composite < 95 && !poi._qaOverride) {
+    toast(`QA score ${_approvalScores.composite}/100 (minimum 95). Use "Force Approve" to override.`, 'error');
+    const forceBtn = document.getElementById('forceApproveBtn');
+    if (forceBtn) forceBtn.style.display = '';
     return null;
   }
 
