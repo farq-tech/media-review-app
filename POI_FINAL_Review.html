@@ -15,6 +15,13 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
+/* ═══════════ ARABIC FONT ═══════════ */
+@font-face { font-family: 'ITF Huwiya Arabic'; src: url('fonts/itfHuwiyaArabic-Light.woff2') format('woff2'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ITF Huwiya Arabic'; src: url('fonts/itfHuwiyaArabic-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ITF Huwiya Arabic'; src: url('fonts/itfHuwiyaArabic-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ITF Huwiya Arabic'; src: url('fonts/itfHuwiyaArabic-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ITF Huwiya Arabic'; src: url('fonts/itfHuwiyaArabic-Black.woff2') format('woff2'); font-weight: 900; font-style: normal; font-display: swap; }
+
 /* ═══════════ DESIGN TOKENS ═══════════ */
 :root {
   --bg: #F8FAFC; --surface: #FFFFFF; --surface-hover: #F1F5F9; --surface-active: #E2E8F0;
@@ -32,6 +39,7 @@
   --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.06);
   --font: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --font-ar: 'ITF Huwiya Arabic', 'Segoe UI', 'Tahoma', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', monospace;
   --sidebar-w: 56px; --sidebar-w-expanded: 220px;
 }
@@ -151,7 +159,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .poi-table tr.selected td { background: var(--primary-light); }
 .poi-table tr.reviewed td { background: var(--success-light); }
 .poi-table tr.flagged td { background: var(--warning-light); }
-.ar-text { direction: rtl; text-align: right; }
+.ar-text { direction: rtl; text-align: right; font-family: var(--font-ar); }
 .qa-high { background: var(--success-light); color: var(--success-text); font-weight: 600; text-align: center; border-radius: var(--radius-pill); padding: 2px 8px; font-size: 11px; }
 .qa-mid { background: var(--warning-light); color: var(--warning-text); font-weight: 600; text-align: center; border-radius: var(--radius-pill); padding: 2px 8px; font-size: 11px; }
 .qa-low { background: var(--danger-light); color: var(--danger-text); font-weight: 600; text-align: center; border-radius: var(--radius-pill); padding: 2px 8px; font-size: 11px; }
@@ -186,7 +194,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .excel-cell { width: 100%; border: none; background: transparent; padding: 4px 6px; font-size: 12px; font-family: var(--font); outline: none; min-width: 60px; }
 .excel-cell:focus { background: var(--surface); box-shadow: inset 0 0 0 2px var(--primary); }
 .excel-cell.changed { background: var(--success-light); }
-.excel-cell.ar { direction: rtl; text-align: right; }
+.excel-cell.ar { direction: rtl; text-align: right; font-family: var(--font-ar); }
 .excel-table .frozen { position: sticky; z-index: 11; background: inherit; }
 .resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 4px; cursor: col-resize; background: transparent; }
 .resize-handle:hover { background: var(--primary); }
@@ -344,7 +352,7 @@ tr:hover .qa-btn { opacity:0.7; }
 .poi-preview .pv-photos .pv-no { flex: 1; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text-muted); font-size: 11px; }
 .poi-preview .pv-body { padding: 10px 14px; }
 .poi-preview .pv-name { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
-.poi-preview .pv-name-ar { font-size: 13px; color: var(--text-secondary); direction: rtl; text-align: right; margin-bottom: 6px; }
+.poi-preview .pv-name-ar { font-size: 13px; color: var(--text-secondary); direction: rtl; text-align: right; margin-bottom: 6px; font-family: var(--font-ar); }
 .poi-preview .pv-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); padding: 2px 0; }
 .poi-preview .pv-row b { color: var(--text-primary); }
 
@@ -3654,7 +3662,7 @@ function renderExcelTable() {
         }
       } else if (isFullMode) {
         // In all-columns mode, render plain text cells (click to edit via detail panel)
-        h += `<td style="${cellBg}" class="${changed}" onclick="openDetailByGid('${p.GlobalID}')" title="Click to edit in detail panel"><span style="padding:4px 6px;display:block;font-size:11px;${isAr?'direction:rtl;':''}">${esc(trunc(String(val),40))}</span></td>`;
+        h += `<td style="${cellBg}" class="${changed}" onclick="openDetailByGid('${p.GlobalID}')" title="Click to edit in detail panel"><span style="padding:4px 6px;display:block;font-size:11px;${isAr?'direction:rtl;font-family:var(--font-ar);':''}">${esc(trunc(String(val),40))}</span></td>`;
       } else if (col === 'Category') {
         h += `<td style="${cellBg}"${cellTitle}>${renderCategoryDropdown(val, p.GlobalID, hasEdit, 'excelEdit')}</td>`;
       } else if (col === 'Subcategory') {
@@ -4022,7 +4030,7 @@ function renderDetailExcel(poi) {
       } else if (['Exterior_Photo_URL','Interior_Photo_URL','Menu_Photo_URL','Video_URL','License_Photo_URL','Additional_Photo_URLs'].includes(field)) {
         h += `<td class="field-value"${vStyle}>${renderExcelMediaCell(poi, field, val, hasEdit)}</td>`;
       } else if (field === 'Amenities' || field.includes('URL')) {
-        h += `<td class="field-value"${vStyle}><textarea rows="${val.length > 100 ? 3 : 1}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl"':''}>${esc(val)}</textarea></td>`;
+        h += `<td class="field-value"${vStyle}><textarea rows="${val.length > 100 ? 3 : 1}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl" style="font-family:var(--font-ar)"':''}>${esc(val)}</textarea></td>`;
       } else if (field === 'Review_Flag') {
         h += `<td class="field-value"${vStyle}><select data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)" style="width:100%;border:none;padding:5px 8px;font-size:12px;background:transparent;${hasEdit?'background:#e8f5e9':''}">`;
         h += `<option value="">-- None --</option>`;
@@ -4035,7 +4043,7 @@ function renderDetailExcel(poi) {
       } else if (DROPDOWN_FIELDS.has(field)) {
         h += `<td class="field-value"${vStyle}>${renderDropdown(val, poi.GlobalID, field, hasEdit, 'detailEdit')}</td>`;
       } else {
-        h += `<td class="field-value"${vStyle}><input value="${esc(val)}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl"':''}></td>`;
+        h += `<td class="field-value"${vStyle}><input value="${esc(val)}" class="${hasEdit?'changed':''}" data-field="${field}" data-gid="${poi.GlobalID}" onchange="detailEdit(this)"${isAr?' dir="rtl" style="font-family:var(--font-ar)"':''}></td>`;
       }
       h += '</tr>';
     });
@@ -6819,9 +6827,11 @@ function renderFormField(f, val) {
   switch (f.type) {
     case 'text':
     case 'number':
-    case 'url':
-      input = `<input type="${f.type === 'url' ? 'text' : f.type}" name="${f.name}" value="${esc(val)}" placeholder="${f.label}">`;
+    case 'url': {
+      const arStyle = (f.name === 'Name_AR' || f.name === 'District_AR') ? ' dir="rtl" style="font-family:var(--font-ar);text-align:right"' : '';
+      input = `<input type="${f.type === 'url' ? 'text' : f.type}" name="${f.name}" value="${esc(val)}" placeholder="${f.label}"${arStyle}>`;
       break;
+    }
     case 'textarea':
       input = `<textarea name="${f.name}" placeholder="${f.label}">${esc(val)}</textarea>`;
       break;
