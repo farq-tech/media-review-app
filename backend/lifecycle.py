@@ -159,6 +159,16 @@ def get_approval_blockers(poi, validation_errors=None):
         if blocker_count:
             blockers.append(f'{blocker_count} BLOCKER validation error(s)')
 
+    # QA score delivery gate (strict blocker)
+    qa_score = poi.get('QA_Score')
+    if qa_score is not None and str(qa_score).strip():
+        try:
+            score = int(float(qa_score))
+            if score < 95:
+                blockers.append(f'QA score {score}/100 below delivery threshold (95)')
+        except (ValueError, TypeError):
+            pass
+
     return blockers
 
 

@@ -89,6 +89,22 @@ class TestLifecycleModule:
         from lifecycle import MAJOR_FIELDS
         assert len(MAJOR_FIELDS) >= 50  # Should be ~62 fields
 
+    def test_low_qa_score_blocks_approval(self):
+        from lifecycle import get_approval_blockers
+        poi = {'Review_Status': 'Draft', 'Name_EN': 'Test', 'Name_AR': 'اختبار',
+               'Category': 'Banks', 'Latitude': '24.7', 'Longitude': '46.6',
+               'QA_Score': '80'}
+        blockers = get_approval_blockers(poi)
+        assert any('QA score' in b for b in blockers)
+
+    def test_high_qa_score_no_blocker(self):
+        from lifecycle import get_approval_blockers
+        poi = {'Review_Status': 'Draft', 'Name_EN': 'Test', 'Name_AR': 'اختبار',
+               'Category': 'Banks', 'Latitude': '24.7', 'Longitude': '46.6',
+               'QA_Score': '98'}
+        blockers = get_approval_blockers(poi)
+        assert not any('QA score' in b for b in blockers)
+
 
 # ── Integration tests (require DB) ──
 

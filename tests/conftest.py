@@ -198,6 +198,20 @@ def client(app):
     return app.test_client()
 
 
+@pytest.fixture(scope='session')
+def validation_client():
+    """Lightweight Flask test client for stateless endpoints (validate-poi).
+    Does NOT require a database connection."""
+    from unittest.mock import patch, MagicMock
+    with patch.dict(os.environ, {'DATABASE_URL': 'postgresql://x:x@localhost/x'}):
+        with patch('poi_api_server.sync_to_arcgis'):
+            import importlib
+            import poi_api_server
+            importlib.reload(poi_api_server)
+            poi_api_server.app.config['TESTING'] = True
+            yield poi_api_server.app.test_client()
+
+
 # ── Sample Data Fixtures ──
 
 SAMPLE_POI_COMPLETE = {
