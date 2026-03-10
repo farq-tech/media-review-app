@@ -7881,10 +7881,41 @@ async function checkForUpdates() {
     if (pendingUpdates.length > 0) {
       badge.textContent = pendingUpdates.length;
       badge.classList.add('show');
+      // Auto-sync: refresh changed POIs from DB in background
+      _autoSyncUpdates(pendingUpdates);
     } else {
       badge.classList.remove('show');
     }
   } catch (e) { /* silent */ }
+}
+
+async function _autoSyncUpdates(updates) {
+  if (!updates.length) return;
+  const gids = [...new Set(updates.map(u => u.global_id).filter(Boolean))];
+  if (!gids.length) return;
+  try {
+    const resp = await fetch('/api/pois?ids=' + encodeURIComponent(gids.join(',')));
+    if (!resp.ok) return;
+    const freshPois = await resp.json();
+    const freshArr = Array.isArray(freshPois) ? freshPois : (freshPois.pois || []);
+    let changed = 0;
+    for (const fresh of freshArr) {
+      const idx = allPois.findIndex(p => p.GlobalID === fresh.GlobalID);
+      if (idx >= 0) {
+        // Only merge if remote version is newer
+        if ((fresh.review_version || 0) > (allPois[idx].review_version || 0)) {
+          Object.assign(allPois[idx], fresh);
+          changed++;
+        }
+      }
+    }
+    if (changed > 0) {
+      applyFilters();
+      buildStats();
+      if (filteredPois[currentPoiIdx]) renderDetailBody();
+      showSyncStatus('synced', changed + ' POI' + (changed > 1 ? 's' : '') + ' synced from other users');
+    }
+  } catch(e) { /* silent */ }
 }
 
 // ── Confirm Dialog ──
@@ -8027,8 +8058,8 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// Poll for updates every 60 seconds
-setInterval(checkForUpdates, 60000);
+// Poll for updates every 10 seconds (real-time multi-user sync)
+setInterval(checkForUpdates, 10000);
 
 // =============================================
 // ===== DRAFTS MODULE =====

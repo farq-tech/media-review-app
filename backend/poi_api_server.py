@@ -426,6 +426,12 @@ def get_pois():
             where_clauses.append('"flagged" = TRUE')
         elif flagged and flagged.lower() == 'false':
             where_clauses.append('("flagged" IS NULL OR "flagged" = FALSE)')
+        ids = request.args.get('ids', '').strip()
+        if ids:
+            id_list = [i.strip() for i in ids.split(',') if i.strip()]
+            if id_list:
+                where_clauses.append('"GlobalID" = ANY(%s)')
+                params.append(id_list)
         q = request.args.get('q', '').strip()
         if q:
             where_clauses.append('("Name_EN" ILIKE %s OR "Name_AR" ILIKE %s OR "GlobalID" ILIKE %s)')
