@@ -1917,13 +1917,72 @@ _EN_CATEGORY_WORDS = {'restaurant','pharmacy','cafe','laundry','grocery','mosque
 _SAUDI_PHONE = _re.compile(r'^(\+9665\d{8}|05\d{8}|\+9661[1-9]\d{6,7}|01[1-9]\d{6,7}|800\d{7}|900\d{7}|920\d{6}|911)$')
 _EMAIL_RE = _re.compile(r'^[^@]+@[^@]+\.[^@]+$')
 
-@api.route('/validate-poi', methods=['POST'])
-def validate_poi():
-    """Full QA validation for a single POI record. Returns corrected record + QA report."""
-    poi = request.get_json()
-    if not poi:
-        return api_error('No data', 400, code=VALIDATION_ERROR)
+_BAD_SENTINELS = {'n/a', 'na', 'none', 'null', '-', '--', '---', 'unknown', 'tbd',
+                  'not available', 'not applicable', 'nil', '.', '..', 'empty', 'no data'}
+_SENTINEL_TEXT_FIELDS = ['Name_EN', 'Name_AR', 'Legal_Name', 'Phone_Number', 'Email',
+                         'Website', 'Social_Media', 'District_EN', 'District_AR',
+                         'Working_Hours', 'Working_Days', 'Building_Number']
 
+_WEBSITE_SOCIAL_BLOCKLIST = ['facebook.com', 'instagram.com', 'twitter.com', 'x.com',
+                              'tiktok.com', 'snapchat.com', 'wa.me', 't.me', 'linkedin.com']
+
+# Phonetic transliteration: English -> approximate Arabic
+_EN_TO_AR_MAP = [
+    ('sh', '\u0634'), ('ch', '\u062a\u0634'), ('th', '\u062b'), ('kh', '\u062e'), ('ph', '\u0641'),
+    ('tion', '\u0634\u0646'), ('oo', '\u0648'), ('ee', '\u064a'), ('ou', '\u0648'), ('ai', '\u064a'),
+    ('a', '\u0627'), ('b', '\u0628'), ('c', '\u0643'), ('d', '\u062f'), ('e', '\u064a'), ('f', '\u0641'),
+    ('g', '\u062c'), ('h', '\u0647'), ('i', '\u064a'), ('j', '\u062c'), ('k', '\u0643'), ('l', '\u0644'),
+    ('m', '\u0645'), ('n', '\u0646'), ('o', '\u0648'), ('p', '\u0628'), ('q', '\u0643'), ('r', '\u0631'),
+    ('s', '\u0633'), ('t', '\u062a'), ('u', '\u0648'), ('v', '\u0641'), ('w', '\u0648'), ('x', '\u0643\u0633'),
+    ('y', '\u064a'), ('z', '\u0632'),
+]
+
+def _transliterate_en_to_ar(en_text):
+    result = ''
+    en_lower = en_text.lower()
+    i = 0
+    while i < len(en_lower):
+        matched = False
+        for length in (4, 3, 2, 1):
+            chunk = en_lower[i:i+length]
+            for en, ar in _EN_TO_AR_MAP:
+                if len(en) == length and chunk == en:
+                    result += ar
+                    i += length
+                    matched = True
+                    break
+            if matched:
+                break
+        if not matched:
+            ch = en_lower[i]
+            if ch == ' ':
+                result += ' '
+            i += 1
+    return result
+
+def _ar_bigram_similarity(a, b):
+    a = a.replace(' ', ''); b = b.replace(' ', '')
+    if not a or not b:
+        return 0
+    bg = lambda s: {s[i:i+2] for i in range(len(s)-1)} if len(s) >= 2 else {s}
+    bg1, bg2 = bg(a), bg(b)
+    if not bg1 or not bg2:
+        return 0
+    inter = len(bg1 & bg2)
+    return (2 * inter / (len(bg1) + len(bg2))) * 100
+
+# Load taxonomy for category hierarchy validation
+import json as _json
+_TAXONOMY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'taxonomy.json')
+try:
+    with open(_TAXONOMY_PATH, 'r', encoding='utf-8') as _f:
+        _TAXONOMY = _json.load(_f)
+except Exception:
+    _TAXONOMY = {}
+_VALID_CATEGORIES = set(_TAXONOMY.keys())
+
+def _validate_poi_core(poi):
+    """Core validation logic. Returns (corrected, blockers, warnings, changes)."""
     corrected = dict(poi)
     blockers = []
     warnings = []
@@ -1959,6 +2018,62 @@ def validate_poi():
         flag_w('GATE-B2', 'Name_EN', 'Contains Arabic characters', 'Remove Arabic from English name')
     elif name_en.lower() in _EN_CATEGORY_WORDS:
         flag_b('GATE-B3', 'Name_EN', 'Name is just a category word', 'Provide specific business name')
+
+    # B4/B5) ALL CAPS / all lowercase detection
+    if name_en and len(name_en) >= 2:
+        alpha_chars = [c for c in name_en if c.isalpha()]
+        if len(alpha_chars) >= 4 and all(c.isupper() for c in alpha_chars):
+            flag_w('GATE-B4', 'Name_EN', 'Name is ALL CAPS', 'Use Title Case')
+            change('Name_EN', name_en, name_en.title(), 'Converted ALL CAPS to Title Case')
+        elif len(alpha_chars) >= 4 and all(c.islower() for c in alpha_chars):
+            flag_w('GATE-B5', 'Name_EN', 'Name is all lowercase', 'Use Title Case')
+            change('Name_EN', name_en, name_en.title(), 'Converted lowercase to Title Case')
+
+    # A4) Phonetic transliteration detection
+    if name_ar and name_en and len(name_ar) >= 3 and len(name_en) >= 3:
+        ar_chars = sum(1 for c in name_ar if '\u0600' <= c <= '\u06FF')
+        if ar_chars >= len(name_ar.replace(' ', '')) * 0.7:
+            transliterated = _transliterate_en_to_ar(name_en)
+            sim = _ar_bigram_similarity(name_ar, transliterated)
+            if sim > 70:
+                flag_w('GATE-A4', 'Name_AR',
+                       f'Arabic name appears to be phonetic transliteration of English (similarity: {sim:.0f}%)',
+                       'Provide proper Arabic name, not transliteration')
+
+    # A5) Arabic-English brand correspondence
+    if name_ar and name_en and len(name_en) >= 4:
+        en_words = name_en.split()
+        brand_words = [w for w in en_words if len(w) >= 3 and w[0].isupper()
+                       and w.lower() not in _EN_CATEGORY_WORDS]
+        if brand_words:
+            brand = brand_words[0]
+            transliterated_brand = _transliterate_en_to_ar(brand)
+            if (transliterated_brand not in name_ar and
+                brand.lower() not in name_ar.lower() and
+                _ar_bigram_similarity(name_ar, transliterated_brand) < 30):
+                flag_w('GATE-A5', 'Name_AR',
+                       f'Brand "{brand}" from English name not found in Arabic name',
+                       f'Arabic name should include brand: {transliterated_brand} or {brand}')
+
+    # A6) Arabic and English must describe same business type
+    _AR_DESC_MAP = {
+        '\u0635\u064a\u062f\u0644\u064a\u0629': _re.compile(r'pharmacy|pharma', _re.I),        # صيدلية
+        '\u0645\u063a\u0633\u0644\u0629': _re.compile(r'laundry|dry.?clean', _re.I),            # مغسلة
+        '\u0645\u0637\u0639\u0645': _re.compile(r'restaurant', _re.I),                          # مطعم
+        '\u0645\u0642\u0647\u0649': _re.compile(r'cafe|coffee', _re.I),                         # مقهى
+        '\u0645\u0633\u062a\u0634\u0641\u0649': _re.compile(r'hospital', _re.I),                # مستشفى
+        '\u0641\u0646\u062f\u0642': _re.compile(r'hotel', _re.I),                               # فندق
+        '\u0645\u062f\u0631\u0633\u0629': _re.compile(r'school|academy', _re.I),                # مدرسة
+    }
+    _EN_DESCRIPTORS = _re.compile(r'pharmacy|laundry|restaurant|cafe|coffee|hospital|hotel|school|academy', _re.I)
+    if name_ar and name_en:
+        for ar_word, en_pattern in _AR_DESC_MAP.items():
+            if ar_word in name_ar and not en_pattern.search(name_en):
+                if _EN_DESCRIPTORS.search(name_en):
+                    flag_b('GATE-A6', 'Name_AR',
+                           f'Arabic has "{ar_word}" but English name describes a different business type',
+                           'Arabic and English names must refer to the same business')
+                    break
 
     # C) Legal Name
     legal = (poi.get('Legal_Name') or '').strip()
@@ -2055,11 +2170,23 @@ def validate_poi():
 
     # Website - no Google Maps
     website = (poi.get('Website') or '').strip()
-    if website and ('google.com/maps' in website or 'goo.gl/maps' in website):
+    if website and ('google.com/maps' in website or 'goo.gl/maps' in website or 'maps.google.com' in website):
         flag_w('GATE-I4', 'Website', 'Website is a Google Maps link', 'Move to Google_Map_URL, set Website=UNAVAILABLE')
         if not poi.get('Google_Map_URL'):
             change('Google_Map_URL', '', website, 'Moved Google Maps link from Website')
         change('Website', website, 'UNAVAILABLE', 'Was Google Maps link')
+
+    # Website - no social media links
+    if website and website != 'UNAVAILABLE' and corrected.get('Website') != 'UNAVAILABLE':
+        for domain in _WEBSITE_SOCIAL_BLOCKLIST:
+            if domain in website.lower():
+                flag_w('GATE-I4b', 'Website', f'Website is a social media link ({domain})',
+                       'Move to Social_Media, set Website=UNAVAILABLE')
+                social_val = (poi.get('Social_Media') or '').strip()
+                if not social_val or social_val == 'UNAVAILABLE':
+                    change('Social_Media', social_val or '', website, 'Moved social link from Website')
+                change('Website', website, 'UNAVAILABLE', f'Was social media link ({domain})')
+                break
 
     # Social Media - no WhatsApp / no phone numbers
     social = (poi.get('Social_Media') or '').strip()
@@ -2074,6 +2201,20 @@ def validate_poi():
     hours = (poi.get('Working_Hours') or '').strip()
     if not hours:
         flag_b('GATE-J1', 'Working_Hours', 'Working hours missing', 'Provide working hours')
+    elif hours not in ('UNAVAILABLE', 'Open 24 Hours'):
+        if not _re.search(r'\d{1,2}:\d{2}\s*[-\u2013]\s*\d{1,2}:\d{2}', hours):
+            flag_w('GATE-J2', 'Working_Hours', f'Non-standard hours format: "{hours}"',
+                   'Use HH:MM - HH:MM format (e.g., Mon: 08:00-22:00)')
+        else:
+            # J3) Opening must be before closing
+            for m in _re.finditer(r'(\d{1,2}):(\d{2})\s*[-\u2013]\s*(\d{1,2}):(\d{2})', hours):
+                open_min = int(m.group(1)) * 60 + int(m.group(2))
+                close_min = int(m.group(3)) * 60 + int(m.group(4))
+                if open_min > close_min and (open_min - close_min) > 180:
+                    flag_w('GATE-J3', 'Working_Hours',
+                           f'Opening time after closing: {m.group(0)}',
+                           'Swap opening and closing times')
+                    break
 
     # K) Boolean fields - category logic
     for field in _ALL_BOOLS:
@@ -2095,10 +2236,38 @@ def validate_poi():
             if val and val not in ('UNAPPLICABLE', ''):
                 change(field, val, 'UNAPPLICABLE', 'Not Attraction category')
 
-    # Commercial License
+    # Commercial License — exactly 10 digits per Saudi CR format
     lic = (poi.get('Commercial_License') or '').strip()
-    if lic and lic != 'UNAVAILABLE' and not _re.match(r'^\d{10,11}$', lic):
-        flag_w('GATE-L1', 'Commercial_License', f'Not 10-11 digits: {lic}', 'Fix or set UNAVAILABLE')
+    if lic and lic != 'UNAVAILABLE' and not _re.match(r'^\d{10}$', lic):
+        flag_w('GATE-L1', 'Commercial_License', f'Not exactly 10 digits: {lic}', 'Provide 10-digit license number')
+
+    # SV) Sentinel value rejection — reject placeholder text
+    for sv_field in _SENTINEL_TEXT_FIELDS:
+        fv = (corrected.get(sv_field) or '').strip()
+        if fv and fv.lower() in _BAD_SENTINELS:
+            flag_w('GATE-SV1', sv_field, f'Sentinel value detected: "{fv}"', 'Set to UNAVAILABLE or provide real data')
+            change(sv_field, fv, 'UNAVAILABLE', f'Bad sentinel "{fv}" replaced')
+
+    # E4/E5/E6) Category hierarchy validation against taxonomy
+    if cat and _VALID_CATEGORIES:
+        if cat not in _VALID_CATEGORIES:
+            flag_w('GATE-E4', 'Category', f'Category "{cat}" not in taxonomy', 'Use a valid category')
+        else:
+            sub = (poi.get('Subcategory') or '').strip()
+            l3 = (poi.get('Category_Level_3') or '').strip()
+            valid_subs = set(_TAXONOMY[cat].get('subs', {}).keys())
+            if sub and valid_subs and sub not in valid_subs:
+                first5 = ', '.join(sorted(list(valid_subs))[:5])
+                flag_w('GATE-E5', 'Subcategory', f'Subcategory "{sub}" not valid under "{cat}"',
+                       f'Valid: {first5}...')
+            if sub and l3:
+                sub_data = _TAXONOMY[cat].get('subs', {}).get(sub, {})
+                valid_l3_list = sub_data.get('l3', [])
+                valid_l3_names = {item.get('name', item) if isinstance(item, dict) else item for item in valid_l3_list}
+                if valid_l3_names and l3 not in valid_l3_names:
+                    first5 = ', '.join(sorted(list(valid_l3_names))[:5])
+                    flag_w('GATE-E6', 'Category_Level_3', f'L3 "{l3}" not valid under "{cat} > {sub}"',
+                           f'Valid: {first5}...')
 
     # Duplicate media detection (errors 3/16/20)
     urls_seen = {}
@@ -2118,6 +2287,16 @@ def validate_poi():
     elif warnings or changes:
         status_val = 'PASS_WITH_WARNINGS'
 
+    return corrected, status_val, blockers, warnings, changes
+
+
+@api.route('/validate-poi', methods=['POST'])
+def validate_poi():
+    """Full QA validation for a single POI record. Returns corrected record + QA report."""
+    poi = request.get_json()
+    if not poi:
+        return api_error('No data', 400, code=VALIDATION_ERROR)
+    corrected, status_val, blockers, warnings, changes = _validate_poi_core(poi)
     return jsonify({
         'poi_final': corrected,
         'qa_report': {
@@ -2127,6 +2306,228 @@ def validate_poi():
             'changes_made': changes
         }
     })
+
+
+@api.route('/validate-all', methods=['POST'])
+def validate_all_pois():
+    """Validate ALL POIs in the database. Optionally apply auto-fixes.
+
+    POST body: { "apply_fixes": true/false, "flag_violations": true/false }
+    - apply_fixes: write auto-corrected values back to DB
+    - flag_violations: set flagged=true + flag_reason for POIs with blockers
+    """
+    body = request.get_json() or {}
+    apply_fixes = body.get('apply_fixes', False)
+    flag_violations = body.get('flag_violations', False)
+    reviewer = body.get('_reviewer', 'system-validation')
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('SELECT * FROM final_delivery')
+    rows = cur.fetchall()
+
+    # Cross-POI media duplicate check: URL -> list of GlobalIDs
+    media_url_owners = {}
+    for row in rows:
+        for mf in ['Exterior_Photo_URL', 'Interior_Photo_URL', 'Video_URL']:
+            url = (row.get(mf) or '').strip()
+            if url and url not in ('UNAVAILABLE', 'UNAPPLICABLE', '') and url.startswith('http'):
+                media_url_owners.setdefault(url, []).append(
+                    {'gid': row['GlobalID'], 'field': mf, 'name': row.get('Name_EN', '')})
+
+    results = []
+    fixed_count = 0
+    flagged_count = 0
+    total_blockers = 0
+    total_warnings = 0
+
+    for row in rows:
+        poi_dict = dict(row)
+        # Convert non-serializable types
+        for k, v in poi_dict.items():
+            if hasattr(v, 'isoformat'):
+                poi_dict[k] = v.isoformat()
+            elif isinstance(v, (bytes, memoryview)):
+                poi_dict[k] = str(v)
+
+        corrected, status_val, blockers, warnings, changes = _validate_poi_core(poi_dict)
+
+        # Cross-POI media duplicate detection
+        for mf in ['Exterior_Photo_URL', 'Interior_Photo_URL', 'Video_URL']:
+            url = (poi_dict.get(mf) or '').strip()
+            if url and url.startswith('http') and url in media_url_owners:
+                others = [x for x in media_url_owners[url] if x['gid'] != poi_dict.get('GlobalID')]
+                if others:
+                    warnings.append({
+                        'rule': 'CROSS-M3', 'field': mf,
+                        'message': f'Media shared with {len(others)} other POI(s): '
+                                   f'{", ".join(x["name"] for x in others[:3])}',
+                        'fix': 'Each POI must have unique media'
+                    })
+
+        gid = poi_dict.get('GlobalID')
+        total_blockers += len(blockers)
+        total_warnings += len(warnings)
+
+        entry = {
+            'GlobalID': gid,
+            'Name_EN': poi_dict.get('Name_EN', ''),
+            'status': status_val,
+            'blockers': len(blockers),
+            'warnings': len(warnings),
+            'fixes_available': len(changes),
+        }
+
+        if apply_fixes and changes:
+            update_fields = {}
+            for ch in changes:
+                field_name = ch.get('field')
+                new_val = ch.get('new')
+                if field_name and new_val is not None:
+                    update_fields[field_name] = new_val
+            if update_fields:
+                set_clauses = ', '.join(f'"{k}" = %s' for k in update_fields.keys())
+                vals = list(update_fields.values()) + [gid]
+                cur.execute(f'UPDATE final_delivery SET {set_clauses} WHERE "GlobalID" = %s', vals)
+                fixed_count += 1
+                entry['fixes_applied'] = len(update_fields)
+
+        if flag_violations and blockers:
+            blocker_reasons = '; '.join(b.get('message', b.get('rule', ''))[:60] for b in blockers[:3])
+            reason = f'Auto-validation: {len(blockers)} blocker(s) - {blocker_reasons}'[:200]
+            cur.execute(
+                'UPDATE final_delivery SET flagged = TRUE, flag_reason = %s WHERE "GlobalID" = %s',
+                (reason, gid))
+            flagged_count += 1
+            entry['flagged'] = True
+            entry['flag_reason'] = reason
+
+        if blockers or warnings:
+            results.append(entry)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return api_success({
+        'total_pois': len(rows),
+        'pois_with_issues': len(results),
+        'total_blockers': total_blockers,
+        'total_warnings': total_warnings,
+        'fixes_applied': fixed_count if apply_fixes else 0,
+        'pois_flagged': flagged_count if flag_violations else 0,
+        'issues': results[:500],  # Limit response size
+    })
+
+
+# ===== API: Duplicate Detection =====
+@api.route('/detect-duplicates', methods=['POST'])
+def detect_duplicates():
+    """Server-side duplicate detection across all POIs."""
+    import math
+    body = request.get_json() or {}
+    dist_threshold = body.get('distance_threshold', 50)
+    name_threshold = body.get('name_threshold', 85)
+
+    conn = get_db()
+    ensure_tables()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute('''SELECT "GlobalID", "Name_EN", "Name_AR", "Phone_Number",
+                   "Category", "Latitude", "Longitude", "Building_Number",
+                   "Floor_Number" FROM final_delivery''')
+    pois = cur.fetchall()
+    cur.close()
+
+    def haversine_m(lat1, lon1, lat2, lon2):
+        R = 6371000
+        to_rad = lambda d: d * math.pi / 180
+        dLat = to_rad(lat2 - lat1)
+        dLon = to_rad(lon2 - lon1)
+        a = math.sin(dLat/2)**2 + math.cos(to_rad(lat1))*math.cos(to_rad(lat2))*math.sin(dLon/2)**2
+        return 2 * R * math.asin(min(1, math.sqrt(a)))
+
+    def normalize_phone(p):
+        if not p or p == 'UNAVAILABLE': return ''
+        return _re.sub(r'\D', '', p).lstrip('966').lstrip('0')[:9]
+
+    def bigram_sim(a, b):
+        if not a or not b: return 0
+        a = _re.sub(r'\s+', ' ', a.lower().strip())
+        b = _re.sub(r'\s+', ' ', b.lower().strip())
+        bg = lambda s: {s[i:i+2] for i in range(len(s)-1)} if len(s) >= 2 else {s}
+        b1, b2 = bg(a), bg(b)
+        inter = len(b1 & b2)
+        return (2*inter/(len(b1)+len(b2)))*100 if b1 and b2 else 0
+
+    # Parse and bin spatially
+    bins = {}
+    parsed = []
+    for p in pois:
+        try:
+            lat = float(p.get('Latitude') or 0)
+            lon = float(p.get('Longitude') or 0)
+        except (ValueError, TypeError):
+            lat = lon = 0
+        parsed.append({'poi': p, 'lat': lat, 'lon': lon,
+                       'phone': normalize_phone(p.get('Phone_Number', '')),
+                       'name_en': (p.get('Name_EN') or '').strip().lower()})
+        bk = f"{int(lat/0.0005)},{int(lon/0.0005)}"
+        bins.setdefault(bk, []).append(len(parsed)-1)
+
+    used = set()
+    groups = []
+    for i, pi in enumerate(parsed):
+        if i in used or (pi['lat'] == 0 and pi['lon'] == 0):
+            continue
+        bLat = int(pi['lat']/0.0005)
+        bLon = int(pi['lon']/0.0005)
+        candidates = []
+        for dl in (-1, 0, 1):
+            for dm in (-1, 0, 1):
+                candidates.extend(bins.get(f"{bLat+dl},{bLon+dm}", []))
+        group = [i]
+        matches = []
+        for j in candidates:
+            if j <= i or j in used:
+                continue
+            pj = parsed[j]
+            if pj['lat'] == 0 and pj['lon'] == 0:
+                continue
+            try:
+                dist = haversine_m(pi['lat'], pi['lon'], pj['lat'], pj['lon'])
+            except Exception:
+                continue
+            if dist > dist_threshold:
+                continue
+            rules = 0
+            reasons = []
+            # D1: same name + distance < 30m
+            if pi['name_en'] and pi['name_en'] == pj['name_en'] and dist < 30:
+                rules += 1
+                reasons.append('exact_name')
+            # D2: same phone + distance < 50m
+            if pi['phone'] and pi['phone'] == pj['phone']:
+                rules += 1
+                reasons.append('same_phone')
+            # D3: fuzzy name + same category + distance < 40m
+            sim = bigram_sim(pi['name_en'], pj['name_en'])
+            if sim >= name_threshold and pi['poi'].get('Category') == pj['poi'].get('Category') and dist < 40:
+                rules += 1
+                reasons.append(f'fuzzy_{sim:.0f}pct')
+            if rules >= 1:
+                group.append(j)
+                used.add(j)
+                matches.append({'gid': pj['poi']['GlobalID'], 'dist': round(dist), 'reasons': reasons})
+        if len(group) > 1:
+            used.add(i)
+            groups.append({
+                'anchor': pi['poi']['GlobalID'],
+                'members': [parsed[idx]['poi']['GlobalID'] for idx in group],
+                'match_details': matches
+            })
+
+    return jsonify({'duplicate_groups': groups, 'total_groups': len(groups),
+                    'total_pois_in_groups': sum(len(g['members']) for g in groups)})
 
 # ===== API: Reviewer Login =====
 @api.route('/login', methods=['POST'])

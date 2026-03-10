@@ -2269,6 +2269,28 @@ const FIELD_VALIDATORS = {
     { id:'NEN3', check: v => !v || v.length <= 100, severity:'MINOR', msg:'English name too long', fix:'Shorten name',
       computeFix: v => v ? v.substring(0, 100) : null },
     { id:'NEN4', check: v => !v || v==='UNAVAILABLE' || /[a-zA-Z]/.test(v), severity:'MAJOR', msg:'English name has no Latin characters (wrong language?)', fix:'Replace with actual English name' },
+    { id:'NEN5', check: v => {
+      if (!v || v === 'UNAVAILABLE' || v.length < 4) return true;
+      const alpha = v.replace(/[^a-zA-Z]/g, '');
+      return alpha.length < 4 || alpha !== alpha.toUpperCase();
+    }, severity:'MAJOR', msg:'Name is ALL CAPS', fix:'Convert to Title Case',
+      computeFix: v => {
+        if (!v || v.length < 4) return null;
+        const alpha = v.replace(/[^a-zA-Z]/g, '');
+        if (alpha.length < 4 || alpha !== alpha.toUpperCase()) return null;
+        return v.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }},
+    { id:'NEN6', check: v => {
+      if (!v || v === 'UNAVAILABLE' || v.length < 4) return true;
+      const alpha = v.replace(/[^a-zA-Z]/g, '');
+      return alpha.length < 4 || alpha !== alpha.toLowerCase();
+    }, severity:'MINOR', msg:'Name is all lowercase', fix:'Convert to Title Case',
+      computeFix: v => {
+        if (!v || v.length < 4) return null;
+        const alpha = v.replace(/[^a-zA-Z]/g, '');
+        if (alpha.length < 4 || alpha !== alpha.toLowerCase()) return null;
+        return v.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }},
   ],
   Email: [
     { id:'EM1', check: v => !v || v==='UNAVAILABLE' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), severity:'MAJOR', msg:'Invalid email format', fix:'Set to UNAVAILABLE',
@@ -2279,14 +2301,25 @@ const FIELD_VALIDATORS = {
       computeFix: v => (v && v !== 'UNAVAILABLE' && !/^https?:\/\//.test(v)) ? 'https://' + v : null },
     { id:'WS2', check: v => {
       if (!v || v==='UNAVAILABLE') return true;
-      const bad = ['facebook.com','instagram.com','twitter.com','maps.google','maps.app','wa.me','t.me'];
-      return !bad.some(d => v.toLowerCase().includes(d));
-    }, severity:'MAJOR', msg:'Website is a social media link', fix:'Move to Social Media',
+      const social = ['facebook.com','instagram.com','twitter.com','x.com','tiktok.com','snapchat.com','linkedin.com','wa.me','t.me'];
+      return !social.some(d => v.toLowerCase().includes(d));
+    }, severity:'MAJOR', msg:'Website is a social media link (not a homepage)', fix:'Move to Social Media field',
       computeFix: (v, poi) => {
         if (!v || v === 'UNAVAILABLE') return null;
-        const bad = ['facebook.com','instagram.com','twitter.com','wa.me','t.me'];
-        if (bad.some(d => v.toLowerCase().includes(d))) return 'UNAVAILABLE';
-        if (v.toLowerCase().includes('maps.google') || v.toLowerCase().includes('maps.app')) return 'UNAVAILABLE';
+        const social = ['facebook.com','instagram.com','twitter.com','x.com','tiktok.com','snapchat.com','linkedin.com','wa.me','t.me'];
+        if (social.some(d => v.toLowerCase().includes(d))) return 'UNAVAILABLE';
+        return null;
+      }
+    },
+    { id:'WS3', check: v => {
+      if (!v || v==='UNAVAILABLE') return true;
+      const lo = v.toLowerCase();
+      return !lo.includes('google.com/maps') && !lo.includes('maps.google') && !lo.includes('maps.app') && !lo.includes('goo.gl/maps');
+    }, severity:'MAJOR', msg:'Website is a Google Maps link, not a homepage', fix:'Move to Google Map URL field',
+      computeFix: (v, poi) => {
+        if (!v || v === 'UNAVAILABLE') return null;
+        const lo = v.toLowerCase();
+        if (lo.includes('google.com/maps') || lo.includes('maps.google') || lo.includes('maps.app') || lo.includes('goo.gl/maps')) return 'UNAVAILABLE';
         return null;
       }
     },
@@ -2310,19 +2343,47 @@ const FIELD_VALIDATORS = {
     { id:'PH2', check: v => {
       if (!v || v === 'UNAVAILABLE') return true;
       const cleaned = v.replace(/[\s\-()]/g, '');
-      if (/^(\+?966|05)\d{7,9}$/.test(cleaned)) return true;
+      // Saudi mobile: +966XXXXXXXXX, 966XXXXXXXXX, 05XXXXXXXX
+      if (/^(\+966|966|05)[0-9]{8,9}$/.test(cleaned)) return true;
+      // Saudi landline: +966 1X XXXXXXX
       if (/^(\+?966)?0?1[1-7]\d{7}$/.test(cleaned)) return true;
-      if (/^(9200|920|800|19)\d{3,7}$/.test(cleaned)) return true;
+      // Toll-free/premium: 800, 900, 920, 9200
+      if (/^(9200|920|800|900|19)\d{3,7}$/.test(cleaned)) return true;
+      // Short codes (3-6 digits)
       if (/^\d{3,6}$/.test(cleaned)) return true;
+      // Emergency
+      if (cleaned === '911') return true;
       return false;
-    }, severity:'MAJOR', msg:'Invalid phone format', fix:'Set to UNAVAILABLE',
+    }, severity:'MAJOR', msg:'Invalid Saudi phone format. Expected: +966XXXXXXXXX, 05XXXXXXXX, or toll-free', fix:'Fix phone number or set to UNAVAILABLE',
       computeFix: v => (v && v !== 'UNAVAILABLE') ? 'UNAVAILABLE' : null,
       field_override: 'Phone_Number' },
   ],
   Commercial_License: [
     { id:'CL1', check: v => !v || v==='UNAVAILABLE' || /^\d+$/.test(v.trim()), severity:'MAJOR', msg:'License contains non-digits', fix:'Strip non-digits',
       computeFix: v => (v && v !== 'UNAVAILABLE') ? v.replace(/\D/g, '') || 'UNAVAILABLE' : null },
-    { id:'CL2', check: v => !v || v==='UNAVAILABLE' || /^\d{11}$/.test(v.replace(/\D/g,'')), severity:'MAJOR', msg:'Commercial license should be 11 digits', fix:'Provide 11-digit license number' },
+    { id:'CL2', check: v => !v || v==='UNAVAILABLE' || /^\d{10}$/.test(v.replace(/\D/g,'')), severity:'MAJOR', msg:'Commercial license must be exactly 10 digits', fix:'Provide 10-digit license number' },
+  ],
+  Working_Hours: [
+    { id:'WH1', check: v => {
+      if (!v || v === 'UNAVAILABLE' || v === 'Open 24 Hours' || v.toLowerCase() === 'open 24 hours') return true;
+      return /\d{1,2}:\d{2}\s*[-\u2013]\s*\d{1,2}:\d{2}/.test(v);
+    }, severity:'MAJOR', msg:'Non-standard working hours format', fix:'Use format: Mon: 08:00-22:00; Tue: 08:00-22:00' },
+    { id:'WH2', check: v => {
+      if (!v || v === 'UNAVAILABLE' || v.toLowerCase().includes('24 hours')) return true;
+      // Check each time range: opening must be before closing (unless crosses midnight)
+      const ranges = v.match(/(\d{1,2}):(\d{2})\s*[-\u2013]\s*(\d{1,2}):(\d{2})/g);
+      if (!ranges) return true;
+      for (const range of ranges) {
+        const m = range.match(/(\d{1,2}):(\d{2})\s*[-\u2013]\s*(\d{1,2}):(\d{2})/);
+        if (m) {
+          const open = parseInt(m[1]) * 60 + parseInt(m[2]);
+          const close = parseInt(m[3]) * 60 + parseInt(m[4]);
+          // Flag only obvious errors like 18:00-09:00 (9 hours reversed)
+          if (open > close && (open - close) > 180) return false;
+        }
+      }
+      return true;
+    }, severity:'MAJOR', msg:'Opening time is after closing time (reversed hours)', fix:'Swap opening and closing times' },
   ],
 };
 
@@ -2342,7 +2403,8 @@ function validatePoi(poi) {
     const actualField = rules[0]?.field_override || field;
     const val = String(poi[actualField] ?? '');
     for (const rule of rules) {
-      if (!rule.check(val)) {
+      const pass = rule.check.length > 1 ? rule.check(val, poi) : rule.check(val);
+      if (!pass) {
         const err = { column: actualField, rule_id: rule.id, severity: rule.severity, fail_reason: rule.msg, suggested_fix: rule.fix };
         if (rule.computeFix) {
           const fixVal = rule.computeFix(val, poi);
@@ -2351,6 +2413,65 @@ function validatePoi(poi) {
           }
         }
         errors.push(err);
+      }
+    }
+  }
+  // Sentinel value rejection
+  const _BAD_SENTINELS = new Set(['n/a','na','none','null','-','--','---','unknown','tbd',
+    'not available','not applicable','nil','.','..','empty','no data']);
+  const _SV_FIELDS = ['Name_EN','Name_AR','Legal_Name','Phone_Number','Email',
+    'Website','Social_Media','District_EN','District_AR','Working_Hours','Working_Days','Building_Number'];
+  _SV_FIELDS.forEach(f => {
+    const v = (poi[f] || '').trim();
+    if (v && _BAD_SENTINELS.has(v.toLowerCase())) {
+      errors.push({ column: f, rule_id: 'SV1', severity: 'MAJOR',
+        fail_reason: `Sentinel value "${v}" - not real data`,
+        suggested_fix: 'Set to UNAVAILABLE or provide real data', fix_value: 'UNAVAILABLE' });
+    }
+  });
+  // Phonetic transliteration detection (NAR4)
+  const _nameAr = (poi.Name_AR || '').trim();
+  const _nameEn = (poi.Name_EN || '').trim();
+  if (_nameAr && _nameEn && _nameAr.length >= 3 && _nameEn.length >= 3) {
+    const _arChars = [..._nameAr].filter(c => c >= '\u0600' && c <= '\u06FF').length;
+    if (_arChars >= _nameAr.replace(/\s/g,'').length * 0.7) {
+      const _MAP = [['sh','\u0634'],['ch','\u062a\u0634'],['th','\u062b'],['kh','\u062e'],['ph','\u0641'],
+        ['tion','\u0634\u0646'],['oo','\u0648'],['ee','\u064a'],['ou','\u0648'],['ai','\u064a'],
+        ['a','\u0627'],['b','\u0628'],['c','\u0643'],['d','\u062f'],['e','\u064a'],['f','\u0641'],
+        ['g','\u062c'],['h','\u0647'],['i','\u064a'],['j','\u062c'],['k','\u0643'],['l','\u0644'],
+        ['m','\u0645'],['n','\u0646'],['o','\u0648'],['p','\u0628'],['q','\u0643'],['r','\u0631'],
+        ['s','\u0633'],['t','\u062a'],['u','\u0648'],['v','\u0641'],['w','\u0648'],['x','\u0643\u0633'],
+        ['y','\u064a'],['z','\u0632']];
+      const _translit = (en) => {
+        let r='', lo=en.toLowerCase(), i=0;
+        while(i<lo.length){let m=false;for(const len of[4,3,2,1]){const ch=lo.substr(i,len);for(const[e,a]of _MAP){if(e.length===len&&ch===e){r+=a;i+=len;m=true;break;}}if(m)break;}if(!m){if(lo[i]===' ')r+=' ';i++;}}return r;
+      };
+      const _bgSim = (a,b) => {
+        a=a.replace(/\s/g,''); b=b.replace(/\s/g,'');
+        if(!a||!b) return 0;
+        const bg=s=>{const r=new Set();for(let i=0;i<s.length-1;i++)r.add(s.substr(i,2));return r;};
+        const b1=bg(a),b2=bg(b); let inter=0; b1.forEach(x=>{if(b2.has(x))inter++;});
+        return b1.size+b2.size>0?(2*inter/(b1.size+b2.size))*100:0;
+      };
+      const _transliterated = _translit(_nameEn);
+      const _sim = _bgSim(_nameAr, _transliterated);
+      if (_sim > 70) {
+        errors.push({ column: 'Name_AR', rule_id: 'NAR4', severity: 'MAJOR',
+          fail_reason: `Arabic name appears to be phonetic transliteration of English (${_sim.toFixed(0)}% match)`,
+          suggested_fix: 'Provide proper Arabic name, not transliteration' });
+      }
+      // Name correspondence check (NAR5): brand word from EN should appear in AR
+      const _EN_CAT_WORDS = new Set(['restaurant','pharmacy','cafe','laundry','grocery','mosque','school','hospital','hotel','shop','store']);
+      const _enWords = _nameEn.split(/\s+/);
+      const _brandWords = _enWords.filter(w => w.length >= 3 && w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase() && !_EN_CAT_WORDS.has(w.toLowerCase()));
+      if (_brandWords.length > 0 && _sim <= 70) {
+        const _brand = _brandWords[0];
+        const _tBrand = _translit(_brand);
+        if (!_nameAr.includes(_tBrand) && !_nameAr.toLowerCase().includes(_brand.toLowerCase()) && _bgSim(_nameAr, _tBrand) < 30) {
+          errors.push({ column: 'Name_AR', rule_id: 'NAR5', severity: 'MAJOR',
+            fail_reason: `Brand "${_brand}" from English name not found in Arabic name`,
+            suggested_fix: `Arabic name should include: ${_tBrand} or ${_brand}` });
+        }
       }
     }
   }
@@ -2443,6 +2564,73 @@ function validatePoi(poi) {
       errors.push({ column: field, rule_id: 'DD1', severity: 'MINOR', fail_reason: `"${val}" not in allowed dropdown values`, suggested_fix: fixVal ? `Change to "${fixVal}"` : 'Use Yes/No/UNAVAILABLE/UNAPPLICABLE', fix_value: fixVal });
     }
   });
+
+  // ===== M3: Duplicate photo detection (URL-based) =====
+  // Build reverse lookup on first call: URL → list of GlobalIDs
+  if (!validatePoi._mediaUrlMap) {
+    validatePoi._mediaUrlMap = {};
+    allPois.forEach(p => {
+      ['Exterior_Photo_URL','Interior_Photo_URL','Video_URL'].forEach(fld => {
+        const url = (p[fld] || '').trim();
+        if (url && url !== 'UNAVAILABLE' && url.startsWith('http')) {
+          if (!validatePoi._mediaUrlMap[url]) validatePoi._mediaUrlMap[url] = [];
+          validatePoi._mediaUrlMap[url].push({ gid: p.GlobalID, field: fld, name: p.Name_EN || p.GlobalID });
+        }
+      });
+    });
+  }
+  const mMap = validatePoi._mediaUrlMap;
+  ['Exterior_Photo_URL','Interior_Photo_URL','Video_URL'].forEach(fld => {
+    const url = (poi[fld] || '').trim();
+    if (url && url !== 'UNAVAILABLE' && url.startsWith('http') && mMap[url]) {
+      const others = mMap[url].filter(x => x.gid !== poi.GlobalID);
+      if (others.length > 0) {
+        errors.push({ column: fld, rule_id: 'M3', severity: 'MAJOR',
+          fail_reason: `${fld.replace(/_/g,' ')} is shared with ${others.length} other POI(s): ${others.map(x=>x.name).slice(0,3).join(', ')}`,
+          suggested_fix: 'Each POI must have unique media' });
+      }
+    }
+  });
+
+  // ===== M6: Video URL field check — video should exist for interior =====
+  const videoUrl = (poi.Video_URL || '').trim();
+  if (videoUrl && videoUrl !== 'UNAVAILABLE' && videoUrl.startsWith('http')) {
+    // Can't classify content client-side, but flag if video field name suggests exterior
+    if (videoUrl.toLowerCase().includes('exterior') || videoUrl.toLowerCase().includes('outside')) {
+      errors.push({ column: 'Video_URL', rule_id: 'M6', severity: 'MAJOR',
+        fail_reason: 'Video URL suggests exterior footage, should be interior',
+        suggested_fix: 'Replace with interior video' });
+    }
+  }
+
+  // ===== N3 (strengthened): Arabic and English must refer to same brand =====
+  if (_nameAr && _nameEn && _nameAr.length >= 3 && _nameEn.length >= 3) {
+    // Check for completely different brands (not just missing brand word)
+    const _AR_BRAND_MAP = {
+      'صيدلية': /pharmacy|pharma/i,
+      'مغسلة': /laundry|dry clean/i,
+      'مطعم': /restaurant/i,
+      'مقهى': /cafe|coffee/i,
+      'مستشفى': /hospital/i,
+      'فندق': /hotel/i,
+      'مدرسة': /school|academy/i,
+    };
+    // If Arabic has a descriptor and English doesn't match that category at all
+    for (const [arWord, enPattern] of Object.entries(_AR_BRAND_MAP)) {
+      if (_nameAr.includes(arWord) && !enPattern.test(_nameEn)) {
+        // Check if English has a different descriptor
+        const enDescriptors = ['pharmacy','laundry','restaurant','cafe','coffee','hospital','hotel','school','academy'];
+        const enHasOtherDesc = enDescriptors.some(d => _nameEn.toLowerCase().includes(d));
+        if (enHasOtherDesc) {
+          errors.push({ column: 'Name_AR', rule_id: 'NAR6', severity: 'BLOCKER',
+            fail_reason: `Arabic name contains "${arWord}" but English name doesn't match (different business type)`,
+            suggested_fix: 'Arabic and English names must describe the same business' });
+          break;
+        }
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -2497,6 +2685,9 @@ function calcQaScores(poi, errors) {
 
   // Composite (backward-compatible 0-100)
   const composite = Math.round(Math.max(0, Math.min(100, completeness * 0.7 + validity * 0.3)));
+
+  // QA score >= 95 delivery gate: downgrade Ready if below threshold
+  if (composite < 95 && readiness === 'Ready') readiness = 'Needs Review';
 
   return { completeness, validity, readiness, composite };
 }
@@ -4570,6 +4761,14 @@ async function _doApprove() {
   // Block approval if POI has unresolved flags
   if (poi.flagged) {
     toast('Cannot approve — unresolved flag: ' + (poi.flag_reason || poi.Review_Flag || 'unknown') + '. Unflag first.', 'error');
+    return null;
+  }
+
+  // Block approval if QA score below delivery threshold
+  const _approvalErrs = validationResults.get(poi.GlobalID) || validatePoi(poi);
+  const _approvalScores = calcQaScores(poi, _approvalErrs);
+  if (_approvalScores.composite < 95) {
+    toast(`Cannot approve — QA score ${_approvalScores.composite}/100 (minimum 95). Fix validation errors first.`, 'error');
     return null;
   }
 
