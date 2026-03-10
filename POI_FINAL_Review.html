@@ -77,6 +77,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .header h1 { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .header p { color: var(--text-secondary); font-size: 12px; }
 .header-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.presence-bar { display:flex; align-items:center; gap:4px; margin-left:8px; }
+.presence-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; cursor:default; border:2px solid var(--surface); margin-left:-8px; position:relative; transition:transform 0.15s; }
+.presence-avatar:first-child { margin-left:0; }
+.presence-avatar:hover { transform:scale(1.15); z-index:2; }
+.presence-avatar .presence-dot { position:absolute; bottom:-1px; right:-1px; width:8px; height:8px; border-radius:50%; background:var(--success); border:2px solid var(--surface); }
+.presence-tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--sidebar-bg); color:#fff; padding:4px 8px; border-radius:var(--radius-sm); font-size:10px; white-space:nowrap; display:none; pointer-events:none; }
+.presence-avatar:hover .presence-tooltip { display:block; }
 .header-actions button { padding: 7px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-primary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; }
 .header-actions button:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .header-actions button i, .header-actions button svg { vertical-align: -2px; margin-right: 2px; }
@@ -473,7 +480,12 @@ tr:hover .qa-btn { opacity:0.7; }
 .dup-config input[type=number] { width:60px; padding:4px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:12px; }
 .dup-container { padding:0 24px 20px; max-height:75vh; overflow-y:auto; }
 .dup-placeholder { text-align:center; padding:40px; color:var(--text-muted); font-size:13px; }
-.map-container { height:calc(100vh - 120px); width:100%; }
+.map-container { height:calc(100vh - 180px); width:100%; position: relative; }
+.map-analytics { position:absolute; top:12px; right:12px; z-index:500; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.map-analytics > div { pointer-events:auto; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 14px; box-shadow:var(--shadow-md); font-size:11px; min-width:180px; }
+.map-analytics .ma-title { font-weight:700; font-size:12px; color:var(--text-primary); margin-bottom:6px; }
+.map-analytics .ma-row { display:flex; justify-content:space-between; padding:2px 0; color:var(--text-secondary); }
+.map-analytics .ma-row .ma-val { font-weight:600; color:var(--text-primary); font-feature-settings:"tnum"; }
 .arc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 130px); align-content:start; }
 .arc-loader { grid-column:1/-1; text-align:center; padding:80px 20px; }
 .drafts-toolbar { padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -606,9 +618,12 @@ table { font-feature-settings: "tnum"; }
 <main class="main-content">
 
 <div class="header">
-  <div>
-    <h1>POI Review Dashboard <span id="reviewerBadge" class="reviewer-badge" style="display:none;"><span class="dot"></span><span id="reviewerName"></span></span></h1>
-    <p id="headerInfo">Loading...</p>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div>
+      <h1>POI Review Dashboard <span id="reviewerBadge" class="reviewer-badge" style="display:none;"><span class="dot"></span><span id="reviewerName"></span></span></h1>
+      <p id="headerInfo">Loading...</p>
+    </div>
+    <div class="presence-bar" id="presenceBar"></div>
   </div>
   <div class="header-actions">
     <div class="header-group">
@@ -787,7 +802,9 @@ table { font-feature-settings: "tnum"; }
     <span class="spacer"></span>
     <button onclick="resetMapView()">Reset View</button>
   </div>
-  <div id="mapContainer" class="map-container"></div>
+  <div id="mapContainer" class="map-container">
+    <div class="map-analytics" id="mapAnalytics"></div>
+  </div>
 </div>
 
 <!-- ARCGIS MEDIA VIEW -->
@@ -2698,6 +2715,7 @@ async function doLogin() {
       showReviewerBadge();
       document.getElementById('loginOverlay').style.display = 'none';
       toast('Welcome, ' + d.display_name);
+      startPresence();
     } else {
       errEl.textContent = d.error || 'Login failed';
       errEl.style.display = 'block';
@@ -2914,6 +2932,7 @@ async function init() {
     document.getElementById('headerInfo').textContent += ' | DB: Connected';
     toast('Connected to PostgreSQL database');
     checkForUpdates();
+    startPresence();
   }
   showReviewerDigest();
 }
@@ -5514,19 +5533,19 @@ function updateMapMarkers() {
     const qaScore = poi.QA_Score || '?';
 
     marker.bindPopup(`
-      <div style="min-width:200px;font-family:Segoe UI,sans-serif;">
-        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(nameEn)}</div>
-        <div style="font-size:13px;color:#555;direction:rtl;text-align:right;margin-bottom:6px;">${esc(nameAr)}</div>
-        <div style="font-size:11px;color:#666;line-height:1.6;">
+      <div style="min-width:200px;font-family:var(--font);">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--text-primary);">${esc(nameEn)}</div>
+        <div style="font-size:13px;color:var(--text-secondary);direction:rtl;text-align:right;margin-bottom:6px;">${esc(nameAr)}</div>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
           <b>Category:</b> ${esc(cat)}${sub ? ' &gt; ' + esc(sub) : ''}<br>
           <b>Status:</b> ${esc(status)}<br>
-          <b>QA Score:</b> <span style="font-weight:700;color:${qa >= 90 ? '#2e7d32' : qa >= 70 ? '#f57f17' : '#c62828'}">${qaScore}</span><br>
+          <b>QA Score:</b> <span style="font-weight:700;color:${qa >= 90 ? 'var(--success-text)' : qa >= 70 ? 'var(--warning-text)' : 'var(--danger-text)'}">${qaScore}</span><br>
           <b>District:</b> ${esc(poi.District_EN || 'N/A')}<br>
           ${poi.Phone_Number && poi.Phone_Number !== 'UNAVAILABLE' ? '<b>Phone:</b> ' + esc(poi.Phone_Number) + '<br>' : ''}
         </div>
         <div style="margin-top:6px;display:flex;gap:4px;">
-          <button onclick="openDetail(allPois.findIndex(p=>p.GlobalID==='${poi.GlobalID}'))" style="padding:4px 10px;font-size:11px;background:#1976d2;color:#fff;border:none;border-radius:3px;cursor:pointer;">Details</button>
-          ${poi.Google_Map_URL && poi.Google_Map_URL !== 'UNAVAILABLE' ? '<a href="' + esc(poi.Google_Map_URL) + '" target="_blank" style="padding:4px 10px;font-size:11px;background:#43a047;color:#fff;border:none;border-radius:3px;cursor:pointer;text-decoration:none;">Google Maps</a>' : ''}
+          <button onclick="openDetail(allPois.findIndex(p=>p.GlobalID==='${poi.GlobalID}'))" style="padding:4px 10px;font-size:11px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;">Details</button>
+          ${poi.Google_Map_URL && poi.Google_Map_URL !== 'UNAVAILABLE' ? '<a href="' + esc(poi.Google_Map_URL) + '" target="_blank" style="padding:4px 10px;font-size:11px;background:var(--success);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;text-decoration:none;">Google Maps</a>' : ''}
         </div>
       </div>
     `);
@@ -5535,10 +5554,62 @@ function updateMapMarkers() {
   });
 
   document.getElementById('mapCount').textContent = `${count} POIs on map`;
+  updateMapAnalytics();
 }
 
 function resetMapView() {
   if (poiMap) poiMap.setView([24.7136, 46.6753], 12);
+}
+
+function updateMapAnalytics() {
+  const el = document.getElementById('mapAnalytics');
+  if (!el) return;
+  const catFilter = document.getElementById('mapCategoryFilter')?.value || '';
+  const pois = catFilter ? allPois.filter(p => p.Category === catFilter) : allPois;
+  const withCoords = pois.filter(p => parseFloat(p.Latitude) && parseFloat(p.Longitude));
+
+  // Status breakdown
+  const reviewed = pois.filter(p => p.Review_Status === 'Reviewed').length;
+  const draft = pois.filter(p => !p.Review_Status || p.Review_Status === 'Draft').length;
+  const flagged = pois.filter(p => p.flagged).length;
+  const rejected = pois.filter(p => p.Review_Status === 'Rejected').length;
+
+  // QA breakdown
+  const qa90 = pois.filter(p => (parseInt(p.QA_Score)||0) >= 90).length;
+  const qa80 = pois.filter(p => { const q = parseInt(p.QA_Score)||0; return q >= 80 && q < 90; }).length;
+  const qaLow = pois.filter(p => (parseInt(p.QA_Score)||0) < 80).length;
+
+  // Top 5 districts
+  const distMap = {};
+  withCoords.forEach(p => { const d = p.District_EN || 'Unknown'; distMap[d] = (distMap[d]||0) + 1; });
+  const topDists = Object.entries(distMap).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
+  let h = '';
+  h += `<div>
+    <div class="ma-title">Map Summary</div>
+    <div class="ma-row"><span>Total POIs</span><span class="ma-val">${pois.length}</span></div>
+    <div class="ma-row"><span>On Map</span><span class="ma-val">${withCoords.length}</span></div>
+    <div class="ma-row"><span>No Coords</span><span class="ma-val" style="color:var(--warning)">${pois.length - withCoords.length}</span></div>
+  </div>`;
+  h += `<div>
+    <div class="ma-title">Review Status</div>
+    <div class="ma-row"><span>Reviewed</span><span class="ma-val" style="color:var(--success)">${reviewed}</span></div>
+    <div class="ma-row"><span>Draft</span><span class="ma-val">${draft}</span></div>
+    <div class="ma-row"><span>Flagged</span><span class="ma-val" style="color:var(--warning)">${flagged}</span></div>
+    ${rejected ? `<div class="ma-row"><span>Rejected</span><span class="ma-val" style="color:var(--danger)">${rejected}</span></div>` : ''}
+  </div>`;
+  h += `<div>
+    <div class="ma-title">QA Distribution</div>
+    <div class="ma-row"><span>QA 90+</span><span class="ma-val" style="color:var(--success)">${qa90}</span></div>
+    <div class="ma-row"><span>QA 80-89</span><span class="ma-val" style="color:var(--warning-text)">${qa80}</span></div>
+    <div class="ma-row"><span>QA &lt; 80</span><span class="ma-val" style="color:var(--danger)">${qaLow}</span></div>
+  </div>`;
+  if (topDists.length) {
+    h += `<div><div class="ma-title">Top Districts</div>`;
+    topDists.forEach(([d, c]) => { h += `<div class="ma-row"><span>${esc(d)}</span><span class="ma-val">${c}</span></div>`; });
+    h += `</div>`;
+  }
+  el.innerHTML = h;
 }
 
 // ===== ARCGIS MEDIA VIEW (Dual Mode) =====
@@ -7705,6 +7776,71 @@ function toggleDensity() {
   const isCompact = document.body.classList.contains('density-compact');
   localStorage.setItem('poi_density', isCompact ? 'compact' : 'comfortable');
   toast('Density: ' + (isCompact ? 'Compact' : 'Comfortable'));
+}
+
+// ===== LIVE PRESENCE =====
+const PRESENCE_COLORS = ['#2563EB','#7C3AED','#059669','#DC2626','#D97706','#0891B2','#BE185D','#4F46E5','#15803D','#EA580C'];
+let _presenceInterval = null;
+
+function getPresenceColor(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+}
+
+function getInitials(name) {
+  return name.split(/[\s._-]+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+async function sendHeartbeat() {
+  if (!dbMode || !currentReviewer || currentReviewer.role === 'guest') return;
+  const activeView = document.querySelector('.sidebar-item.active')?.dataset?.view || 'card';
+  const openPoi = document.getElementById('detailPanel')?.classList.contains('open')
+    ? document.getElementById('detailTitle')?.textContent || '' : '';
+  try {
+    await fetch('/api/presence/heartbeat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username: currentReviewer.display_name || currentReviewer.username, view: activeView, poi: openPoi })
+    });
+  } catch(e) {}
+}
+
+async function fetchPresence() {
+  if (!dbMode) return;
+  try {
+    const r = await fetch('/api/presence/active');
+    if (!r.ok) return;
+    const data = await r.json();
+    renderPresenceBar(data.users || []);
+  } catch(e) {}
+}
+
+function renderPresenceBar(users) {
+  const bar = document.getElementById('presenceBar');
+  if (!bar) return;
+  if (!users.length) { bar.innerHTML = ''; return; }
+
+  const viewLabels = {card:'Review Queue',excel:'Bulk Edit',arcgis:'Media',map:'Map',duplicates:'Duplicates',audit:'Activity',dashboard:'Dashboard',drafts:'Drafts',invoice:'Invoice'};
+
+  bar.innerHTML = users.map(u => {
+    const color = getPresenceColor(u.username);
+    const initials = getInitials(u.username);
+    const viewLabel = viewLabels[u.view] || u.view || '';
+    const tooltip = u.username + (viewLabel ? ' - ' + viewLabel : '') + (u.poi ? ' - ' + u.poi : '');
+    return `<div class="presence-avatar" style="background:${color};" title="${esc(tooltip)}">
+      ${initials}
+      <span class="presence-dot"></span>
+      <span class="presence-tooltip">${esc(tooltip)}</span>
+    </div>`;
+  }).join('');
+}
+
+function startPresence() {
+  if (_presenceInterval) return;
+  sendHeartbeat();
+  _presenceInterval = setInterval(() => { sendHeartbeat(); fetchPresence(); }, 15000);
+  setTimeout(fetchPresence, 1000);
 }
 
 function restoreDensity() {

@@ -2623,6 +2623,45 @@ def draft_stats():
     })
 
 
+# ===== Presence / Live Users =====
+_presence = {}  # {username: {last_seen: timestamp, view: str, poi: str}}
+_PRESENCE_TIMEOUT = 60  # seconds before considered offline
+
+@api.route('/presence/heartbeat', methods=['POST'])
+def presence_heartbeat():
+    """Record a user heartbeat. Body: {username, view?, poi?}"""
+    data = request.get_json(silent=True) or {}
+    username = data.get('username', '').strip()
+    if not username:
+        return api_error('username required', status=400)
+    _presence[username] = {
+        'last_seen': time.time(),
+        'view': data.get('view', ''),
+        'poi': data.get('poi', ''),
+    }
+    return api_success({'ok': True})
+
+@api.route('/presence/active', methods=['GET'])
+def presence_active():
+    """Return currently active users (seen within PRESENCE_TIMEOUT)."""
+    now = time.time()
+    active = []
+    expired = []
+    for user, info in _presence.items():
+        if now - info['last_seen'] <= _PRESENCE_TIMEOUT:
+            active.append({
+                'username': user,
+                'view': info.get('view', ''),
+                'poi': info.get('poi', ''),
+                'seconds_ago': int(now - info['last_seen']),
+            })
+        else:
+            expired.append(user)
+    for u in expired:
+        del _presence[u]
+    return api_success({'users': active, 'count': len(active)})
+
+
 # ===== Admin: reset all review_versions =====
 @api.route('/admin/reset-versions', methods=['POST'])
 def reset_versions():
