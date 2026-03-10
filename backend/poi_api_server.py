@@ -1078,6 +1078,42 @@ def delivery_readiness():
         'districts': dist_list
     })
 
+
+@api.route('/stats/reviewer-productivity', methods=['GET'])
+def reviewer_productivity():
+    """Per-reviewer productivity stats from audit log."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT reviewer,
+               COUNT(*) as total_actions,
+               COUNT(*) FILTER (WHERE action = 'approve' OR (action = 'status_change' AND new_value = 'Reviewed')) as approvals,
+               COUNT(*) FILTER (WHERE action = 'reject' OR (action = 'status_change' AND new_value = 'Rejected')) as rejections,
+               COUNT(*) FILTER (WHERE action = 'edit') as edits,
+               COUNT(DISTINCT global_id) as pois_touched,
+               MIN(created_at)::text as first_activity,
+               MAX(created_at)::text as last_activity,
+               COUNT(DISTINCT created_at::date) as active_days
+        FROM poi_audit_log
+        WHERE reviewer IS NOT NULL AND reviewer != ''
+        GROUP BY reviewer
+        ORDER BY total_actions DESC
+    """)
+    reviewers = cur.fetchall()
+    cur.execute("""
+        SELECT created_at::date as day, reviewer, COUNT(*) as actions
+        FROM poi_audit_log
+        WHERE created_at >= NOW() - INTERVAL '14 days'
+          AND reviewer IS NOT NULL AND reviewer != ''
+        GROUP BY day, reviewer
+        ORDER BY day
+    """)
+    daily = cur.fetchall()
+    cur.close()
+    conn.close()
+    return api_success({'reviewers': reviewers, 'daily': daily})
+
+
 # ===== API: Delete POI =====
 @api.route('/pois/<globalid>', methods=['DELETE'])
 def delete_poi(globalid):

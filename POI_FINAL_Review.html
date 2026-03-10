@@ -102,6 +102,30 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .sync-icon { display: inline-block; width: 14px; height: 14px; }
 @keyframes sync-spin { to { transform: rotate(360deg); } }
 .sync-indicator.syncing .sync-icon { animation: sync-spin 0.8s linear infinite; }
+.undo-header-btn { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:var(--radius-pill); background:var(--surface); cursor:pointer; font-size:11px; color:var(--text-secondary); transition:all 0.15s; margin-left:6px; }
+.undo-header-btn:hover { background:var(--warning-light); border-color:var(--warning); color:var(--warning-text); }
+.undo-badge { font-size:10px; font-weight:700; background:var(--warning); color:#fff; border-radius:var(--radius-pill); padding:0 5px; min-width:16px; text-align:center; }
+
+/* ═══════════ MODE SELECTOR ═══════════ */
+.mode-selector-wrap { position:relative; display:inline-block; }
+.mode-dropdown { position:absolute; top:100%; right:0; margin-top:4px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); z-index:100; min-width:200px; padding:6px 0; }
+.mode-dropdown .mode-item { display:flex; align-items:center; gap:10px; padding:8px 16px; cursor:pointer; font-size:12px; color:var(--text-primary); transition:background 0.1s; }
+.mode-dropdown .mode-item:hover { background:var(--surface-hover); }
+.mode-dropdown .mode-item.active { background:var(--primary-light); color:var(--primary-text); font-weight:600; }
+.mode-dropdown .mode-item .mode-icon { width:18px; height:18px; display:flex; align-items:center; justify-content:center; }
+.mode-dropdown .mode-item .mode-desc { font-size:10px; color:var(--text-muted); font-weight:400; }
+
+/* ═══════════ COMPACT MODE ═══════════ */
+body.compact-mode .poi-table td { padding: 3px 6px; font-size: 11px; }
+body.compact-mode .poi-table th { padding: 4px 6px; font-size: 10px; }
+body.compact-mode .detail-excel td { padding: 2px 6px; }
+body.compact-mode .detail-excel input, body.compact-mode .detail-excel select { padding: 3px 6px; font-size: 11px; }
+
+/* ═══════════ BULK DROPDOWN ═══════════ */
+.bulk-dropdown-wrap { position:relative; display:inline-block; }
+.bulk-dropdown { position:absolute; top:100%; left:0; margin-top:4px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); z-index:100; min-width:200px; padding:4px 0; }
+.bulk-dropdown button { display:flex; align-items:center; gap:8px; width:100%; padding:7px 14px; border:none; background:none; cursor:pointer; font-size:12px; color:var(--text-primary); text-align:left; }
+.bulk-dropdown button:hover { background:var(--surface-hover); }
 .presence-tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--sidebar-bg); color:#fff; padding:4px 8px; border-radius:var(--radius-sm); font-size:10px; white-space:nowrap; display:none; pointer-events:none; }
 .presence-avatar:hover .presence-tooltip { display:block; }
 .header-actions button { padding: 7px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-primary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; }
@@ -281,6 +305,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .qa-archive { background:var(--surface-hover); color:var(--text-secondary); }
 .qa-detail { background:var(--primary-light); color:var(--primary); }
 tr:hover .qa-btn { opacity:0.7; }
+.pri-badge { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: var(--radius-pill); margin-left: 4px; vertical-align: middle; }
+.pri-badge.urgent { background: var(--danger-light); color: var(--danger-text); }
+.pri-badge.high { background: var(--warning-light); color: var(--warning-text); }
 .row-actions { white-space:nowrap; padding:2px 4px !important; }
 
 /* Detail actions */
@@ -506,6 +533,12 @@ tr:hover .qa-btn { opacity:0.7; }
 .map-analytics .ma-title { font-weight:700; font-size:12px; color:var(--text-primary); margin-bottom:6px; }
 .map-analytics .ma-row { display:flex; justify-content:space-between; padding:2px 0; color:var(--text-secondary); }
 .map-analytics .ma-row .ma-val { font-weight:600; color:var(--text-primary); font-feature-settings:"tnum"; }
+@keyframes marker-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); } 50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); } }
+.marker-suspicious { animation: marker-pulse 1.5s ease-in-out infinite; }
+.map-context-menu { position:absolute; z-index:1000; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); min-width:160px; padding:4px 0; font-size:12px; }
+.map-context-menu button { display:block; width:100%; text-align:left; padding:7px 14px; border:none; background:none; cursor:pointer; color:var(--text-primary); font-size:12px; }
+.map-context-menu button:hover { background:var(--hover); }
+.map-context-menu hr { margin:4px 0; border:none; border-top:1px solid var(--border); }
 .arc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; padding:16px; overflow-y:auto; height:calc(100vh - 130px); align-content:start; }
 .arc-loader { grid-column:1/-1; text-align:center; padding:80px 20px; }
 .drafts-toolbar { padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -645,6 +678,7 @@ table { font-feature-settings: "tnum"; }
     </div>
     <div class="presence-bar" id="presenceBar"></div>
     <div class="sync-indicator" id="syncIndicator" style="display:none;"><span class="sync-icon"></span><span class="sync-text"></span></div>
+    <button class="undo-header-btn" id="undoBtn" onclick="undoLastAction()" title="Undo last action (Ctrl+Z)" style="display:none"><i data-lucide="undo-2" style="width:14px;height:14px"></i><span class="undo-badge" id="undoBadge">0</span></button>
   </div>
   <div class="header-actions">
     <div class="header-group">
@@ -673,6 +707,10 @@ table { font-feature-settings: "tnum"; }
       </span>
     </div>
     <button onclick="toggleShortcutHelp()" title="Keyboard shortcuts (?)"><i data-lucide="keyboard" style="width:15px;height:15px"></i></button>
+    <div class="mode-selector-wrap">
+      <button onclick="toggleModeMenu()" title="Review Mode"><i data-lucide="sliders-horizontal" style="width:15px;height:15px"></i> <span id="currentModeName">Standard</span></button>
+      <div class="mode-dropdown" id="modeMenu" style="display:none;"></div>
+    </div>
     <button onclick="logoutReviewer()" id="logoutBtn" class="btn-danger-subtle" style="display:none;"><i data-lucide="log-out" style="width:15px;height:15px"></i> Logout</button>
   </div>
 </div>
@@ -722,6 +760,14 @@ table { font-feature-settings: "tnum"; }
       <option value="Rejected">Rejected</option>
       <option value="Flagged">Flagged (any status)</option>
     </select>
+    <select id="sortOrder" onchange="applyFilters()" style="max-width:160px;">
+      <option value="default">Sort: Default</option>
+      <option value="urgency">Sort: Urgency</option>
+      <option value="qa_asc">Sort: Lowest QA</option>
+      <option value="qa_desc">Sort: Highest QA</option>
+      <option value="name_asc">Sort: Name A-Z</option>
+      <option value="name_desc">Sort: Name Z-A</option>
+    </select>
     <span class="count" id="filterCount"></span>
   </div>
   <div class="filter-summary" id="filterSummary" style="display:none;"></div>
@@ -740,16 +786,38 @@ table { font-feature-settings: "tnum"; }
   <!-- Bulk Action Bar -->
   <div id="bulkBar" class="bulk-bar">
     <span class="bulk-count" id="bulkCount">0 selected</span>
-    <button class="btn btn-success btn-sm" onclick="bulkApprove()">Approve Selected</button>
-    <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="bulkSetDraft()">Set Draft</button>
-    <select id="bulkFlagSelect" class="bulk-bar select">
-      <option value="">-- Select Flag --</option>
-    </select>
-    <button class="btn btn-warn btn-sm" onclick="bulkFlag()">Flag Selected</button>
-    <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="bulkApplySafeFixes()">Auto-Fix Selected</button>
+    <button class="btn btn-success btn-sm" onclick="bulkApproveWithConfirm()">Approve</button>
+    <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="bulkSetDraftWithConfirm()">Set Draft</button>
+    <div class="bulk-dropdown-wrap">
+      <button class="btn btn-sm" onclick="toggleBulkMenu()">More Actions &#9662;</button>
+      <div class="bulk-dropdown" id="bulkMenu" style="display:none;">
+        <button onclick="bulkFlagPrompt()"><i data-lucide="flag" style="width:13px;height:13px"></i> Flag Selected</button>
+        <button onclick="bulkApplySafeFixesWithConfirm()"><i data-lucide="wrench" style="width:13px;height:13px"></i> Auto-Fix Selected</button>
+        <button onclick="bulkArchiveWithConfirm()"><i data-lucide="archive" style="width:13px;height:13px"></i> Archive Selected</button>
+        <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
+        <button onclick="bulkNormalizeBooleans()"><i data-lucide="toggle-right" style="width:13px;height:13px"></i> Fix Invalid Booleans</button>
+        <button onclick="bulkMoveGoogleLinks()"><i data-lucide="link" style="width:13px;height:13px"></i> Move Google Links</button>
+        <button onclick="bulkNormalizeFloors()"><i data-lucide="layers" style="width:13px;height:13px"></i> Fix Invalid Floors</button>
+      </div>
+    </div>
     <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="bulkClear()">Clear</button>
     <button class="btn btn-sm" onclick="bulkSelectPage()">Select Page</button>
     <button class="btn btn-sm" onclick="bulkSelectAll()">Select All</button>
+  </div>
+  <!-- Bulk Confirm Modal -->
+  <div class="overlay" id="bulkConfirmOverlay" style="display:none;" onclick="if(event.target===this)closeBulkConfirm()">
+    <div style="background:var(--surface);border-radius:var(--radius-xl);padding:24px;max-width:420px;width:90%;box-shadow:var(--shadow-xl);">
+      <h3 id="bulkConfirmTitle" style="margin-bottom:8px;font-size:16px;">Confirm</h3>
+      <p id="bulkConfirmDesc" style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;"></p>
+      <div id="bulkProgressWrap" style="display:none;margin-bottom:14px;">
+        <div style="height:8px;background:var(--surface-active);border-radius:4px;overflow:hidden;"><div id="bulkProgressFill" style="height:100%;background:var(--primary);border-radius:4px;transition:width 0.2s;width:0%;"></div></div>
+        <div id="bulkProgressText" style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:center;">0 / 0</div>
+      </div>
+      <div id="bulkConfirmActions" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-sm" onclick="closeBulkConfirm()">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="bulkConfirmBtn">Confirm</button>
+      </div>
+    </div>
   </div>
   <div class="poi-container" id="tableContainer">
     <div class="loading"><div class="spinner"></div><br>Loading POI data...</div>
@@ -812,6 +880,14 @@ table { font-feature-settings: "tnum"; }
     <select id="mapCategoryFilter" onchange="updateMapMarkers()">
       <option value="">All Categories</option>
     </select>
+    <select id="mapStatusFilter" onchange="updateMapMarkers()">
+      <option value="">All Statuses</option>
+      <option value="Draft">Draft Only</option>
+      <option value="Reviewed">Reviewed</option>
+      <option value="Flagged">Flagged</option>
+      <option value="Rejected">Rejected</option>
+      <option value="suspicious">Suspicious Coords</option>
+    </select>
     <select id="mapQaFilter" onchange="updateMapMarkers()">
       <option value="">All QA Scores</option>
       <option value="100">100 Only</option>
@@ -819,12 +895,18 @@ table { font-feature-settings: "tnum"; }
       <option value="80">80+</option>
       <option value="low">&lt; 80</option>
     </select>
+    <select id="mapColorMode" onchange="updateMapMarkers()">
+      <option value="category">Color by Category</option>
+      <option value="status">Color by Status</option>
+      <option value="qa">Color by QA Score</option>
+    </select>
     <span id="mapCount" class="count"></span>
     <span class="spacer"></span>
     <button onclick="resetMapView()">Reset View</button>
   </div>
   <div id="mapContainer" class="map-container">
     <div class="map-analytics" id="mapAnalytics"></div>
+    <div class="map-context-menu" id="mapContextMenu" style="display:none"></div>
   </div>
 </div>
 
@@ -1083,7 +1165,9 @@ function saveSessionState() {
       category: document.getElementById('filterCategory')?.value || '',
       severity: document.getElementById('filterSeverity')?.value || '',
       status: document.getElementById('filterStatus')?.value || '',
+      sortOrder: document.getElementById('sortOrder')?.value || 'default',
       viewMode: document.querySelector('.sidebar-item.active')?.dataset?.view || document.querySelector('.view-tab.active')?.textContent?.trim() || 'card',
+      reviewMode: currentReviewMode || 'standard',
       detailViewMode: detailViewMode
     };
     localStorage.setItem(_sessionKey(), JSON.stringify(state));
@@ -1104,6 +1188,8 @@ function restoreSessionState() {
     if (state.category) document.getElementById('filterCategory').value = state.category;
     if (state.severity) document.getElementById('filterSeverity').value = state.severity;
     if (state.status) document.getElementById('filterStatus').value = state.status;
+    if (state.sortOrder) { const se = document.getElementById('sortOrder'); if (se) se.value = state.sortOrder; }
+    if (state.reviewMode && typeof setReviewMode === 'function') setReviewMode(state.reviewMode, true);
     if (state.detailViewMode) detailViewMode = state.detailViewMode;
     if (state.viewMode && VIEW_IDS[state.viewMode]) switchView(state.viewMode);
   } catch(e) {}
@@ -2419,6 +2505,19 @@ function calcQaScore(poi, errors) {
   return calcQaScores(poi, errors).composite;
 }
 
+function calcPriorityScore(poi) {
+  let score = 0;
+  if (poi.flagged) score += 50;
+  if (poi.draft_reason === 'modified' && (!poi.Review_Status || poi.Review_Status === 'Draft')) score += 40;
+  const errs = validationResults.get(poi.GlobalID) || [];
+  const blockers = errs.filter(e => e.severity === 'BLOCKER').length;
+  if (blockers > 2) score += 30;
+  else if (blockers > 0) score += 20;
+  if (poi.Is_Landmark === 'Yes' || poi.Is_Trending === 'Yes') score += 25;
+  if (errs.length > 0 && blockers === 0) score += 5;
+  return score;
+}
+
 // Validate all POIs, returns Map<GlobalID, errors[]>
 let validationResults = new Map();
 function validateAllPois() {
@@ -2433,6 +2532,7 @@ function validateAllPois() {
       poi._qa_completeness = scores.completeness;
       poi._qa_validity = scores.validity;
       poi._qa_readiness = scores.readiness;
+      poi._priority_score = calcPriorityScore(poi);
       if (errs.length > 0) {
         validationResults.set(poi.GlobalID, errs);
         errs.forEach(e => {
@@ -3213,6 +3313,48 @@ function buildCategoryFilter() {
 
 // ===== VIEWS =====
 const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', dashboard:'dashboardView', invoice:'invoiceView', drafts:'draftsView'};
+
+// ═══════════ REVIEW MODES ═══════════
+const REVIEW_MODES = {
+  standard:   { label: 'Standard',       icon: 'layout-list',      queue: 'all',             density: 'normal', detailSections: 'all' },
+  speed:      { label: 'Speed Review',   icon: 'zap',              queue: 'needs_approval',  density: 'compact', detailSections: ['IDENTITY','LOCATION','MEDIA'] },
+  qa:         { label: 'QA Deep Review', icon: 'shield-check',     queue: 'errors',          density: 'normal', detailSections: 'all', autoExpandAll: true },
+  media:      { label: 'Media Focus',    icon: 'image',            queue: 'needs_media',     density: 'normal', detailSections: ['IDENTITY','MEDIA'], defaultView: 'arcgis' },
+  duplicates: { label: 'Dedup Focus',    icon: 'copy',             queue: 'all',             density: 'normal', defaultView: 'duplicates' }
+};
+let currentReviewMode = 'standard';
+
+function toggleModeMenu() {
+  const menu = document.getElementById('modeMenu');
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    let h = '';
+    Object.entries(REVIEW_MODES).forEach(([key, m]) => {
+      h += `<div class="mode-item${key===currentReviewMode?' active':''}" onclick="setReviewMode('${key}');toggleModeMenu()"><span class="mode-icon"><i data-lucide="${m.icon}" style="width:16px;height:16px"></i></span><div><div>${m.label}</div></div></div>`;
+    });
+    menu.innerHTML = h;
+    try { lucide.createIcons({nameAttr:'data-lucide'}); } catch(e) {}
+  }
+}
+
+function setReviewMode(mode, silent) {
+  const m = REVIEW_MODES[mode];
+  if (!m) return;
+  currentReviewMode = mode;
+  document.getElementById('currentModeName').textContent = m.label;
+  // Density
+  document.body.classList.toggle('compact-mode', m.density === 'compact');
+  // Switch to default view if specified
+  if (!silent && m.defaultView) switchView(m.defaultView);
+  // Switch to queue tab
+  if (!silent && m.queue) {
+    currentDataTab = m.queue;
+    document.querySelectorAll('.data-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === m.queue));
+    applyFilters();
+  }
+  if (!silent) saveSessionState();
+}
 function switchView(view) {
   // Update sidebar active state
   document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
@@ -3377,6 +3519,15 @@ function applyFilters() {
     }
     return true;
   });
+  // Sort
+  const sortVal = document.getElementById('sortOrder')?.value || 'default';
+  switch (sortVal) {
+    case 'urgency': filteredPois.sort((a,b) => (b._priority_score||0) - (a._priority_score||0)); break;
+    case 'qa_asc': filteredPois.sort((a,b) => (parseInt(a.QA_Score)||0) - (parseInt(b.QA_Score)||0)); break;
+    case 'qa_desc': filteredPois.sort((a,b) => (parseInt(b.QA_Score)||0) - (parseInt(a.QA_Score)||0)); break;
+    case 'name_asc': filteredPois.sort((a,b) => (a.Name_EN||'').localeCompare(b.Name_EN||'')); break;
+    case 'name_desc': filteredPois.sort((a,b) => (b.Name_EN||'').localeCompare(a.Name_EN||'')); break;
+  }
   currentPage = 0; renderTable();
   // Build filter summary chips
   const fs = document.getElementById('filterSummary');
@@ -3435,7 +3586,10 @@ function renderTable() {
     const _rdyDot = p._qa_readiness === 'Ready' ? '#4caf50' : p._qa_readiness === 'Blocked' ? '#c62828' : '#ff9800';
     const sc = p.Review_Status==='Reviewed'?'status-ok':p.Review_Status==='Rejected'?'status-rejected':p.Review_Status==='Archived'?'status-pending':p.flagged?'status-flagged':'status-pending';
     const rc = p.Review_Status==='Reviewed'?'reviewed':p.Review_Status==='Rejected'?'rejected':p.flagged?'flagged':'';
-    const ed = edits[p.GlobalID]?' style="border-left:3px solid #4caf50"':'';
+    const pri = p._priority_score || 0;
+    const priBorder = edits[p.GlobalID] ? 'border-left:3px solid #4caf50' : pri > 80 ? 'border-left:3px solid var(--danger)' : pri > 50 ? 'border-left:3px solid var(--warning)' : '';
+    const ed = priBorder ? ` style="${priBorder}"` : '';
+    const priBadge = pri > 80 ? '<span class="pri-badge urgent">Urgent</span>' : pri > 50 ? '<span class="pri-badge high">High</span>' : '';
     const chk = selectedPois.has(p.GlobalID)?'checked':'';
     const ds = getDecisionState(p);
     h += `<tr class="${rc}"${ed} onmouseenter="showPreview(event,${idx})" onmouseleave="hidePreview()">
@@ -3445,7 +3599,7 @@ function renderTable() {
       <td class="ar-text" onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Name_AR||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.Category||'')}</td>
       <td onclick="openDetail(${idx})" style="cursor:pointer">${esc(p.District_EN||'')}</td>
-      <td onclick="openDetail(${idx})" style="cursor:pointer"><span style="background:${ds.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;" title="${ds.action||''}">${ds.icon} ${ds.label}</span></td>
+      <td onclick="openDetail(${idx})" style="cursor:pointer"><span style="background:${ds.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;white-space:nowrap;" title="${ds.action||''}">${ds.icon} ${ds.label}</span>${priBadge?' '+priBadge:''}</td>
       <td style="white-space:nowrap;font-size:11px;" title="Completeness: ${p._qa_completeness||0}% | Validity: ${p._qa_validity||0}% | ${p._qa_readiness||''}"><span style="font-weight:600;">${p._qa_completeness||0}</span><span style="color:#999;margin:0 1px;">/</span><span style="font-weight:600;">${p._qa_validity||0}</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${_rdyDot};margin-left:4px;vertical-align:middle;" title="${p._qa_readiness||''}"></span></td>
       <td class="${sc}">${esc(p.Review_Status||'Draft')}${p.flagged?' <span title="'+esc(p.flag_reason||'')+'" style="color:#e65100;font-weight:bold;">⚑</span>':''}</td>
       <td class="row-actions" onclick="event.stopPropagation()"><button onclick="quickApprove('${p.GlobalID}')" title="Approve" class="qa-btn qa-approve">&check;</button><button onclick="quickReject('${p.GlobalID}')" title="Reject" class="qa-btn qa-reject">&times;</button><button onclick="quickArchive('${p.GlobalID}')" title="Archive" class="qa-btn qa-archive">&#9644;</button><button onclick="openDetail(${idx})" title="Open detail" class="qa-btn qa-detail">&ctdot;</button></td></tr>`;
@@ -3498,23 +3652,39 @@ function bulkClear() {
   renderTable();
 }
 
-function bulkApprove() {
+async function bulkApprove() {
   if (!selectedPois.size) return;
   const count = selectedPois.size;
-  selectedPois.forEach(gid => {
+  const reviewer = currentReviewer?.username || 'dashboard';
+  const gids = [...selectedPois];
+  gids.forEach(gid => {
     const poi = allPois.find(p => p.GlobalID === gid);
     if (poi) {
       poi.Review_Status = 'Reviewed'; poi.Review_Flag = '';
       poi.flagged = false; poi.flag_reason = ''; poi.draft_reason = '';
       poi.review_version = (parseInt(poi.review_version) || 0) + 1;
       poi.last_reviewed_at = new Date().toISOString();
-      poi.last_reviewed_by = currentReviewer?.username || 'dashboard';
+      poi.last_reviewed_by = reviewer;
       if (!edits[gid]) edits[gid] = {};
       edits[gid].Review_Status = 'Reviewed'; edits[gid].Review_Flag = '';
       edits[gid].flagged = false; edits[gid].flag_reason = '';
       edits[gid].draft_reason = '';
     }
   });
+  if (dbMode) {
+    const items = gids.map(gid => ({
+      GlobalID: gid, Review_Status: 'Reviewed', Review_Flag: '', flagged: false, flag_reason: '', draft_reason: '', _reviewer: reviewer
+    }));
+    const BATCH = 50;
+    for (let i = 0; i < items.length; i += BATCH) {
+      try {
+        await fetch('/api/pois/bulk', {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(items.slice(i, i + BATCH))
+        });
+      } catch(e) { console.warn('Bulk approve error:', e); }
+    }
+  }
   saveEditsToStorage(); selectedPois.clear();
   renderTable(); buildStats();
   toast('Approved ' + count + ' POIs');
@@ -3610,19 +3780,22 @@ async function approveAllAndPush() {
   toast(`Approved & pushed: ${total} POIs to DB` + (errors ? ` (${errors} errors)` : ''));
 }
 
-function bulkFlag() {
-  const flag = document.getElementById('bulkFlagSelect').value;
-  if (!flag) { toast('Select a flag first'); return; }
+function bulkFlag(reason) {
+  const flag = reason || (document.getElementById('bulkFlagSelect')?.value);
+  if (!flag) { toast('Enter a flag reason first'); return; }
   if (!selectedPois.size) return;
   const count = selectedPois.size;
+  const prevStatuses = {};
   selectedPois.forEach(gid => {
     const poi = allPois.find(p => p.GlobalID === gid);
     if (poi) {
+      prevStatuses[gid] = { flagged: poi.flagged, flag_reason: poi.flag_reason, Review_Flag: poi.Review_Flag };
       poi.flagged = true; poi.flag_reason = flag; poi.Review_Flag = flag;
       if (!edits[gid]) edits[gid] = {};
       edits[gid].flagged = true; edits[gid].flag_reason = flag; edits[gid].Review_Flag = flag;
     }
   });
+  pushUndo({ type: 'bulk', description: 'Flag ' + count + ' POIs', prevStatuses });
   saveEditsToStorage(); selectedPois.clear();
   renderTable(); buildStats();
   toast('Flagged ' + count + ' POIs: ' + trunc(flag, 30));
@@ -3739,10 +3912,13 @@ function excelSort(col) {
 function excelEdit(el) {
   const gid = el.dataset.gid, field = el.dataset.field, val = el.value;
   if (!edits[gid]) edits[gid] = {};
-  edits[gid][field] = val;
   const poi = allPois.find(p => p.GlobalID === gid);
   if (poi) {
+    const oldVal = poi[field];
+    if (oldVal !== val) pushUndo({ type: 'edit', gid, fields: { [field]: oldVal }, description: field.replace(/_/g,' ') });
     poi[field] = val;
+  }
+  edits[gid][field] = val;
     const errs = validatePoi(poi);
     if (errs.length > 0) validationResults.set(gid, errs);
     else validationResults.delete(gid);
@@ -4026,7 +4202,12 @@ function renderDetailExcel(poi) {
   if (isFNB) defaultExpanded.add('CONTACT'); // cuisine, menu-related
   if (isMosque) defaultExpanded.add('AMENITIES & SERVICES'); // mosque-specific fields
 
-  DETAIL_SECTIONS.forEach((section, si) => {
+  // Filter sections by review mode
+  const _modeConf = REVIEW_MODES[currentReviewMode] || REVIEW_MODES.standard;
+  const _visibleSections = _modeConf.detailSections === 'all' ? DETAIL_SECTIONS : DETAIL_SECTIONS.filter(s => _modeConf.detailSections.includes(s.title));
+  if (_modeConf.autoExpandAll) _visibleSections.forEach(s => defaultExpanded.add(s.title));
+
+  _visibleSections.forEach((section, si) => {
     const iCnt = sectionIssues[section.title] || 0;
     const collapsed = !defaultExpanded.has(section.title);
     const issueHtml = iCnt > 0 ? `<span class="issue-count has-issues">${iCnt} issue${iCnt>1?'s':''}</span>` : '';
@@ -4103,10 +4284,13 @@ function renderDetailExcel(poi) {
 function detailEdit(el) {
   const gid = el.dataset.gid, field = el.dataset.field, val = el.value;
   if (!edits[gid]) edits[gid] = {};
-  edits[gid][field] = val;
   const poi = allPois.find(p => p.GlobalID === gid);
   if (poi) {
+    const oldVal = poi[field];
+    if (oldVal !== val) pushUndo({ type: 'edit', gid, fields: { [field]: oldVal }, description: field.replace(/_/g,' ') });
     poi[field] = val;
+  }
+  edits[gid][field] = val;
     const errs = validatePoi(poi);
     if (errs.length > 0) validationResults.set(gid, errs);
     else validationResults.delete(gid);
@@ -4486,6 +4670,211 @@ async function bulkApplySafeFixes() {
     validateAllPois(); buildStats(true); renderTable();
     toast(d.total_fixes + ' fixes applied across ' + (d.results||[]).length + ' POIs');
   } catch(e) { toast('Bulk auto-fix failed: ' + e.message, 'error'); }
+}
+
+// ═══════════ BULK CONFIRM + PROGRESS SYSTEM ═══════════
+let _bulkConfirmResolve = null;
+function showBulkConfirm(title, desc) {
+  return new Promise(resolve => {
+    _bulkConfirmResolve = resolve;
+    document.getElementById('bulkConfirmTitle').textContent = title;
+    document.getElementById('bulkConfirmDesc').innerHTML = desc;
+    document.getElementById('bulkProgressWrap').style.display = 'none';
+    document.getElementById('bulkConfirmActions').style.display = 'flex';
+    const btn = document.getElementById('bulkConfirmBtn');
+    btn.onclick = () => { resolve(true); };
+    document.getElementById('bulkConfirmOverlay').style.display = 'flex';
+  });
+}
+function closeBulkConfirm() { document.getElementById('bulkConfirmOverlay').style.display='none'; if (_bulkConfirmResolve) { _bulkConfirmResolve(false); _bulkConfirmResolve = null; } }
+function showBulkProgress() {
+  document.getElementById('bulkProgressWrap').style.display='block';
+  document.getElementById('bulkConfirmActions').style.display='none';
+  updateBulkProgress(0,1);
+}
+function updateBulkProgress(done, total) {
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('bulkProgressFill').style.width = pct+'%';
+  document.getElementById('bulkProgressText').textContent = done + ' / ' + total;
+}
+
+function toggleBulkMenu() {
+  const m = document.getElementById('bulkMenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  try { lucide.createIcons({nameAttr:'data-lucide'}); } catch(e) {}
+}
+
+async function bulkApproveWithConfirm() {
+  if (!selectedPois.size) return;
+  const count = selectedPois.size;
+  const ok = await showBulkConfirm('Approve ' + count + ' POIs', 'This will set all selected POIs to <b>Reviewed</b> status.');
+  if (!ok) return;
+  showBulkProgress();
+  const prevStatuses = {};
+  selectedPois.forEach(gid => { const p = allPois.find(x=>x.GlobalID===gid); if(p) prevStatuses[gid] = { Review_Status: p.Review_Status||'Draft', flagged: p.flagged, flag_reason: p.flag_reason||'' }; });
+  pushUndo({ type: 'bulk', prevStatuses, description: 'Approve ' + count + ' POIs' });
+  await bulkApprove();
+  updateBulkProgress(count, count);
+  setTimeout(closeBulkConfirm, 800);
+}
+
+async function bulkSetDraftWithConfirm() {
+  if (!selectedPois.size) return;
+  const ok = await showBulkConfirm('Set ' + selectedPois.size + ' POIs to Draft', 'This will revert all selected POIs to <b>Draft</b> status.');
+  if (!ok) return;
+  showBulkProgress();
+  const prevStatuses = {};
+  selectedPois.forEach(gid => { const p = allPois.find(x=>x.GlobalID===gid); if(p) prevStatuses[gid] = { Review_Status: p.Review_Status||'Draft' }; });
+  pushUndo({ type: 'bulk', prevStatuses, description: 'Set Draft ' + Object.keys(prevStatuses).length + ' POIs' });
+  await bulkSetDraft();
+  updateBulkProgress(Object.keys(prevStatuses).length, Object.keys(prevStatuses).length);
+  setTimeout(closeBulkConfirm, 800);
+}
+
+async function bulkApplySafeFixesWithConfirm() {
+  if (!selectedPois.size) return;
+  toggleBulkMenu();
+  const ok = await showBulkConfirm('Auto-Fix ' + selectedPois.size + ' POIs', 'Apply safe auto-fixes (trim whitespace, normalize booleans, fix URLs) to all selected POIs.');
+  if (!ok) return;
+  showBulkProgress();
+  await bulkApplySafeFixes();
+  updateBulkProgress(1,1);
+  setTimeout(closeBulkConfirm, 800);
+}
+
+function bulkFlagPrompt() {
+  toggleBulkMenu();
+  if (!selectedPois.size) return;
+  const reason = prompt('Flag reason for ' + selectedPois.size + ' POIs:');
+  if (!reason) return;
+  bulkFlag(reason);
+}
+
+async function bulkArchiveWithConfirm() {
+  if (!selectedPois.size) return;
+  toggleBulkMenu();
+  const ok = await showBulkConfirm('Archive ' + selectedPois.size + ' POIs', 'This will set all selected POIs to <b>Archived</b> status.');
+  if (!ok) return;
+  showBulkProgress();
+  const reviewer = currentReviewer?.username || 'dashboard';
+  const prevStatuses = {};
+  const gids = [...selectedPois];
+  gids.forEach(gid => {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (p) { prevStatuses[gid] = { Review_Status: p.Review_Status||'Draft' }; p.Review_Status = 'Archived'; if(!edits[gid]) edits[gid]={}; edits[gid].Review_Status = 'Archived'; }
+  });
+  pushUndo({ type: 'bulk', prevStatuses, description: 'Archive ' + gids.length + ' POIs' });
+  if (dbMode) {
+    const items = gids.map(gid => ({ GlobalID: gid, Review_Status: 'Archived', _reviewer: reviewer }));
+    const BATCH = 50;
+    for (let i = 0; i < items.length; i += BATCH) {
+      try { await fetch('/api/pois/bulk', { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(items.slice(i,i+BATCH)) }); } catch(e) {}
+      updateBulkProgress(Math.min(i+BATCH, items.length), items.length);
+    }
+  }
+  saveEditsToStorage(); selectedPois.clear(); renderTable(); buildStats();
+  toast('Archived ' + gids.length + ' POIs');
+  setTimeout(closeBulkConfirm, 800);
+}
+
+const BOOLEAN_FIELDS = ['Menu','Drive_Thru','Dine_In','Only_Delivery','Reservation','Require_Ticket','Order_from_Car','Pickup_Point','WiFi','Music','Valet_Parking','Has_Parking_Lot','Wheelchair_Accessible','Family_Seating','Waiting_Area','Private_Dining','Smoking_Area','Children_Area','Shisha','Live_Sports','Is_Landmark','Is_Trending','Large_Groups','Women_Prayer_Room','Iftar_Tent','Free_Entry'];
+const VALID_BOOLS = new Set(['Yes','No','UNAVAILABLE','UNAPPLICABLE','']);
+
+async function bulkNormalizeBooleans() {
+  if (!selectedPois.size) return;
+  toggleBulkMenu();
+  let fixCount = 0;
+  [...selectedPois].forEach(gid => {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (!p) return;
+    BOOLEAN_FIELDS.forEach(f => { if (p[f] && !VALID_BOOLS.has(p[f])) fixCount++; });
+  });
+  if (!fixCount) { toast('No invalid boolean values found in selection'); return; }
+  const ok = await showBulkConfirm('Fix Invalid Booleans', fixCount + ' invalid boolean values will be set to <b>UNAVAILABLE</b> across ' + selectedPois.size + ' POIs.');
+  if (!ok) return;
+  showBulkProgress();
+  let done = 0;
+  for (const gid of [...selectedPois]) {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (!p) continue;
+    const fixes = {};
+    BOOLEAN_FIELDS.forEach(f => { if (p[f] && !VALID_BOOLS.has(p[f])) { fixes[f] = 'UNAVAILABLE'; p[f] = 'UNAVAILABLE'; } });
+    if (Object.keys(fixes).length > 0) {
+      if (!edits[gid]) edits[gid] = {};
+      Object.assign(edits[gid], fixes);
+      await saveFieldsToDb(gid, fixes);
+    }
+    done++;
+    updateBulkProgress(done, selectedPois.size);
+  }
+  saveEditsToStorage(); renderTable(); buildStats();
+  toast('Fixed ' + fixCount + ' invalid boolean values');
+  setTimeout(closeBulkConfirm, 800);
+}
+
+async function bulkMoveGoogleLinks() {
+  if (!selectedPois.size) return;
+  toggleBulkMenu();
+  let fixCount = 0;
+  [...selectedPois].forEach(gid => {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (!p) return;
+    const w = (p.Website||'').toLowerCase();
+    if (w.includes('maps.google') || w.includes('goo.gl/maps') || w.includes('google.com/maps')) fixCount++;
+  });
+  if (!fixCount) { toast('No Google Maps links found in Website fields'); return; }
+  const ok = await showBulkConfirm('Move Google Links', fixCount + ' POIs have Google Maps links in the Website field. Move them to <b>Google_Map_URL</b> and set Website to UNAVAILABLE.');
+  if (!ok) return;
+  showBulkProgress();
+  let done = 0;
+  for (const gid of [...selectedPois]) {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (!p) continue;
+    const w = (p.Website||'').toLowerCase();
+    if (w.includes('maps.google') || w.includes('goo.gl/maps') || w.includes('google.com/maps')) {
+      const fixes = { Google_Map_URL: p.Website, Website: 'UNAVAILABLE' };
+      p.Google_Map_URL = p.Website; p.Website = 'UNAVAILABLE';
+      if (!edits[gid]) edits[gid] = {};
+      Object.assign(edits[gid], fixes);
+      await saveFieldsToDb(gid, fixes);
+    }
+    done++;
+    updateBulkProgress(done, selectedPois.size);
+  }
+  saveEditsToStorage(); renderTable(); buildStats();
+  toast('Moved ' + fixCount + ' Google Maps links');
+  setTimeout(closeBulkConfirm, 800);
+}
+
+const VALID_FLOORS = new Set(['G','B1','1','2','3','4','5','UNAVAILABLE','UNAPPLICABLE','']);
+async function bulkNormalizeFloors() {
+  if (!selectedPois.size) return;
+  toggleBulkMenu();
+  let fixCount = 0;
+  [...selectedPois].forEach(gid => {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (p && p.Floor_Number && !VALID_FLOORS.has(p.Floor_Number)) fixCount++;
+  });
+  if (!fixCount) { toast('No invalid floor numbers found in selection'); return; }
+  const ok = await showBulkConfirm('Fix Invalid Floors', fixCount + ' POIs have invalid Floor_Number values. Set them to <b>UNAVAILABLE</b>.');
+  if (!ok) return;
+  showBulkProgress();
+  let done = 0;
+  for (const gid of [...selectedPois]) {
+    const p = allPois.find(x=>x.GlobalID===gid);
+    if (!p) { done++; continue; }
+    if (p.Floor_Number && !VALID_FLOORS.has(p.Floor_Number)) {
+      p.Floor_Number = 'UNAVAILABLE';
+      if (!edits[gid]) edits[gid] = {};
+      edits[gid].Floor_Number = 'UNAVAILABLE';
+      await saveFieldsToDb(gid, { Floor_Number: 'UNAVAILABLE' });
+    }
+    done++;
+    updateBulkProgress(done, selectedPois.size);
+  }
+  saveEditsToStorage(); renderTable(); buildStats();
+  toast('Fixed ' + fixCount + ' invalid floor numbers');
+  setTimeout(closeBulkConfirm, 800);
 }
 
 async function deletePoi() {
@@ -4883,40 +5272,67 @@ function toast(msg, type) {
   _toastTimer = setTimeout(()=>t.classList.remove('show'), type === 'error' ? 4000 : 2500);
 }
 
-// ── Undo System ──
-let _undoStack = [];
+// ── Undo Framework ──
+const _undoStack = [];
+const UNDO_MAX = 20;
+
+function pushUndo(entry) {
+  _undoStack.push({ ...entry, timestamp: Date.now() });
+  if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+  _updateUndoBadge();
+}
+function _updateUndoBadge() {
+  const btn = document.getElementById('undoBtn');
+  const badge = document.getElementById('undoBadge');
+  if (btn) btn.style.display = _undoStack.length > 0 ? 'inline-flex' : 'none';
+  if (badge) badge.textContent = _undoStack.length;
+}
+
+// Backward-compat wrapper: existing callers use undoToast(msg, gid, prevStatus, prevFlagged, prevFlagReason)
 function undoToast(msg, gid, prevStatus, prevFlagged, prevFlagReason) {
-  const entry = { gid, prevStatus, prevFlagged: !!prevFlagged, prevFlagReason: prevFlagReason || '' };
-  _undoStack.push(entry);
+  pushUndo({ type: 'status', gid, fields: { Review_Status: prevStatus, flagged: !!prevFlagged, flag_reason: prevFlagReason || '' }, description: msg });
   const t = document.getElementById('toast');
   t.innerHTML = `<span>${esc(msg)}</span><button class="undo-btn" onclick="undoLastAction()">Undo</button>`;
   t.classList.add('show');
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => { t.classList.remove('show'); _undoStack = _undoStack.filter(e => e !== entry); }, 8000);
+  _toastTimer = setTimeout(() => { t.classList.remove('show'); }, 8000);
 }
 
 function undoLastAction() {
+  if (!_undoStack.length) { toast('Nothing to undo'); return; }
   const entry = _undoStack.pop();
-  if (!entry) return;
-  const poi = allPois.find(p => p.GlobalID === entry.gid);
-  if (!poi) { toast('Cannot undo: POI not found'); return; }
-  poi.Review_Status = entry.prevStatus;
-  poi.flagged = entry.prevFlagged;
-  poi.flag_reason = entry.prevFlagReason;
-  poi.Review_Flag = entry.prevFlagReason;
-  poi.review_version = Math.max(0, (parseInt(poi.review_version) || 1) - 1);
-  if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
-  Object.assign(edits[poi.GlobalID], {
-    Review_Status: entry.prevStatus,
-    flagged: entry.prevFlagged,
-    flag_reason: entry.prevFlagReason
-  });
+  _updateUndoBadge();
+  if (entry.type === 'bulk') {
+    Object.entries(entry.prevStatuses).forEach(([gid, prev]) => {
+      const poi = allPois.find(p => p.GlobalID === gid);
+      if (poi) { Object.assign(poi, prev); if (!edits[gid]) edits[gid] = {}; Object.assign(edits[gid], prev); saveFieldsToDb(gid, prev); }
+    });
+    toast('Undone bulk: ' + (entry.description || entry.type));
+  } else if (entry.type === 'edit') {
+    const poi = allPois.find(p => p.GlobalID === entry.gid);
+    if (poi) {
+      Object.assign(poi, entry.fields);
+      if (!edits[entry.gid]) edits[entry.gid] = {};
+      Object.assign(edits[entry.gid], entry.fields);
+      saveFieldsToDb(entry.gid, entry.fields);
+    }
+    toast('Undone edit: ' + (entry.description || Object.keys(entry.fields).join(', ')));
+  } else {
+    // status change (approve/reject/archive/flag)
+    const poi = allPois.find(p => p.GlobalID === entry.gid);
+    if (!poi) { toast('Cannot undo: POI not found'); return; }
+    Object.assign(poi, entry.fields);
+    if (entry.fields.flag_reason !== undefined) poi.Review_Flag = entry.fields.flag_reason;
+    if (!edits[poi.GlobalID]) edits[poi.GlobalID] = {};
+    Object.assign(edits[poi.GlobalID], entry.fields);
+    saveEditsToStorage();
+    saveFieldsToDb(poi.GlobalID, entry.fields);
+    toast('Undone: ' + trunc(poi.Name_EN || poi.Name_AR, 30) + ' reverted');
+  }
   saveEditsToStorage();
-  saveFieldsToDb(poi.GlobalID, { Review_Status: entry.prevStatus, flagged: entry.prevFlagged, flag_reason: entry.prevFlagReason });
   renderTable(); buildStats();
   if (document.getElementById('detailPanel').classList.contains('open')) renderDetailBody();
   document.getElementById('toast').classList.remove('show');
-  toast('Undone: ' + trunc(poi.Name_EN || poi.Name_AR, 30) + ' → ' + entry.prevStatus);
 }
 
 // ===== HOVER PREVIEW =====
@@ -5564,18 +5980,56 @@ function initMap() {
   }, 100);
 }
 
+const SAUDI_BOUNDS = { latMin: 15, latMax: 35, lonMin: 35, lonMax: 60 };
+function _isSuspiciousCoord(lat, lng) {
+  return (lat === 0 && lng === 0) || lat < SAUDI_BOUNDS.latMin || lat > SAUDI_BOUNDS.latMax || lng < SAUDI_BOUNDS.lonMin || lng > SAUDI_BOUNDS.lonMax;
+}
+
+function _getMarkerColorByMode(poi, mode) {
+  if (mode === 'status') {
+    if (poi.flagged) return '#f59e0b';
+    if (poi.Review_Status === 'Reviewed') return '#22c55e';
+    if (poi.Review_Status === 'Rejected') return '#ef4444';
+    if (poi.Review_Status === 'Archived') return '#9ca3af';
+    return '#3b82f6'; // Draft
+  }
+  if (mode === 'qa') {
+    const q = parseInt(poi.QA_Score) || 0;
+    if (q >= 90) return '#22c55e';
+    if (q >= 70) return '#f59e0b';
+    return '#ef4444';
+  }
+  return getMarkerColor(poi.Category);
+}
+
 function updateMapMarkers() {
   if (!poiMap || !mapMarkers) return;
   mapMarkers.clearLayers();
 
   const catFilter = document.getElementById('mapCategoryFilter').value;
+  const statusFilter = document.getElementById('mapStatusFilter')?.value || '';
   const qaFilter = document.getElementById('mapQaFilter').value;
+  const colorMode = document.getElementById('mapColorMode')?.value || 'category';
 
   let count = 0;
+  let suspiciousCount = 0;
   allPois.forEach(poi => {
     const lat = parseFloat(poi.Latitude);
     const lng = parseFloat(poi.Longitude);
-    if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+    const hasCoords = !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0);
+    const suspicious = !isNaN(lat) && !isNaN(lng) && _isSuspiciousCoord(lat, lng);
+
+    // Status filter: "suspicious" shows only suspicious coords
+    if (statusFilter === 'suspicious') {
+      if (!suspicious || !(!isNaN(lat) && !isNaN(lng))) return;
+    } else {
+      if (!hasCoords && !suspicious) return;
+      if (statusFilter === 'Draft' && poi.Review_Status && poi.Review_Status !== 'Draft') return;
+      if (statusFilter === 'Reviewed' && poi.Review_Status !== 'Reviewed') return;
+      if (statusFilter === 'Flagged' && !poi.flagged) return;
+      if (statusFilter === 'Rejected' && poi.Review_Status !== 'Rejected') return;
+    }
+
     if (catFilter && poi.Category !== catFilter) return;
     const qa = parseInt(poi.QA_Score) || 0;
     if (qaFilter === '100' && qa !== 100) return;
@@ -5583,29 +6037,32 @@ function updateMapMarkers() {
     if (qaFilter === '80' && qa < 80) return;
     if (qaFilter === 'low' && qa >= 80) return;
 
-    const color = getMarkerColor(poi.Category);
+    const markerLat = lat || 0;
+    const markerLng = lng || 0;
+    const color = suspicious ? '#dc2626' : _getMarkerColorByMode(poi, colorMode);
     const icon = L.divIcon({
-      className: 'poi-map-marker',
-      html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
+      className: 'poi-map-marker' + (suspicious ? ' marker-suspicious' : ''),
+      html: `<div style="background:${color};width:${suspicious ? 14 : 12}px;height:${suspicious ? 14 : 12}px;border-radius:50%;border:2px solid ${suspicious ? '#dc2626' : '#fff'};box-shadow:0 1px 3px rgba(0,0,0,0.3);${suspicious ? 'animation:marker-pulse 1.5s ease-in-out infinite;' : ''}"></div>`,
       iconSize: [16, 16],
       iconAnchor: [8, 8],
     });
 
-    const marker = L.marker([lat, lng], { icon });
+    const marker = L.marker([markerLat, markerLng], { icon });
     const nameEn = poi.Name_EN || 'Unnamed';
     const nameAr = poi.Name_AR || '';
     const cat = poi.Category || '';
     const sub = poi.Subcategory || '';
-    const status = poi.Company_Status || '';
+    const reviewStatus = poi.Review_Status || 'Draft';
     const qaScore = poi.QA_Score || '?';
 
     marker.bindPopup(`
       <div style="min-width:200px;font-family:var(--font);">
         <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--text-primary);">${esc(nameEn)}</div>
         <div style="font-size:13px;color:var(--text-secondary);direction:rtl;text-align:right;margin-bottom:6px;">${esc(nameAr)}</div>
+        ${suspicious ? '<div style="background:#fef2f2;color:#dc2626;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:600;margin-bottom:6px;">Suspicious coordinates: ' + markerLat.toFixed(4) + ', ' + markerLng.toFixed(4) + '</div>' : ''}
         <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
           <b>Category:</b> ${esc(cat)}${sub ? ' &gt; ' + esc(sub) : ''}<br>
-          <b>Status:</b> ${esc(status)}<br>
+          <b>Review:</b> <span style="font-weight:600">${esc(reviewStatus)}</span>${poi.flagged ? ' <span style="color:#f59e0b;font-weight:600">Flagged</span>' : ''}<br>
           <b>QA Score:</b> <span style="font-weight:700;color:${qa >= 90 ? 'var(--success-text)' : qa >= 70 ? 'var(--warning-text)' : 'var(--danger-text)'}">${qaScore}</span><br>
           <b>District:</b> ${esc(poi.District_EN || 'N/A')}<br>
           ${poi.Phone_Number && poi.Phone_Number !== 'UNAVAILABLE' ? '<b>Phone:</b> ' + esc(poi.Phone_Number) + '<br>' : ''}
@@ -5616,12 +6073,71 @@ function updateMapMarkers() {
         </div>
       </div>
     `);
+
+    // Right-click context menu
+    marker.on('contextmenu', (e) => {
+      L.DomEvent.stopPropagation(e);
+      L.DomEvent.preventDefault(e);
+      _showMapContextMenu(e.originalEvent, poi);
+    });
+
     mapMarkers.addLayer(marker);
     count++;
+    if (suspicious) suspiciousCount++;
   });
 
-  document.getElementById('mapCount').textContent = `${count} POIs on map`;
+  document.getElementById('mapCount').textContent = `${count} POIs on map` + (suspiciousCount ? ` (${suspiciousCount} suspicious)` : '');
   updateMapAnalytics();
+}
+
+function _showMapContextMenu(event, poi) {
+  const menu = document.getElementById('mapContextMenu');
+  if (!menu) return;
+  const gid = poi.GlobalID;
+  const idx = allPois.findIndex(p => p.GlobalID === gid);
+  const gmapUrl = poi.Google_Map_URL && poi.Google_Map_URL !== 'UNAVAILABLE' ? poi.Google_Map_URL : `https://www.google.com/maps?q=${poi.Latitude},${poi.Longitude}`;
+  menu.innerHTML = `
+    <button onclick="openDetail(${idx});_hideMapContextMenu()">View Details</button>
+    <button onclick="_mapQuickAction('${gid}','approve');_hideMapContextMenu()">Approve</button>
+    <button onclick="_mapQuickAction('${gid}','flag');_hideMapContextMenu()">Flag</button>
+    <button onclick="_mapQuickAction('${gid}','reject');_hideMapContextMenu()">Reject</button>
+    <hr>
+    <button onclick="window.open('${esc(gmapUrl)}','_blank');_hideMapContextMenu()">Open in Google Maps</button>
+  `;
+  const container = document.getElementById('mapContainer');
+  const rect = container.getBoundingClientRect();
+  menu.style.left = (event.clientX - rect.left) + 'px';
+  menu.style.top = (event.clientY - rect.top) + 'px';
+  menu.style.display = 'block';
+  setTimeout(() => document.addEventListener('click', _hideMapContextMenu, { once: true }), 10);
+}
+
+function _hideMapContextMenu() {
+  const menu = document.getElementById('mapContextMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+function _mapQuickAction(gid, action) {
+  const poi = allPois.find(p => p.GlobalID === gid);
+  if (!poi) return;
+  const prev = poi.Review_Status || 'Draft';
+  if (action === 'approve') {
+    pushUndo({ type: 'status', gid, fields: { Review_Status: prev, flagged: poi.flagged, flag_reason: poi.flag_reason }, description: 'Approve from map' });
+    poi.Review_Status = 'Reviewed'; poi.flagged = false; poi.flag_reason = ''; poi.Review_Flag = '';
+    saveFieldsToDb(gid, { Review_Status: 'Reviewed', flagged: false, flag_reason: '', Review_Flag: '' });
+  } else if (action === 'flag') {
+    const reason = prompt('Flag reason:');
+    if (!reason) return;
+    pushUndo({ type: 'status', gid, fields: { flagged: poi.flagged, flag_reason: poi.flag_reason, Review_Flag: poi.Review_Flag }, description: 'Flag from map' });
+    poi.flagged = true; poi.flag_reason = reason; poi.Review_Flag = reason;
+    saveFieldsToDb(gid, { flagged: true, flag_reason: reason, Review_Flag: reason });
+  } else if (action === 'reject') {
+    pushUndo({ type: 'status', gid, fields: { Review_Status: prev }, description: 'Reject from map' });
+    poi.Review_Status = 'Rejected';
+    saveFieldsToDb(gid, { Review_Status: 'Rejected' });
+  }
+  renderTable(); buildStats(); updateMapMarkers();
+  toast(`${action.charAt(0).toUpperCase() + action.slice(1)}: ${poi.Name_EN || gid}`);
 }
 
 function resetMapView() {
@@ -6543,7 +7059,76 @@ function renderDashboard() {
     h += '</table></div>';
   }
 
+  // Reviewer Productivity section (loaded async from API)
+  h += '<div id="reviewerProductivitySection" style="margin-top:20px;"></div>';
+
   el.innerHTML = h;
+  _loadReviewerProductivity();
+}
+
+async function _loadReviewerProductivity() {
+  const section = document.getElementById('reviewerProductivitySection');
+  if (!section || !dbMode) return;
+  try {
+    const resp = await fetch('/api/stats/reviewer-productivity');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const reviewers = data.reviewers || [];
+    const daily = data.daily || [];
+    if (!reviewers.length) { section.innerHTML = ''; return; }
+
+    // Build daily chart data (last 14 days)
+    const days = [...new Set(daily.map(d => d.day))].sort();
+    const maxActions = Math.max(1, ...daily.map(d => d.actions));
+
+    let h = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;">
+      <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-primary);">Reviewer Productivity</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <tr style="background:var(--surface-hover);">
+          <th style="padding:6px 8px;text-align:left;">Reviewer</th>
+          <th style="padding:6px;text-align:center;">Actions</th>
+          <th style="padding:6px;text-align:center;">Approvals</th>
+          <th style="padding:6px;text-align:center;">Rejections</th>
+          <th style="padding:6px;text-align:center;">Edits</th>
+          <th style="padding:6px;text-align:center;">POIs</th>
+          <th style="padding:6px;text-align:center;">Active Days</th>
+          <th style="padding:6px;text-align:left;">Last Activity</th>
+        </tr>`;
+    reviewers.forEach(r => {
+      const lastAct = r.last_activity ? new Date(r.last_activity).toLocaleDateString() : 'N/A';
+      h += `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 8px;font-weight:600;">${esc(r.reviewer)}</td>
+        <td style="text-align:center;font-weight:700;">${r.total_actions}</td>
+        <td style="text-align:center;color:var(--success-text);">${r.approvals}</td>
+        <td style="text-align:center;color:var(--danger-text);">${r.rejections}</td>
+        <td style="text-align:center;">${r.edits}</td>
+        <td style="text-align:center;">${r.pois_touched}</td>
+        <td style="text-align:center;">${r.active_days}</td>
+        <td style="padding:6px 8px;font-size:10px;color:var(--text-muted);">${lastAct}</td>
+      </tr>`;
+    });
+    h += '</table>';
+
+    // Daily activity mini chart
+    if (days.length > 0) {
+      h += `<div style="margin-top:14px;"><div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">Daily Activity (Last 14 Days)</div>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:60px;">`;
+      days.forEach(day => {
+        const dayData = daily.filter(d => d.day === day);
+        const total = dayData.reduce((s, d) => s + d.actions, 0);
+        const pct = Math.round((total / maxActions) * 100);
+        const label = day.slice(5); // MM-DD
+        h += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;" title="${day}: ${total} actions">
+          <div style="width:100%;max-width:30px;height:${Math.max(2, pct)}%;background:var(--primary);border-radius:2px 2px 0 0;min-height:2px;"></div>
+          <span style="font-size:8px;color:var(--text-muted);transform:rotate(-45deg);white-space:nowrap;">${label}</span>
+        </div>`;
+      });
+      h += '</div></div>';
+    }
+
+    h += '</div>';
+    section.innerHTML = h;
+  } catch(e) { console.warn('Reviewer productivity load error:', e); }
 }
 
 function renderInvoice() {
@@ -7671,6 +8256,8 @@ async function uploadDraftsCSV(input) {
 
 // ── Keyboard Shortcuts ──
 document.addEventListener('keydown', function(e) {
+  // Ctrl+Z undo (works from anywhere)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoLastAction(); return; }
   // Skip when typing in inputs
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
