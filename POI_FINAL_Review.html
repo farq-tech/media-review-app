@@ -3917,12 +3917,11 @@ function excelEdit(el) {
     const oldVal = poi[field];
     if (oldVal !== val) pushUndo({ type: 'edit', gid, fields: { [field]: oldVal }, description: field.replace(/_/g,' ') });
     poi[field] = val;
-  }
-  edits[gid][field] = val;
     const errs = validatePoi(poi);
     if (errs.length > 0) validationResults.set(gid, errs);
     else validationResults.delete(gid);
   }
+  edits[gid][field] = val;
   el.classList.add('changed');
   saveEditsToStorage();
   saveToDb(gid, field, val);
@@ -4289,12 +4288,11 @@ function detailEdit(el) {
     const oldVal = poi[field];
     if (oldVal !== val) pushUndo({ type: 'edit', gid, fields: { [field]: oldVal }, description: field.replace(/_/g,' ') });
     poi[field] = val;
-  }
-  edits[gid][field] = val;
     const errs = validatePoi(poi);
     if (errs.length > 0) validationResults.set(gid, errs);
     else validationResults.delete(gid);
   }
+  edits[gid][field] = val;
   el.classList.add('changed');
   saveEditsToStorage();
   saveToDb(gid, field, val);
