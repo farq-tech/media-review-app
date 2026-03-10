@@ -90,6 +90,18 @@ body { font-family: var(--font); background: var(--bg); color: var(--text-primar
 .presence-avatar:first-child { margin-left:0; }
 .presence-avatar:hover { transform:scale(1.15); z-index:2; }
 .presence-avatar .presence-dot { position:absolute; bottom:-1px; right:-1px; width:8px; height:8px; border-radius:50%; background:var(--success); border:2px solid var(--surface); }
+
+/* ═══════════ SYNC INDICATOR ═══════════ */
+.sync-indicator {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600; transition: all 0.3s; margin-left: 8px; white-space: nowrap;
+}
+.sync-indicator.syncing { background: var(--info-light); color: var(--info-text); border: 1px solid var(--info); }
+.sync-indicator.synced { background: var(--success-light); color: var(--success-text); border: 1px solid var(--success); }
+.sync-indicator.failed { background: var(--danger-light); color: var(--danger-text); border: 1px solid var(--danger); }
+.sync-icon { display: inline-block; width: 14px; height: 14px; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+.sync-indicator.syncing .sync-icon { animation: sync-spin 0.8s linear infinite; }
 .presence-tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--sidebar-bg); color:#fff; padding:4px 8px; border-radius:var(--radius-sm); font-size:10px; white-space:nowrap; display:none; pointer-events:none; }
 .presence-avatar:hover .presence-tooltip { display:block; }
 .header-actions button { padding: 7px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-primary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; }
@@ -632,6 +644,7 @@ table { font-feature-settings: "tnum"; }
       <p id="headerInfo">Loading...</p>
     </div>
     <div class="presence-bar" id="presenceBar"></div>
+    <div class="sync-indicator" id="syncIndicator" style="display:none;"><span class="sync-icon"></span><span class="sync-text"></span></div>
   </div>
   <div class="header-actions">
     <div class="header-group">
@@ -2952,9 +2965,34 @@ async function init() {
   showReviewerDigest();
 }
 
+// ═══════════ SYNC INDICATOR ═══════════
+let _syncCount = 0;
+let _syncHideTimer = null;
+function showSyncStatus(state, text) {
+  const el = document.getElementById('syncIndicator');
+  if (!el) return;
+  el.style.display = 'inline-flex';
+  el.className = 'sync-indicator ' + state;
+  const icons = { syncing: '&#x21BB;', synced: '&#x2713;', failed: '&#x2717;' };
+  el.querySelector('.sync-icon').innerHTML = icons[state] || '';
+  el.querySelector('.sync-text').textContent = text;
+  clearTimeout(_syncHideTimer);
+  if (state !== 'syncing') {
+    _syncHideTimer = setTimeout(() => { el.style.display = 'none'; }, state === 'synced' ? 3000 : 8000);
+  }
+}
+function _syncStart() { _syncCount++; showSyncStatus('syncing', 'Saving...'); }
+function _syncEnd(ok) {
+  _syncCount = Math.max(0, _syncCount - 1);
+  if (_syncCount === 0) {
+    showSyncStatus(ok ? 'synced' : 'failed', ok ? 'Saved to DB' : 'Save failed');
+  }
+}
+
 // Save single field to DB
 async function saveToDb(gid, field, value) {
   if (!dbMode) return true;
+  _syncStart();
   const poi = allPois.find(p => p.GlobalID === gid);
   const payload = { [field]: value };
   if (currentReviewer) payload._reviewer = currentReviewer.username;
@@ -2967,6 +3005,7 @@ async function saveToDb(gid, field, value) {
     });
     const d = await resp.json();
     if (!resp.ok || !d.ok) {
+      _syncEnd(false);
       if (resp.status === 409) {
         try { const f = await fetch('/api/pois/' + encodeURIComponent(gid)).then(r=>r.json()); if (poi && f.review_version != null) poi.review_version = f.review_version; } catch(_){}
         toast('Conflict: version synced — please try again.', 'error'); return false;
@@ -2976,7 +3015,6 @@ async function saveToDb(gid, field, value) {
     }
     if (poi) {
       if (d.review_version != null) poi.review_version = d.review_version;
-      // Handle auto-revert: backend reverted Reviewed → Draft on major field edit
       if (d.auto_reverted && d.review_status) {
         poi.Review_Status = d.review_status;
         poi.draft_reason = d.draft_reason || 'modified';
@@ -2985,13 +3023,15 @@ async function saveToDb(gid, field, value) {
         toast('Edited approved POI — auto-reverted to Draft. Re-approve when ready.', 'error');
       }
     }
+    _syncEnd(true);
     return true;
-  } catch(e) { toast('Save failed: ' + e.message, 'error'); return false; }
+  } catch(e) { _syncEnd(false); toast('Save failed: ' + e.message, 'error'); return false; }
 }
 
 // Save multiple fields to DB
 async function saveFieldsToDb(gid, fields) {
   if (!dbMode) return true;
+  _syncStart();
   const poi = allPois.find(p => p.GlobalID === gid);
   const payload = {...fields};
   if (currentReviewer) payload._reviewer = currentReviewer.username;
@@ -3004,6 +3044,7 @@ async function saveFieldsToDb(gid, fields) {
     });
     const d = await resp.json();
     if (!resp.ok || !d.ok) {
+      _syncEnd(false);
       if (resp.status === 409) {
         try { const f = await fetch('/api/pois/' + encodeURIComponent(gid)).then(r=>r.json()); if (poi && f.review_version != null) poi.review_version = f.review_version; } catch(_){}
         toast('Conflict: version synced — please try again.', 'error'); return false;
@@ -3020,8 +3061,9 @@ async function saveFieldsToDb(gid, fields) {
         toast('Edited approved POI — reverted to Draft. Re-approve when ready.', 'error');
       }
     }
+    _syncEnd(true);
     return true;
-  } catch(e) { toast('Save failed: ' + e.message, 'error'); return false; }
+  } catch(e) { _syncEnd(false); toast('Save failed: ' + e.message, 'error'); return false; }
 }
 
 function parseCSVLine(line) {
