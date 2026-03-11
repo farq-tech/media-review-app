@@ -72,51 +72,56 @@ def merge_media_urls(url_str):
     if not url_str or str(url_str).upper() == 'UNAVAILABLE': return []
     return [u.strip() for u in re.split(r'[,\s]+', str(url_str)) if u.strip() and 'UNAVAILABLE' not in u.upper()]
 
-# ==================== 1. DEDUPLICATION ====================
+# ==================== 1. DEDUPLICATION (via shared Hybrid Matching Engine) ====================
+def _import_matcher():
+    """Import the shared duplicate matcher engine."""
+    import os
+    _backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
+    if _backend_dir not in sys.path:
+        sys.path.insert(0, _backend_dir)
+    from duplicate_matcher import detect_duplicates as _engine
+    return _engine
+
+# CSV column name → API field name mapping
+_CSV_TO_API = {
+    'ID': 'GlobalID', 'Name (EN)': 'Name_EN', 'Name (AR)': 'Name_AR',
+    'Phone Number': 'Phone_Number', 'Category': 'Category',
+    'Latitude': 'Latitude', 'Longitude': 'Longitude',
+    'Building Number': 'Building_Number', 'Floor Number': 'Floor_Number',
+    'Commercial License Number': 'Commercial_License', 'Website': 'Website',
+    'Google Map URL': 'Google_Map_URL',
+}
+
 def detect_duplicates(df):
-    """Duplicate when any TWO rules trigger. Uses spatial binning to reduce comparisons."""
-    df = df.copy().reset_index(drop=True)
-    df['_lat'] = pd.to_numeric(df['Latitude'], errors='coerce')
-    df['_lon'] = pd.to_numeric(df['Longitude'], errors='coerce')
-    df['_name_norm'] = df['Name (EN)'].apply(normalize_name)
-    df['_phone_norm'] = df['Phone Number'].apply(lambda x: re.sub(r'\D', '', str(x))[:12] if is_filled(x) else '')
-    df['_building'] = df.apply(lambda r: f"{r.get('Building Number','')}|{r.get('Floor Number','')}|{r.get('Entrance Location','')}", axis=1)
-    # Binning: ~0.001 deg ~111m
-    lat_bin = (df['_lat'].fillna(0) / 0.001).astype(int)
-    lon_bin = (df['_lon'].fillna(0) / 0.001).astype(int)
-    bins = defaultdict(list)
-    for i in range(len(df)):
-        bins[(lat_bin.iloc[i], lon_bin.iloc[i])].append(i)
+    """Detect duplicates using the shared hybrid weighted scoring engine."""
+    run_detection = _import_matcher()
+
+    # Convert DataFrame rows to dicts compatible with the engine
+    pois = []
+    for _, row in df.iterrows():
+        poi = {}
+        for csv_col, api_col in _CSV_TO_API.items():
+            if csv_col in df.columns:
+                val = row.get(csv_col, '')
+                poi[api_col] = '' if pd.isna(val) else str(val)
+        pois.append(poi)
+
+    result = run_detection(pois, max_distance=100, match_threshold=85,
+                           possible_threshold=70, include_possible=False)
+
+    # Convert GID-based groups back to DataFrame index-based groups
+    gid_to_idx = {}
+    for i, poi in enumerate(pois):
+        gid_to_idx[poi.get('GlobalID', '')] = i
 
     dup_groups = []
-    used = set()
-    for i in range(len(df)):
-        if i in used: continue
-        ri = df.iloc[i]
-        group = [i]
-        lat_b, lon_b = lat_bin.iloc[i], lon_bin.iloc[i]
-        candidates = []
-        for db in [-1, 0, 1]:
-            for db2 in [-1, 0, 1]:
-                candidates.extend(bins.get((lat_b + db, lon_b + db2), []))
-        candidates = [j for j in sorted(set(candidates)) if j > i and j not in used]
-        for j in candidates:
-            rj = df.iloc[j]
-            if pd.isna(ri['_lat']) or pd.isna(rj['_lat']): continue
-            dist = haversine_km(ri['_lat'], ri['_lon'], rj['_lat'], rj['_lon']) * 1000
-            if dist > 50: continue  # Skip far pairs
-            rules = 0
-            if ri['_name_norm'] == rj['_name_norm'] and dist < 30: rules += 1
-            if ri['_phone_norm'] and ri['_phone_norm'] == rj['_phone_norm'] and dist < 50: rules += 1
-            sim = fuzz.ratio(ri['Name (EN)'], rj['Name (EN)']) / 100.0 if fuzz else 0
-            if sim >= 0.90 and str(ri.get('Category','')) == str(rj.get('Category','')) and dist < 40: rules += 1
-            if ri['_building'] == rj['_building'] and is_filled(ri.get('Building Number')): rules += 1
-            if rules >= 2:
-                group.append(j)
-                used.add(j)
-        if len(group) > 1:
-            dup_groups.append(group)
-            for j in group: used.add(j)
+    for group in result['duplicate_groups']:
+        indices = []
+        for gid in group['members']:
+            if gid in gid_to_idx:
+                indices.append(gid_to_idx[gid])
+        if len(indices) > 1:
+            dup_groups.append(indices)
 
     return dup_groups
 

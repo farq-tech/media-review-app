@@ -238,6 +238,48 @@ def _init_audit_tables(conn):
     conn.commit()
     cur.close()
 
+def _init_match_reviews_table(conn):
+    """Create table for storing human match/no-match review decisions (ML training data)."""
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS match_reviews (
+            id SERIAL PRIMARY KEY,
+            source_gid TEXT NOT NULL,
+            candidate_gid TEXT NOT NULL,
+            source_name TEXT,
+            candidate_name TEXT,
+            reviewer TEXT NOT NULL,
+            verdict TEXT NOT NULL CHECK (verdict IN ('MATCH', 'NOT_MATCH')),
+            final_score REAL,
+            name_score REAL,
+            distance_score REAL,
+            category_score REAL,
+            phone_score REAL,
+            auxiliary_score REAL,
+            distance_m REAL,
+            source_category TEXT,
+            candidate_category TEXT,
+            source_lat REAL,
+            source_lng REAL,
+            candidate_lat REAL,
+            candidate_lng REAL,
+            match_reasons TEXT,
+            tier1_match BOOLEAN DEFAULT FALSE,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mr_source ON match_reviews(source_gid);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mr_candidate ON match_reviews(candidate_gid);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mr_reviewer ON match_reviews(reviewer);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mr_verdict ON match_reviews(verdict);")
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mr_pair_reviewer
+        ON match_reviews(source_gid, candidate_gid, reviewer);
+    """)
+    conn.commit()
+    cur.close()
+
 def _init_draft_table(conn):
     cur = conn.cursor()
     cur.execute("""
@@ -336,6 +378,7 @@ def ensure_tables():
     try:
         conn = get_db()
         _init_audit_tables(conn)
+        _init_match_reviews_table(conn)
         _init_draft_table(conn)
         _migrate_lifecycle_columns(conn)
         conn.close()
@@ -2426,114 +2469,255 @@ def validate_all_pois():
     })
 
 
-# ===== API: Duplicate Detection =====
+# ===== API: Duplicate Detection (Hybrid Weighted Scoring) =====
 @api.route('/detect-duplicates', methods=['POST'])
-def detect_duplicates():
-    """Server-side duplicate detection across all POIs."""
-    import math
+def detect_duplicates_endpoint():
+    """Server-side duplicate detection using hybrid weighted scoring.
+    Combines spatial proximity, bilingual fuzzy names, phone/license/website
+    signals, and category validation into a weighted score."""
+    from duplicate_matcher import detect_duplicates as run_detection
+
     body = request.get_json() or {}
-    dist_threshold = body.get('distance_threshold', 50)
-    name_threshold = body.get('name_threshold', 85)
+    max_distance = body.get('max_distance', body.get('distance_threshold', 100))
+    match_threshold = body.get('match_threshold', body.get('name_threshold', 85))
+    possible_threshold = body.get('possible_threshold', 70)
+    include_possible = body.get('include_possible', True)
 
     conn = get_db()
     ensure_tables()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute('''SELECT "GlobalID", "Name_EN", "Name_AR", "Phone_Number",
                    "Category", "Latitude", "Longitude", "Building_Number",
-                   "Floor_Number" FROM final_delivery''')
+                   "Floor_Number", "Commercial_License", "Website",
+                   "Google_Map_URL"
+                   FROM final_delivery''')
     pois = cur.fetchall()
     cur.close()
+    conn.close()
 
-    def haversine_m(lat1, lon1, lat2, lon2):
-        R = 6371000
-        to_rad = lambda d: d * math.pi / 180
-        dLat = to_rad(lat2 - lat1)
-        dLon = to_rad(lon2 - lon1)
-        a = math.sin(dLat/2)**2 + math.cos(to_rad(lat1))*math.cos(to_rad(lat2))*math.sin(dLon/2)**2
-        return 2 * R * math.asin(min(1, math.sqrt(a)))
+    result = run_detection(
+        pois,
+        max_distance=max_distance,
+        match_threshold=match_threshold,
+        possible_threshold=possible_threshold,
+        include_possible=include_possible,
+    )
 
-    def normalize_phone(p):
-        if not p or p == 'UNAVAILABLE': return ''
-        return _re.sub(r'\D', '', p).lstrip('966').lstrip('0')[:9]
+    return jsonify(result)
 
-    def bigram_sim(a, b):
-        if not a or not b: return 0
-        a = _re.sub(r'\s+', ' ', a.lower().strip())
-        b = _re.sub(r'\s+', ' ', b.lower().strip())
-        bg = lambda s: {s[i:i+2] for i in range(len(s)-1)} if len(s) >= 2 else {s}
-        b1, b2 = bg(a), bg(b)
-        inter = len(b1 & b2)
-        return (2*inter/(len(b1)+len(b2)))*100 if b1 and b2 else 0
+# ===== API: Match Review (Human Labelling for ML Training) =====
+@api.route('/match-reviews', methods=['POST'])
+def save_match_review():
+    """Save a human review decision for a duplicate pair."""
+    ensure_tables()
+    data = request.get_json()
+    if not data:
+        return api_error('No data', 400, code=VALIDATION_ERROR)
 
-    # Parse and bin spatially
-    bins = {}
-    parsed = []
-    for p in pois:
-        try:
-            lat = float(p.get('Latitude') or 0)
-            lon = float(p.get('Longitude') or 0)
-        except (ValueError, TypeError):
-            lat = lon = 0
-        parsed.append({'poi': p, 'lat': lat, 'lon': lon,
-                       'phone': normalize_phone(p.get('Phone_Number', '')),
-                       'name_en': (p.get('Name_EN') or '').strip().lower()})
-        bk = f"{int(lat/0.0005)},{int(lon/0.0005)}"
-        bins.setdefault(bk, []).append(len(parsed)-1)
+    required = ['source_gid', 'candidate_gid', 'reviewer', 'verdict']
+    for field in required:
+        if not data.get(field):
+            return api_error(f'Missing required field: {field}', 400, code=VALIDATION_ERROR)
 
-    used = set()
-    groups = []
-    for i, pi in enumerate(parsed):
-        if i in used or (pi['lat'] == 0 and pi['lon'] == 0):
-            continue
-        bLat = int(pi['lat']/0.0005)
-        bLon = int(pi['lon']/0.0005)
-        candidates = []
-        for dl in (-1, 0, 1):
-            for dm in (-1, 0, 1):
-                candidates.extend(bins.get(f"{bLat+dl},{bLon+dm}", []))
-        group = [i]
-        matches = []
-        for j in candidates:
-            if j <= i or j in used:
-                continue
-            pj = parsed[j]
-            if pj['lat'] == 0 and pj['lon'] == 0:
-                continue
-            try:
-                dist = haversine_m(pi['lat'], pi['lon'], pj['lat'], pj['lon'])
-            except Exception:
-                continue
-            if dist > dist_threshold:
-                continue
-            rules = 0
-            reasons = []
-            # D1: same name + distance < 30m
-            if pi['name_en'] and pi['name_en'] == pj['name_en'] and dist < 30:
-                rules += 1
-                reasons.append('exact_name')
-            # D2: same phone + distance < 50m
-            if pi['phone'] and pi['phone'] == pj['phone']:
-                rules += 1
-                reasons.append('same_phone')
-            # D3: fuzzy name + same category + distance < 40m
-            sim = bigram_sim(pi['name_en'], pj['name_en'])
-            if sim >= name_threshold and pi['poi'].get('Category') == pj['poi'].get('Category') and dist < 40:
-                rules += 1
-                reasons.append(f'fuzzy_{sim:.0f}pct')
-            if rules >= 1:
-                group.append(j)
-                used.add(j)
-                matches.append({'gid': pj['poi']['GlobalID'], 'dist': round(dist), 'reasons': reasons})
-        if len(group) > 1:
-            used.add(i)
-            groups.append({
-                'anchor': pi['poi']['GlobalID'],
-                'members': [parsed[idx]['poi']['GlobalID'] for idx in group],
-                'match_details': matches
-            })
+    verdict = data['verdict'].upper()
+    if verdict not in ('MATCH', 'NOT_MATCH'):
+        return api_error('Verdict must be MATCH or NOT_MATCH', 400, code=VALIDATION_ERROR)
 
-    return jsonify({'duplicate_groups': groups, 'total_groups': len(groups),
-                    'total_pois_in_groups': sum(len(g['members']) for g in groups)})
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Upsert: if same reviewer already reviewed this pair, update
+        cur.execute("""
+            INSERT INTO match_reviews (
+                source_gid, candidate_gid, source_name, candidate_name,
+                reviewer, verdict, final_score, name_score, distance_score,
+                category_score, phone_score, auxiliary_score, distance_m,
+                source_category, candidate_category,
+                source_lat, source_lng, candidate_lat, candidate_lng,
+                match_reasons, tier1_match, notes
+            ) VALUES (
+                %(source_gid)s, %(candidate_gid)s, %(source_name)s, %(candidate_name)s,
+                %(reviewer)s, %(verdict)s, %(final_score)s, %(name_score)s, %(distance_score)s,
+                %(category_score)s, %(phone_score)s, %(auxiliary_score)s, %(distance_m)s,
+                %(source_category)s, %(candidate_category)s,
+                %(source_lat)s, %(source_lng)s, %(candidate_lat)s, %(candidate_lng)s,
+                %(match_reasons)s, %(tier1_match)s, %(notes)s
+            )
+            ON CONFLICT (source_gid, candidate_gid, reviewer)
+            DO UPDATE SET
+                verdict = EXCLUDED.verdict,
+                notes = EXCLUDED.notes,
+                created_at = NOW()
+            RETURNING id, created_at::text;
+        """, {
+            'source_gid': data['source_gid'],
+            'candidate_gid': data['candidate_gid'],
+            'source_name': data.get('source_name', ''),
+            'candidate_name': data.get('candidate_name', ''),
+            'reviewer': data['reviewer'],
+            'verdict': verdict,
+            'final_score': data.get('final_score'),
+            'name_score': data.get('name_score'),
+            'distance_score': data.get('distance_score'),
+            'category_score': data.get('category_score'),
+            'phone_score': data.get('phone_score'),
+            'auxiliary_score': data.get('auxiliary_score'),
+            'distance_m': data.get('distance_m'),
+            'source_category': data.get('source_category', ''),
+            'candidate_category': data.get('candidate_category', ''),
+            'source_lat': data.get('source_lat'),
+            'source_lng': data.get('source_lng'),
+            'candidate_lat': data.get('candidate_lat'),
+            'candidate_lng': data.get('candidate_lng'),
+            'match_reasons': data.get('match_reasons', ''),
+            'tier1_match': data.get('tier1_match', False),
+            'notes': data.get('notes', ''),
+        })
+        row = cur.fetchone()
+        conn.commit()
+        return api_success({'id': row['id'], 'created_at': row['created_at']})
+    except Exception as e:
+        conn.rollback()
+        return api_error(f'Failed to save review: {e}', 500)
+    finally:
+        cur.close()
+        conn.close()
+
+
+@api.route('/match-reviews', methods=['GET'])
+def get_match_reviews():
+    """Get all match reviews, optionally filtered by reviewer or pair."""
+    ensure_tables()
+    reviewer = request.args.get('reviewer', '')
+    source_gid = request.args.get('source_gid', '')
+    verdict = request.args.get('verdict', '')
+    limit = min(int(request.args.get('limit', 500)), 5000)
+    offset = int(request.args.get('offset', 0))
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    where_clauses = []
+    params = []
+    if reviewer:
+        where_clauses.append("reviewer = %s")
+        params.append(reviewer)
+    if source_gid:
+        where_clauses.append("(source_gid = %s OR candidate_gid = %s)")
+        params.extend([source_gid, source_gid])
+    if verdict:
+        where_clauses.append("verdict = %s")
+        params.append(verdict.upper())
+
+    where_sql = ''
+    if where_clauses:
+        where_sql = 'WHERE ' + ' AND '.join(where_clauses)
+
+    cur.execute(f"""
+        SELECT id, source_gid, candidate_gid, source_name, candidate_name,
+               reviewer, verdict, final_score, name_score, distance_score,
+               category_score, phone_score, auxiliary_score, distance_m,
+               source_category, candidate_category,
+               source_lat, source_lng, candidate_lat, candidate_lng,
+               match_reasons, tier1_match, notes, created_at::text
+        FROM match_reviews
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s;
+    """, params + [limit, offset])
+    rows = cur.fetchall()
+
+    cur.execute(f"SELECT COUNT(*) FROM match_reviews {where_sql};", params)
+    total = cur.fetchone()['count']
+
+    cur.close()
+    conn.close()
+    return jsonify({'reviews': rows, 'total': total})
+
+
+@api.route('/match-reviews/reviewed-pairs', methods=['GET'])
+def get_reviewed_pair_ids():
+    """Get set of already-reviewed pair keys for the current reviewer (to skip in UI)."""
+    ensure_tables()
+    reviewer = request.args.get('reviewer', '')
+    if not reviewer:
+        return api_error('reviewer parameter required', 400, code=VALIDATION_ERROR)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT source_gid || '|' || candidate_gid AS pair_key, verdict
+        FROM match_reviews WHERE reviewer = %s;
+    """, (reviewer,))
+    pairs = {row[0]: row[1] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return jsonify(pairs)
+
+
+@api.route('/match-reviews/export-training', methods=['GET'])
+def export_training_data():
+    """Export all reviewed pairs as ML training data (CSV or JSON)."""
+    ensure_tables()
+    fmt = request.args.get('format', 'json').lower()
+
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT source_gid, candidate_gid, source_name, candidate_name,
+               verdict, final_score, name_score, distance_score,
+               category_score, phone_score, auxiliary_score, distance_m,
+               source_category, candidate_category,
+               source_lat, source_lng, candidate_lat, candidate_lng,
+               match_reasons, tier1_match, reviewer, created_at::text
+        FROM match_reviews
+        ORDER BY created_at;
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    if fmt == 'csv':
+        import csv, io
+        if not rows:
+            return ('', 200, {'Content-Type': 'text/csv'})
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+        return (output.getvalue(), 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': 'attachment; filename=match_training_data.csv'
+        })
+
+    return jsonify({
+        'training_data': rows,
+        'total_samples': len(rows),
+        'match_count': sum(1 for r in rows if r['verdict'] == 'MATCH'),
+        'not_match_count': sum(1 for r in rows if r['verdict'] == 'NOT_MATCH'),
+    })
+
+
+@api.route('/match-reviews/stats', methods=['GET'])
+def match_review_stats():
+    """Get review progress statistics."""
+    ensure_tables()
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("""
+        SELECT
+            COUNT(*) as total_reviews,
+            COUNT(*) FILTER (WHERE verdict = 'MATCH') as match_count,
+            COUNT(*) FILTER (WHERE verdict = 'NOT_MATCH') as not_match_count,
+            COUNT(DISTINCT reviewer) as reviewer_count,
+            COUNT(DISTINCT source_gid || '|' || candidate_gid) as unique_pairs
+        FROM match_reviews;
+    """)
+    stats = cur.fetchone()
+    cur.close()
+    conn.close()
+    return jsonify(stats)
+
 
 # ===== API: Reviewer Login =====
 @api.route('/login', methods=['POST'])

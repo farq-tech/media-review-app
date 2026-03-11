@@ -405,7 +405,7 @@ tr:hover .qa-btn { opacity:0.7; }
 .dup-group-header .group-actions { margin-left: auto; display: flex; gap: 6px; }
 .dup-group-body { display: none; }
 .dup-group.open .dup-group-body { display: block; }
-.dup-row { display: grid; grid-template-columns: 40px 1fr 1fr 120px 100px 80px 80px 100px; gap: 0; border-bottom: 1px solid var(--border); font-size: 12px; align-items: center; }
+.dup-row { display: grid; grid-template-columns: 40px 1fr 1fr 120px 100px 60px 60px 80px 100px; gap: 0; border-bottom: 1px solid var(--border); font-size: 12px; align-items: center; }
 .dup-row:hover { background: var(--surface-hover); }
 .dup-row.golden { background: var(--success-light); border-left: 4px solid var(--success); }
 .dup-row > div { padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -416,6 +416,40 @@ tr:hover .qa-btn { opacity:0.7; }
 .dup-compare td { padding: 4px 8px; border: 1px solid var(--border); }
 .dup-compare td.diff { background: var(--warning-light); }
 .dup-compare td.golden-val { background: var(--success-light); font-weight: 600; }
+
+/* ═══════════ MATCH REVIEW ═══════════ */
+.review-pair-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 6px; cursor: pointer; transition: all 0.15s; background: var(--surface); font-size: 12px; }
+.review-pair-card:hover { background: var(--surface-hover); border-color: var(--primary); }
+.review-pair-card.active { background: #E3F2FD; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(25,118,210,0.2); }
+.review-pair-card.reviewed-match { border-left: 4px solid #4caf50; }
+.review-pair-card.reviewed-notmatch { border-left: 4px solid #f44336; }
+.review-pair-card .pair-names { font-weight: 600; font-size: 12px; color: var(--text-primary); margin-bottom: 4px; }
+.review-pair-card .pair-meta { font-size: 10px; color: var(--text-secondary); display: flex; gap: 8px; flex-wrap: wrap; }
+.review-pair-card .pair-verdict { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+.review-map-container { height: 300px; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 16px; }
+.review-scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.review-score-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; text-align: center; }
+.review-score-card .score-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+.review-score-card .score-value { font-size: 22px; font-weight: 700; margin: 4px 0; }
+.review-score-card .score-value.high { color: #4caf50; }
+.review-score-card .score-value.medium { color: #ff9800; }
+.review-score-card .score-value.low { color: #f44336; }
+.review-actions { display: flex; gap: 12px; margin-top: 16px; align-items: center; }
+.review-actions .btn-match { background: #4caf50; color: #fff; padding: 10px 28px; font-size: 14px; font-weight: 700; border: none; border-radius: var(--radius-md); cursor: pointer; transition: background 0.15s; }
+.review-actions .btn-match:hover { background: #388e3c; }
+.review-actions .btn-notmatch { background: #f44336; color: #fff; padding: 10px 28px; font-size: 14px; font-weight: 700; border: none; border-radius: var(--radius-md); cursor: pointer; transition: background 0.15s; }
+.review-actions .btn-notmatch:hover { background: #d32f2f; }
+.review-actions .btn-skip { background: #9e9e9e; color: #fff; padding: 10px 20px; font-size: 13px; border: none; border-radius: var(--radius-md); cursor: pointer; }
+.review-poi-info { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.review-poi-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; }
+.review-poi-box h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.review-poi-box .poi-field { font-size: 11px; margin-bottom: 3px; color: var(--text-secondary); }
+.review-poi-box .poi-field strong { color: var(--text-primary); }
+.review-reasons { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+.review-reasons .reason-tag { background: #E3F2FD; color: #1565c0; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.review-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 11px; color: var(--text-secondary); }
+.review-progress-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.review-progress-bar .fill { height: 100%; background: #4caf50; border-radius: 3px; transition: width 0.3s; }
 
 @media (max-width: 900px) {
   .sidebar { display: none; }
@@ -659,6 +693,7 @@ table { font-feature-settings: "tnum"; }
     <div class="sidebar-section-label">ANALYSIS</div>
     <div class="sidebar-item" data-view="map" onclick="switchView('map')"><span class="nav-icon"><i data-lucide="map"></i></span><span class="nav-label">Map</span></div>
     <div class="sidebar-item" data-view="duplicates" onclick="switchView('duplicates')"><span class="nav-icon"><i data-lucide="copy"></i></span><span class="nav-label">Possible Duplicates</span></div>
+    <div class="sidebar-item" data-view="matchReview" onclick="switchView('matchReview')"><span class="nav-icon"><i data-lucide="check-circle"></i></span><span class="nav-label">Match Review</span><span id="reviewBadge" class="badge" style="display:none;background:#e65100;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;">0</span></div>
     <div class="sidebar-item" data-view="audit" onclick="switchView('audit')"><span class="nav-icon"><i data-lucide="activity"></i></span><span class="nav-label">Activity</span></div>
   </div>
   <div class="sidebar-section">
@@ -861,8 +896,9 @@ table { font-feature-settings: "tnum"; }
     <span class="title">Duplicate Groups</span>
     <span id="dupSummary" class="count"></span>
     <div class="dup-config">
-      <label>Distance (m): <input type="number" id="dupDistThreshold" value="50" min="10" max="200"></label>
-      <label>Name similarity: <input type="number" id="dupNameThreshold" value="85" min="50" max="100">%</label>
+      <label>Max dist (m): <input type="number" id="dupDistThreshold" value="100" min="10" max="200"></label>
+      <label>Match score: <input type="number" id="dupNameThreshold" value="85" min="50" max="100">%</label>
+      <label>Possible: <input type="number" id="dupPossibleThreshold" value="70" min="40" max="85">%</label>
       <button class="btn btn-primary btn-sm" onclick="runDuplicateDetection()">Re-scan</button>
       <button class="btn btn-success btn-sm" onclick="mergeAllDuplicates()">Merge All (auto)</button>
       <button class="btn btn-sm" style="background:#888;color:#fff;" onclick="exportDuplicatesCSV()">Export Removed</button>
@@ -870,6 +906,39 @@ table { font-feature-settings: "tnum"; }
   </div>
   <div id="dupContainer" class="dup-container">
     <div class="dup-placeholder">Click <b>Detect Duplicates</b> to scan for potential duplicate POIs.</div>
+  </div>
+</div>
+
+<!-- MATCH REVIEW VIEW -->
+<div id="matchReviewView" class="view-content">
+  <div class="view-toolbar">
+    <span class="title">Match Review</span>
+    <span id="reviewSummary" class="count"></span>
+    <div class="dup-config">
+      <label>Filter: <select id="reviewFilter" onchange="filterReviewPairs()" style="padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;">
+        <option value="unreviewed">Unreviewed</option>
+        <option value="all">All Pairs</option>
+        <option value="match">Reviewed: MATCH</option>
+        <option value="not_match">Reviewed: NOT MATCH</option>
+      </select></label>
+      <button class="btn btn-primary btn-sm" onclick="loadReviewPairs()">Refresh</button>
+      <button class="btn btn-sm" style="background:#00695c;color:#fff;" onclick="exportTrainingData()">Export Training Data</button>
+      <button class="btn btn-sm" style="background:#1565c0;color:#fff;" onclick="exportTrainingDataCSV()">Export CSV</button>
+    </div>
+  </div>
+  <div id="reviewContainer" style="display:flex;height:calc(100vh - 160px);overflow:hidden;">
+    <!-- Left: pair list -->
+    <div id="reviewPairList" style="width:380px;min-width:320px;overflow-y:auto;border-right:1px solid var(--border);padding:8px;background:var(--bg);">
+      <div class="dup-placeholder">Run <b>Detect Duplicates</b> first, then come here to review pairs.</div>
+    </div>
+    <!-- Right: detail + map -->
+    <div id="reviewDetail" style="flex:1;overflow-y:auto;padding:16px;">
+      <div class="view-state">
+        <div class="icon" style="font-size:40px;">&#128269;</div>
+        <div class="title">Select a pair to review</div>
+        <div class="desc">Choose a duplicate pair from the list on the left to see details and locations on the map.</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1133,6 +1202,7 @@ table { font-feature-settings: "tnum"; }
 
 <script>
 // ===== STATE =====
+const API_BASE = '/api';
 let allPois = [];
 let filteredPois = [];
 let currentPage = 0;
@@ -3503,7 +3573,7 @@ function buildCategoryFilter() {
 }
 
 // ===== VIEWS =====
-const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', map:'mapView', arcgis:'arcgisView', dashboard:'dashboardView', invoice:'invoiceView', drafts:'draftsView'};
+const VIEW_IDS = {card:'cardView', excel:'excelView', audit:'auditView', duplicates:'duplicatesView', matchReview:'matchReviewView', map:'mapView', arcgis:'arcgisView', dashboard:'dashboardView', invoice:'invoiceView', drafts:'draftsView'};
 
 // ═══════════ REVIEW MODES ═══════════
 const REVIEW_MODES = {
@@ -3567,6 +3637,7 @@ function switchView(view) {
   else if (view === 'audit') loadAuditLog();
   else if (view === 'drafts') loadDrafts();
   else if (view === 'dashboard') renderDashboard();
+  else if (view === 'matchReview') initMatchReview();
   // Save to session
   if (typeof saveSessionState === 'function') saveSessionState();
 }
@@ -5623,142 +5694,87 @@ function hidePreview() {
   document.getElementById('poiPreview').classList.remove('show');
 }
 
-// ===== DUPLICATE DETECTION & MERGE =====
-let dupGroups = []; // array of { members: [indices], goldenIdx: number, merged: boolean, distance, matchRules }
+// ===== DUPLICATE DETECTION & MERGE (Hybrid Weighted Scoring) =====
+let dupGroups = []; // array of { members: [indices], goldenIdx, merged, matchDetails }
 let removedPois = []; // POIs removed by merge
+let dupPairs = []; // detailed pair results from server
 
-function haversineM(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // meters
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
+async function detectDuplicates() {
+  const distThreshold = parseInt(document.getElementById('dupDistThreshold')?.value || 100);
+  const matchThreshold = parseInt(document.getElementById('dupNameThreshold')?.value || 85);
+  const possibleThreshold = parseInt(document.getElementById('dupPossibleThreshold')?.value || 70);
 
-function normalizeName(s) {
-  if (!s) return '';
-  return s.replace(/[^\w\s\u0600-\u06FF]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
+  try {
+    const resp = await fetch(API_BASE + '/detect-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        max_distance: distThreshold,
+        match_threshold: matchThreshold,
+        possible_threshold: possibleThreshold,
+        include_possible: true,
+      }),
+    });
+    if (!resp.ok) throw new Error('Detection failed: ' + resp.status);
+    const data = await resp.json();
 
-function nameSimilarity(a, b) {
-  if (!a || !b) return 0;
-  a = normalizeName(a); b = normalizeName(b);
-  if (a === b) return 100;
-  // Longest common subsequence ratio
-  const m = a.length, n = b.length;
-  if (m === 0 || n === 0) return 0;
-  // Use simple bigram overlap for performance on 1200+ POIs
-  const bigrams = s => { const bg = new Set(); for (let i = 0; i < s.length - 1; i++) bg.add(s.substr(i,2)); return bg; };
-  const bg1 = bigrams(a), bg2 = bigrams(b);
-  let inter = 0;
-  bg1.forEach(b => { if (bg2.has(b)) inter++; });
-  return (2 * inter / (bg1.size + bg2.size)) * 100;
-}
+    dupPairs = [...(data.match_pairs || []), ...(data.possible_match_pairs || [])];
 
-function normalizePhone(p) {
-  if (!p || p === 'UNAVAILABLE') return '';
-  return p.replace(/\D/g, '').replace(/^966/, '').replace(/^0/, '').slice(0, 9);
-}
+    // Map server GIDs to local POI indices
+    const gidToIdx = {};
+    allPois.forEach((p, i) => { gidToIdx[p.GlobalID] = i; });
 
-function detectDuplicates() {
-  const distThreshold = parseInt(document.getElementById('dupDistThreshold')?.value || 50);
-  const nameThreshold = parseInt(document.getElementById('dupNameThreshold')?.value || 85);
+    dupGroups = (data.duplicate_groups || []).map(g => {
+      const memberIndices = g.members
+        .map(gid => gidToIdx[gid])
+        .filter(idx => idx !== undefined);
+      if (memberIndices.length < 2) return null;
 
-  dupGroups = [];
-  const n = allPois.length;
-  const used = new Set();
-
-  // Pre-compute
-  const lats = allPois.map(p => parseFloat(p.Latitude) || 0);
-  const lons = allPois.map(p => parseFloat(p.Longitude) || 0);
-  const names = allPois.map(p => normalizeName(p.Name_EN || ''));
-  const namesAr = allPois.map(p => normalizeName(p.Name_AR || ''));
-  const phones = allPois.map(p => normalizePhone(p.Phone_Number));
-  const buildings = allPois.map(p => `${p.Building_Number||''}|${p.Floor_Number||''}|${p.Entrance_Location||''}`);
-
-  // Spatial binning (~0.001 deg ≈ 111m)
-  const bins = {};
-  for (let i = 0; i < n; i++) {
-    const bLat = Math.floor(lats[i] / 0.0005);
-    const bLon = Math.floor(lons[i] / 0.0005);
-    const key = `${bLat},${bLon}`;
-    if (!bins[key]) bins[key] = [];
-    bins[key].push(i);
-  }
-
-  for (let i = 0; i < n; i++) {
-    if (used.has(i)) continue;
-    const bLat = Math.floor(lats[i] / 0.0005);
-    const bLon = Math.floor(lons[i] / 0.0005);
-
-    // Check neighboring bins
-    const candidates = [];
-    for (let dl = -1; dl <= 1; dl++) {
-      for (let dm = -1; dm <= 1; dm++) {
-        const k = `${bLat+dl},${bLon+dm}`;
-        if (bins[k]) candidates.push(...bins[k]);
-      }
-    }
-
-    const group = [i];
-    const matchDetails = [];
-
-    for (const j of candidates) {
-      if (j <= i || used.has(j)) continue;
-      if (lats[i] === 0 && lons[i] === 0) continue;
-      if (lats[j] === 0 && lons[j] === 0) continue;
-
-      const dist = haversineM(lats[i], lons[i], lats[j], lons[j]);
-      if (dist > distThreshold) continue;
-
-      let rules = 0;
-      const reasons = [];
-
-      // Rule 1: Exact name match + close
-      if (names[i] && names[i] === names[j] && dist < 30) { rules++; reasons.push('Exact EN name + <30m'); }
-      // Rule 1b: Exact AR name
-      if (namesAr[i] && namesAr[i] === namesAr[j] && dist < 30) { rules++; reasons.push('Exact AR name + <30m'); }
-      // Rule 2: Phone match + close
-      if (phones[i] && phones[i] === phones[j] && dist < distThreshold) { rules++; reasons.push('Same phone'); }
-      // Rule 3: Fuzzy name + same category
-      const sim = nameSimilarity(allPois[i].Name_EN, allPois[j].Name_EN);
-      if (sim >= nameThreshold && allPois[i].Category === allPois[j].Category && dist < 40) { rules++; reasons.push(`Name ${Math.round(sim)}% + same cat`); }
-      // Rule 4: Same building
-      if (buildings[i] === buildings[j] && allPois[i].Building_Number && allPois[i].Building_Number !== 'UNAVAILABLE') { rules++; reasons.push('Same building'); }
-
-      if (rules >= 2) {
-        group.push(j);
-        used.add(j);
-        matchDetails.push({ idx: j, dist: Math.round(dist), rules, reasons });
-      }
-    }
-
-    if (group.length > 1) {
-      used.add(i);
       // Golden record = most complete
       let bestIdx = 0, bestScore = 0;
-      group.forEach((idx, gi) => {
+      memberIndices.forEach((idx, gi) => {
         let score = 0;
-        ALL_FIELDS.forEach(f => { const v = allPois[idx][f]; if (v && v !== 'UNAVAILABLE' && v !== '' && v !== 'NaN') score++; });
+        ALL_FIELDS.forEach(f => {
+          const v = allPois[idx][f];
+          if (v && v !== 'UNAVAILABLE' && v !== '' && v !== 'NaN') score++;
+        });
         if (score > bestScore) { bestScore = score; bestIdx = gi; }
       });
 
-      dupGroups.push({
-        members: group,
-        goldenIdx: group[bestIdx],
-        merged: false,
-        matchDetails
-      });
-    }
-  }
+      // Map match details
+      const matchDetails = (g.match_details || []).map(d => ({
+        idx: gidToIdx[d.gid],
+        dist: Math.round(d.distance_m || 0),
+        rules: d.match_reasons?.length || 0,
+        reasons: d.match_reasons || [],
+        score: d.final_score,
+        matchStatus: d.match_status,
+        nameScore: d.name_score,
+        phoneScore: d.phone_score,
+        distanceScore: d.distance_score,
+        categoryScore: d.category_score,
+      })).filter(d => d.idx !== undefined);
 
-  return dupGroups.length;
+      return {
+        members: memberIndices,
+        goldenIdx: memberIndices[bestIdx],
+        merged: false,
+        matchDetails,
+      };
+    }).filter(Boolean);
+
+    return dupGroups.length;
+  } catch (err) {
+    console.error('Duplicate detection error:', err);
+    toast('Error detecting duplicates: ' + err.message, 'error');
+    return 0;
+  }
 }
 
-function runDuplicateDetection() {
-  toast('Scanning for duplicates...');
-  setTimeout(() => {
-    const count = detectDuplicates();
+async function runDuplicateDetection() {
+  toast('Scanning for duplicates (server-side hybrid matching)...');
+  try {
+    const count = await detectDuplicates();
     renderDuplicatesView();
     buildStats();
     const badge = document.getElementById('dupBadge');
@@ -5766,7 +5782,9 @@ function runDuplicateDetection() {
     else { badge.style.display = 'none'; }
     switchView('duplicates');
     toast(`Found ${count} duplicate groups (${dupGroups.reduce((s,g) => s + g.members.length, 0)} POIs)`);
-  }, 50);
+  } catch (err) {
+    toast('Detection failed: ' + err.message, 'error');
+  }
 }
 
 function renderDuplicatesView() {
@@ -5796,10 +5814,17 @@ function renderDuplicatesView() {
     const isOpen = !group.merged ? ' open' : '';
     const mergedClass = group.merged ? ' merged' : '';
 
+    // Determine best match status in group
+    const bestStatus = group.matchDetails?.some(d => d.matchStatus === 'MATCH') ? 'MATCH' : 'POSSIBLE_MATCH';
+    const bestScore = group.matchDetails?.length ? Math.max(...group.matchDetails.map(d => d.score || 0)) : 0;
+    const statusColor = bestStatus === 'MATCH' ? '#4caf50' : '#ff9800';
+    const statusLabel = bestStatus === 'MATCH' ? 'MATCH' : 'POSSIBLE';
+
     h += `<div class="dup-group${mergedClass}${isOpen}" id="dupGroup${gi}">`;
     h += `<div class="dup-group-header" onclick="toggleDupGroup(${gi})">`;
     h += `<span class="group-label">Group ${gi+1}</span>`;
-    h += `<span class="group-info">${memberCount} POIs | Golden: ${esc(golden.Name_EN||golden.Name_AR||'?')}</span>`;
+    h += `<span style="background:${statusColor};color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin:0 6px;">${statusLabel}</span>`;
+    h += `<span class="group-info">${memberCount} POIs | Score: ${bestScore.toFixed(1)} | Golden: ${esc(golden.Name_EN||golden.Name_AR||'?')}</span>`;
     if (group.merged) h += `<span style="color:#4caf50;font-weight:700;font-size:11px;">MERGED</span>`;
     h += `<div class="group-actions" onclick="event.stopPropagation()">`;
     if (!group.merged) {
@@ -5814,13 +5839,16 @@ function renderDuplicatesView() {
     h += `<div class="dup-group-body">`;
 
     // Row header
-    h += `<div class="dup-row dup-row-header"><div></div><div>Name EN</div><div>Name AR</div><div>Category</div><div>Phone</div><div>Dist</div><div>QA</div><div>Action</div></div>`;
+    h += `<div class="dup-row dup-row-header"><div></div><div>Name EN</div><div>Name AR</div><div>Category</div><div>Phone</div><div>Dist</div><div>Score</div><div>Status</div><div>Action</div></div>`;
 
     group.members.forEach((poiIdx, mi) => {
       const p = allPois[poiIdx];
       const isGolden = poiIdx === group.goldenIdx;
       const detail = group.matchDetails?.find(d => d.idx === poiIdx);
       const dist = detail ? detail.dist + 'm' : (mi === 0 ? '-' : '?');
+      const score = detail ? (detail.score || 0).toFixed(1) : (mi === 0 ? '-' : '?');
+      const mStatus = detail?.matchStatus || '';
+      const mStatusColor = mStatus === 'MATCH' ? '#4caf50' : mStatus === 'POSSIBLE_MATCH' ? '#ff9800' : '#999';
 
       h += `<div class="dup-row${isGolden?' golden':''}">`;
       h += `<div style="text-align:center;">${isGolden?'<span style="color:#4caf50;font-weight:700;" title="Golden Record">★</span>':'<span style="color:#999;">${mi+1}</span>'}</div>`;
@@ -5829,7 +5857,8 @@ function renderDuplicatesView() {
       h += `<div>${esc(p.Category||'')}</div>`;
       h += `<div>${esc(trunc(p.Phone_Number||'',15))}</div>`;
       h += `<div>${dist}</div>`;
-      h += `<div>${p.QA_Score||'?'}</div>`;
+      h += `<div style="font-weight:700;">${score}</div>`;
+      h += `<div><span style="color:${mStatusColor};font-size:10px;font-weight:700;">${mStatus || (mi===0?'BASE':'')}</span></div>`;
       h += `<div>`;
       if (!group.merged && !isGolden) {
         h += `<button class="btn btn-sm btn-primary" onclick="setGolden(${gi},${poiIdx})" title="Set as golden">★</button>`;
@@ -5861,8 +5890,28 @@ function renderDuplicatesView() {
       h += `</tr>`;
     });
 
-    // Match reasons
+    // Match scores breakdown
     if (group.matchDetails?.length) {
+      h += `<tr><td style="font-weight:600;">Final Score</td>`;
+      group.members.forEach((poiIdx, mi) => {
+        const detail = group.matchDetails.find(d => d.idx === poiIdx);
+        const sc = detail?.score;
+        const color = sc >= 85 ? '#4caf50' : sc >= 70 ? '#ff9800' : '#f44336';
+        h += `<td style="font-weight:700;color:${sc?color:'#999'}">${sc ? sc.toFixed(1) : (mi===0?'Base':'—')}</td>`;
+      });
+      h += `</tr>`;
+      h += `<tr><td style="font-weight:600;">Name Score</td>`;
+      group.members.forEach((poiIdx, mi) => {
+        const detail = group.matchDetails.find(d => d.idx === poiIdx);
+        h += `<td>${detail?.nameScore != null ? detail.nameScore.toFixed(1) : (mi===0?'-':'—')}</td>`;
+      });
+      h += `</tr>`;
+      h += `<tr><td style="font-weight:600;">Phone Score</td>`;
+      group.members.forEach((poiIdx, mi) => {
+        const detail = group.matchDetails.find(d => d.idx === poiIdx);
+        h += `<td>${detail?.phoneScore != null ? detail.phoneScore.toFixed(1) : (mi===0?'-':'—')}</td>`;
+      });
+      h += `</tr>`;
       h += `<tr><td style="font-weight:600;">Match Reasons</td>`;
       group.members.forEach((poiIdx, mi) => {
         const detail = group.matchDetails.find(d => d.idx === poiIdx);
@@ -6021,6 +6070,407 @@ function exportDuplicatesCSV() {
   download(csv, 'POI_Duplicates_Removed.csv');
   toast('Exported ' + removedPois.length + ' removed duplicates');
 }
+
+// ===== MATCH REVIEW SYSTEM (Human Labelling for ML Training) =====
+let reviewPairs = [];        // filtered list of pairs to show
+let reviewedPairKeys = {};   // { 'gid1|gid2': 'MATCH'|'NOT_MATCH' }
+let currentReviewIdx = -1;   // index into reviewPairs
+let reviewMap = null;        // Leaflet map for review
+let reviewMapMarkers = null; // layer group for markers
+
+async function initMatchReview() {
+  // Load reviewed pairs from server
+  const reviewer = (currentReviewer?.username || '').trim();
+  if (reviewer) {
+    try {
+      const resp = await fetch(API_BASE + '/match-reviews/reviewed-pairs?reviewer=' + encodeURIComponent(reviewer));
+      if (resp.ok) reviewedPairKeys = await resp.json();
+    } catch(e) { console.warn('Could not load reviewed pairs', e); }
+  }
+
+  // If dupPairs is empty, we need to run detection first
+  if (!dupPairs.length) {
+    document.getElementById('reviewPairList').innerHTML = '<div class="dup-placeholder">Run <b>Detect Duplicates</b> first in the Possible Duplicates tab, then come back here to review pairs on the map.</div>';
+    return;
+  }
+
+  filterReviewPairs();
+}
+
+function filterReviewPairs() {
+  const filter = document.getElementById('reviewFilter')?.value || 'unreviewed';
+  reviewPairs = dupPairs.filter(pair => {
+    const key = pair.source_gid + '|' + pair.candidate_gid;
+    const verdict = reviewedPairKeys[key];
+    if (filter === 'unreviewed') return !verdict;
+    if (filter === 'match') return verdict === 'MATCH';
+    if (filter === 'not_match') return verdict === 'NOT_MATCH';
+    return true; // 'all'
+  });
+
+  renderReviewPairList();
+  updateReviewSummary();
+
+  // Auto-select first pair if none selected
+  if (reviewPairs.length > 0 && currentReviewIdx < 0) {
+    selectReviewPair(0);
+  } else if (reviewPairs.length === 0) {
+    currentReviewIdx = -1;
+    document.getElementById('reviewDetail').innerHTML = `<div class="view-state">
+      <div class="icon" style="font-size:40px;">&#10004;</div>
+      <div class="title">${filter === 'unreviewed' ? 'All pairs reviewed!' : 'No pairs match this filter'}</div>
+      <div class="desc">Change the filter or run duplicate detection again.</div>
+    </div>`;
+  }
+}
+
+function updateReviewSummary() {
+  const total = dupPairs.length;
+  const reviewed = Object.keys(reviewedPairKeys).length;
+  const matchCount = Object.values(reviewedPairKeys).filter(v => v === 'MATCH').length;
+  const notMatchCount = Object.values(reviewedPairKeys).filter(v => v === 'NOT_MATCH').length;
+  const el = document.getElementById('reviewSummary');
+  if (el) el.textContent = `${reviewed}/${total} reviewed | ${matchCount} match | ${notMatchCount} not match`;
+}
+
+function renderReviewPairList() {
+  const container = document.getElementById('reviewPairList');
+  if (!reviewPairs.length) {
+    container.innerHTML = '<div class="dup-placeholder">No pairs to show for this filter.</div>';
+    return;
+  }
+
+  // Progress bar
+  const total = dupPairs.length;
+  const reviewed = Object.keys(reviewedPairKeys).length;
+  const pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+
+  let h = `<div class="review-progress">
+    <span>${reviewed}/${total} reviewed (${pct}%)</span>
+    <div class="review-progress-bar"><div class="fill" style="width:${pct}%"></div></div>
+  </div>`;
+
+  reviewPairs.forEach((pair, i) => {
+    const key = pair.source_gid + '|' + pair.candidate_gid;
+    const verdict = reviewedPairKeys[key];
+    const verdictClass = verdict === 'MATCH' ? ' reviewed-match' : verdict === 'NOT_MATCH' ? ' reviewed-notmatch' : '';
+    const activeClass = i === currentReviewIdx ? ' active' : '';
+    const score = (pair.final_score || 0).toFixed(1);
+    const scoreColor = pair.final_score >= 85 ? '#4caf50' : pair.final_score >= 70 ? '#ff9800' : '#f44336';
+    const status = pair.match_status || '';
+
+    h += `<div class="review-pair-card${verdictClass}${activeClass}" onclick="selectReviewPair(${i})">
+      <div class="pair-names">${esc(trunc(pair.source_name || '', 22))} &harr; ${esc(trunc(pair.candidate_name || '', 22))}</div>
+      <div class="pair-meta">
+        <span style="font-weight:700;color:${scoreColor};">Score: ${score}</span>
+        <span>${Math.round(pair.distance_m || 0)}m</span>
+        <span style="color:${status==='MATCH'?'#4caf50':'#ff9800'};font-weight:600;">${status}</span>
+        ${verdict ? `<span class="pair-verdict" style="background:${verdict==='MATCH'?'#4caf50':'#f44336'};color:#fff;">${verdict}</span>` : ''}
+      </div>
+    </div>`;
+  });
+
+  container.innerHTML = h;
+}
+
+function selectReviewPair(idx) {
+  if (idx < 0 || idx >= reviewPairs.length) return;
+  currentReviewIdx = idx;
+  const pair = reviewPairs[idx];
+
+  // Update active state in list
+  document.querySelectorAll('.review-pair-card').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+
+  renderReviewDetail(pair);
+}
+
+function renderReviewDetail(pair) {
+  const detail = document.getElementById('reviewDetail');
+  const key = pair.source_gid + '|' + pair.candidate_gid;
+  const existingVerdict = reviewedPairKeys[key] || '';
+
+  // Find POI objects for extra info
+  const srcPoi = allPois.find(p => p.GlobalID === pair.source_gid) || {};
+  const candPoi = allPois.find(p => p.GlobalID === pair.candidate_gid) || {};
+
+  const srcLat = parseFloat(pair.source_lat || srcPoi.Latitude || 0);
+  const srcLng = parseFloat(pair.source_lng || srcPoi.Longitude || 0);
+  const candLat = parseFloat(pair.candidate_lat || candPoi.Latitude || 0);
+  const candLng = parseFloat(pair.candidate_lng || candPoi.Longitude || 0);
+
+  const scoreClass = v => v >= 85 ? 'high' : v >= 70 ? 'medium' : 'low';
+
+  let h = '';
+
+  // Map
+  h += `<div id="reviewMapContainer" class="review-map-container"></div>`;
+
+  // Match reasons
+  const reasons = pair.match_reasons || [];
+  if (reasons.length) {
+    h += `<div class="review-reasons">`;
+    reasons.forEach(r => { h += `<span class="reason-tag">${esc(r)}</span>`; });
+    h += `</div>`;
+  }
+
+  // Score cards
+  h += `<div class="review-scores">`;
+  h += `<div class="review-score-card"><div class="score-label">Final Score</div><div class="score-value ${scoreClass(pair.final_score || 0)}">${(pair.final_score || 0).toFixed(1)}</div></div>`;
+  h += `<div class="review-score-card"><div class="score-label">Name</div><div class="score-value ${scoreClass(pair.name_score || 0)}">${(pair.name_score || 0).toFixed(1)}</div></div>`;
+  h += `<div class="review-score-card"><div class="score-label">Distance</div><div class="score-value ${scoreClass(pair.distance_score || 0)}">${(pair.distance_score || 0).toFixed(1)}</div><div class="score-label">${Math.round(pair.distance_m || 0)}m</div></div>`;
+  h += `<div class="review-score-card"><div class="score-label">Category</div><div class="score-value ${scoreClass(pair.category_score || 0)}">${(pair.category_score || 0).toFixed(1)}</div></div>`;
+  h += `<div class="review-score-card"><div class="score-label">Phone</div><div class="score-value ${scoreClass(pair.phone_score || 0)}">${(pair.phone_score || 0).toFixed(1)}</div></div>`;
+  h += `<div class="review-score-card"><div class="score-label">Auxiliary</div><div class="score-value ${scoreClass(pair.auxiliary_score || 0)}">${(pair.auxiliary_score || 0).toFixed(1)}</div></div>`;
+  h += `</div>`;
+
+  // POI details side by side
+  h += `<div class="review-poi-info">`;
+
+  // Source POI
+  h += `<div class="review-poi-box" style="border-top:3px solid #1976d2;">`;
+  h += `<h4 style="color:#1976d2;">&#128205; Source POI</h4>`;
+  h += `<div class="poi-field"><strong>Name EN:</strong> ${esc(srcPoi.Name_EN || pair.source_name || '')}</div>`;
+  h += `<div class="poi-field"><strong>Name AR:</strong> ${esc(srcPoi.Name_AR || '')}</div>`;
+  h += `<div class="poi-field"><strong>Category:</strong> ${esc(srcPoi.Category || pair.source_category || '')}</div>`;
+  h += `<div class="poi-field"><strong>Phone:</strong> ${esc(srcPoi.Phone_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>Building:</strong> ${esc(srcPoi.Building_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>Floor:</strong> ${esc(srcPoi.Floor_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>License:</strong> ${esc(srcPoi.Commercial_License || '')}</div>`;
+  h += `<div class="poi-field"><strong>Website:</strong> ${esc(srcPoi.Website || '')}</div>`;
+  h += `<div class="poi-field"><strong>Coords:</strong> ${srcLat.toFixed(6)}, ${srcLng.toFixed(6)}</div>`;
+  h += `<div class="poi-field"><strong>GID:</strong> <span style="font-size:9px;color:#999;">${esc(pair.source_gid)}</span></div>`;
+  h += `</div>`;
+
+  // Candidate POI
+  h += `<div class="review-poi-box" style="border-top:3px solid #e65100;">`;
+  h += `<h4 style="color:#e65100;">&#128205; Candidate POI</h4>`;
+  h += `<div class="poi-field"><strong>Name EN:</strong> ${esc(candPoi.Name_EN || pair.candidate_name || '')}</div>`;
+  h += `<div class="poi-field"><strong>Name AR:</strong> ${esc(candPoi.Name_AR || '')}</div>`;
+  h += `<div class="poi-field"><strong>Category:</strong> ${esc(candPoi.Category || pair.candidate_category || '')}</div>`;
+  h += `<div class="poi-field"><strong>Phone:</strong> ${esc(candPoi.Phone_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>Building:</strong> ${esc(candPoi.Building_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>Floor:</strong> ${esc(candPoi.Floor_Number || '')}</div>`;
+  h += `<div class="poi-field"><strong>License:</strong> ${esc(candPoi.Commercial_License || '')}</div>`;
+  h += `<div class="poi-field"><strong>Website:</strong> ${esc(candPoi.Website || '')}</div>`;
+  h += `<div class="poi-field"><strong>Coords:</strong> ${candLat.toFixed(6)}, ${candLng.toFixed(6)}</div>`;
+  h += `<div class="poi-field"><strong>GID:</strong> <span style="font-size:9px;color:#999;">${esc(pair.candidate_gid)}</span></div>`;
+  h += `</div>`;
+
+  h += `</div>`;
+
+  // Notes
+  h += `<div style="margin-bottom:12px;"><label style="font-size:11px;font-weight:600;color:var(--text-secondary);">Notes (optional):</label>
+    <input type="text" id="reviewNotes" placeholder="Any notes about this pair..." style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;margin-top:4px;" value=""></div>`;
+
+  // Action buttons
+  h += `<div class="review-actions">`;
+  h += `<button class="btn-match" onclick="submitReview('MATCH')">&#10004; MATCH</button>`;
+  h += `<button class="btn-notmatch" onclick="submitReview('NOT_MATCH')">&#10008; NOT MATCH</button>`;
+  h += `<button class="btn-skip" onclick="skipReviewPair()">Skip &#8594;</button>`;
+  if (existingVerdict) {
+    h += `<span style="font-size:12px;color:${existingVerdict==='MATCH'?'#4caf50':'#f44336'};font-weight:700;margin-left:auto;">Previously: ${existingVerdict}</span>`;
+  }
+  h += `<span style="font-size:11px;color:var(--text-secondary);margin-left:auto;">Pair ${currentReviewIdx + 1} of ${reviewPairs.length}</span>`;
+  h += `</div>`;
+
+  detail.innerHTML = h;
+
+  // Initialize map after DOM is ready
+  setTimeout(() => initReviewMap(srcLat, srcLng, candLat, candLng, pair), 100);
+}
+
+function initReviewMap(srcLat, srcLng, candLat, candLng, pair) {
+  const container = document.getElementById('reviewMapContainer');
+  if (!container) return;
+
+  // Destroy previous map
+  if (reviewMap) {
+    reviewMap.remove();
+    reviewMap = null;
+  }
+
+  // Check valid coords
+  if (!srcLat && !srcLng && !candLat && !candLng) {
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:13px;">No coordinates available</div>';
+    return;
+  }
+
+  // Create map
+  reviewMap = L.map(container).setView([(srcLat + candLat) / 2, (srcLng + candLng) / 2], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap',
+    maxZoom: 19,
+  }).addTo(reviewMap);
+
+  // Source marker (blue)
+  const srcIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#1976d2;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">S</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+  L.marker([srcLat, srcLng], { icon: srcIcon })
+    .bindPopup(`<b>Source:</b> ${pair.source_name || '?'}<br><small>${srcLat.toFixed(6)}, ${srcLng.toFixed(6)}</small>`)
+    .addTo(reviewMap);
+
+  // Candidate marker (orange)
+  const candIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#e65100;color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);">C</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+  L.marker([candLat, candLng], { icon: candIcon })
+    .bindPopup(`<b>Candidate:</b> ${pair.candidate_name || '?'}<br><small>${candLat.toFixed(6)}, ${candLng.toFixed(6)}</small>`)
+    .addTo(reviewMap);
+
+  // Draw line between them
+  L.polyline([[srcLat, srcLng], [candLat, candLng]], {
+    color: '#666', weight: 2, dashArray: '6,4', opacity: 0.7,
+  }).addTo(reviewMap);
+
+  // Distance label at midpoint
+  const midLat = (srcLat + candLat) / 2;
+  const midLng = (srcLng + candLng) / 2;
+  L.marker([midLat, midLng], {
+    icon: L.divIcon({
+      className: '',
+      html: `<div style="background:#fff;border:1px solid #999;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.2);">${Math.round(pair.distance_m || 0)}m</div>`,
+      iconSize: [60, 20],
+      iconAnchor: [30, 10],
+    })
+  }).addTo(reviewMap);
+
+  // Fit bounds
+  const bounds = L.latLngBounds([[srcLat, srcLng], [candLat, candLng]]);
+  reviewMap.fitBounds(bounds.pad(0.5));
+
+  // Fix sizing
+  setTimeout(() => reviewMap.invalidateSize(), 200);
+  setTimeout(() => reviewMap.invalidateSize(), 500);
+}
+
+async function submitReview(verdict) {
+  if (currentReviewIdx < 0 || currentReviewIdx >= reviewPairs.length) return;
+  const pair = reviewPairs[currentReviewIdx];
+  const reviewer = (currentReviewer?.username || '').trim();
+  if (!reviewer) {
+    toast('Please log in first to submit reviews', 'error');
+    return;
+  }
+
+  const notes = document.getElementById('reviewNotes')?.value || '';
+  const srcPoi = allPois.find(p => p.GlobalID === pair.source_gid) || {};
+  const candPoi = allPois.find(p => p.GlobalID === pair.candidate_gid) || {};
+
+  const body = {
+    source_gid: pair.source_gid,
+    candidate_gid: pair.candidate_gid,
+    source_name: pair.source_name || srcPoi.Name_EN || '',
+    candidate_name: pair.candidate_name || candPoi.Name_EN || '',
+    reviewer: reviewer,
+    verdict: verdict,
+    final_score: pair.final_score,
+    name_score: pair.name_score,
+    distance_score: pair.distance_score,
+    category_score: pair.category_score,
+    phone_score: pair.phone_score,
+    auxiliary_score: pair.auxiliary_score,
+    distance_m: pair.distance_m,
+    source_category: srcPoi.Category || pair.source_category || '',
+    candidate_category: candPoi.Category || pair.candidate_category || '',
+    source_lat: parseFloat(srcPoi.Latitude || 0),
+    source_lng: parseFloat(srcPoi.Longitude || 0),
+    candidate_lat: parseFloat(candPoi.Latitude || 0),
+    candidate_lng: parseFloat(candPoi.Longitude || 0),
+    match_reasons: (pair.match_reasons || []).join(', '),
+    tier1_match: pair.tier1_match || false,
+    notes: notes,
+  };
+
+  try {
+    const resp = await fetch(API_BASE + '/match-reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error('Save failed: ' + resp.status);
+
+    // Update local state
+    const key = pair.source_gid + '|' + pair.candidate_gid;
+    reviewedPairKeys[key] = verdict;
+
+    toast(`Saved: ${verdict}`, verdict === 'MATCH' ? 'success' : 'info');
+
+    // Auto-advance to next unreviewed pair
+    advanceToNextPair();
+  } catch (err) {
+    toast('Failed to save review: ' + err.message, 'error');
+  }
+}
+
+function skipReviewPair() {
+  advanceToNextPair();
+}
+
+function advanceToNextPair() {
+  const filter = document.getElementById('reviewFilter')?.value || 'unreviewed';
+
+  if (filter === 'unreviewed') {
+    // Re-filter to remove the just-reviewed pair
+    filterReviewPairs();
+    if (reviewPairs.length > 0) {
+      const nextIdx = Math.min(currentReviewIdx, reviewPairs.length - 1);
+      selectReviewPair(nextIdx);
+    }
+  } else {
+    // Just go to next in list
+    if (currentReviewIdx < reviewPairs.length - 1) {
+      selectReviewPair(currentReviewIdx + 1);
+    } else {
+      // Refresh list to update verdicts
+      renderReviewPairList();
+      updateReviewSummary();
+    }
+  }
+}
+
+async function loadReviewPairs() {
+  // Re-run detection if needed, then refresh
+  if (!dupPairs.length) {
+    toast('Running duplicate detection first...');
+    await runDuplicateDetection();
+  }
+  currentReviewIdx = -1;
+  await initMatchReview();
+}
+
+async function exportTrainingData() {
+  try {
+    const resp = await fetch(API_BASE + '/match-reviews/export-training?format=json');
+    if (!resp.ok) throw new Error(resp.status);
+    const data = await resp.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'match_training_data.json'; a.click();
+    URL.revokeObjectURL(url);
+    toast(`Exported ${data.total_samples} training samples (${data.match_count} match, ${data.not_match_count} not match)`);
+  } catch (err) { toast('Export failed: ' + err.message, 'error'); }
+}
+
+async function exportTrainingDataCSV() {
+  try {
+    const resp = await fetch(API_BASE + '/match-reviews/export-training?format=csv');
+    if (!resp.ok) throw new Error(resp.status);
+    const csv = await resp.text();
+    download(csv, 'match_training_data.csv');
+    toast('Exported training data as CSV');
+  } catch (err) { toast('Export failed: ' + err.message, 'error'); }
+}
+
 
 // ===== CSV IMPORT (update existing data) =====
 function handleFile(e) {
