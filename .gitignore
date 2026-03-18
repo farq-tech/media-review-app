@@ -1,3 +1,13 @@
 node_modules/
 .env
+.env.local
 __pycache__/
+
+# Next.js
+.next/
+out/
+build/
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts
